@@ -23,10 +23,8 @@ export async function POST(req: NextRequest) {
     // Update config
     const update: Partial<ModelConfig> = {};
     if (body.provider) update.provider = body.provider;
-    if (body.localEndpoint !== undefined) update.localEndpoint = body.localEndpoint;
-    if (body.localModel !== undefined) update.localModel = body.localModel;
-    if (body.localApiKey !== undefined) update.localApiKey = body.localApiKey;
-    if (body.localHasVision !== undefined) update.localHasVision = body.localHasVision;
+    if (body.aetherModel !== undefined) update.aetherModel = body.aetherModel;
+    if (body.aetherHasVision !== undefined) update.aetherHasVision = body.aetherHasVision;
     if (body.cloudModel !== undefined) update.cloudModel = body.cloudModel;
 
     const newConfig = setModelConfig(update);

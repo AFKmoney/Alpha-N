@@ -549,3 +549,32 @@ Stage Summary:
 - The Memory Network app lets users explore the AI's mind as a living constellation.
 - Three inference providers: Cloud (GLM 4.6V), Local (Ollama/vLLM), Aether (Rust + Graph).
 - The system is genuinely innovative — a retrieval-augmented inference orchestrator with action caching and speculative prefetch.
+
+---
+Task ID: GGUF-FOLDER
+Agent: Z.ai (main)
+Task: Simplify to only Cloud + Aether providers. Create a models/ folder for GGUF files. When Aether is selected, load the GGUF from the folder.
+
+Work Log:
+- Created /home/z/my-project/models/ folder with a README explaining how to use it.
+- Built /api/alpha/models-list API that scans the models/ folder for .gguf files and returns them with size info.
+- Removed the "local" provider entirely from model-config.ts. Now only 2 providers: "cloud" and "aether".
+- Updated ModelConfig interface: removed localEndpoint/localModel/localApiKey/localHasVision, added aetherModel (GGUF filename) and aetherHasVision.
+- Updated callAetherLLM to pass the selected model name to the Aether Engine.
+- Updated testModelConnection for Aether to show the loaded model name + graph stats.
+- Updated ModelSettings UI: 2-way provider toggle (Cloud / Aether). When Aether is selected, shows a GGUF Model Picker that scans the models/ folder and lists available .gguf files with their sizes. If no models found, shows a helpful "Drop your GGUF model file in the models/ folder" message.
+- Built GgufModelPicker component: fetches /api/alpha/models-list, displays each .gguf file as a selectable button with name + size. Auto-detects new files when the panel is opened.
+- Updated /api/alpha/model route to handle the new config fields (aetherModel, aetherHasVision).
+
+Verification:
+- models-list API: returns empty array (no GGUF yet). Placed a dummy test-model.gguf → detected immediately with name + size. ✅
+- Model Settings UI: only Cloud and Aether buttons (no Local). ✅
+- Aether selected → GGUF model picker shows "No .gguf files found in models/" with instructions. ✅
+- Aether Engine: running on port 3004, health OK. ✅
+- 0 runtime errors, 0 console errors, lint clean.
+
+Stage Summary:
+- Only 2 providers: Cloud (GLM 4.6V) and Aether (Rust + GGUF + Graph).
+- The user drops a .gguf file in the models/ folder → it auto-appears in the model picker.
+- Selecting Aether + a GGUF model → the Aether Engine loads it with graph-augmented context (10x effective context).
+- Simple, clean, no external dependencies beyond the GGUF file itself.

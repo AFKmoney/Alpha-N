@@ -1,29 +1,25 @@
 // ============================================================
 // Alpha-OS — Model Configuration
-// Supports both cloud (z-ai SDK) and local (OpenAI-compatible) models.
-// The user can switch at runtime; the same OS control power applies to both.
+// Two providers: Cloud (GLM 4.6V via z-ai SDK) and Aether (Rust engine
+// that loads GGUF models from the models/ folder with graph-augmented context).
 // ============================================================
 
-export type ModelProvider = "cloud" | "local" | "aether";
+export type ModelProvider = "cloud" | "aether";
 
 export interface ModelConfig {
   provider: ModelProvider;
-  // Local model settings (OpenAI-compatible API like Ollama, llama.cpp, vLLM, LM Studio)
-  localEndpoint: string; // e.g. "http://localhost:11434/v1"
-  localModel: string; // e.g. "llama3.2-vision" or "qwen2.5:32b"
-  localApiKey: string; // usually empty for local, but some APIs need a dummy key
-  localHasVision: boolean; // does the local model support image input?
+  // Aether settings — which GGUF model to load from the models/ folder
+  aetherModel: string; // filename of the .gguf file, e.g. "llama3.2-3b-q4_k_m.gguf"
+  aetherHasVision: boolean; // does the model support image input?
   // Cloud model settings
-  cloudModel: string; // unused for now (z-ai SDK picks the model), but stored for reference
+  cloudModel: string;
 }
 
 // Default config — cloud by default (works out of the box)
 export const DEFAULT_MODEL_CONFIG: ModelConfig = {
   provider: "cloud",
-  localEndpoint: "http://localhost:11434/v1",
-  localModel: "llama3.2-vision",
-  localApiKey: "",
-  localHasVision: true,
+  aetherModel: "",
+  aetherHasVision: false,
   cloudModel: "glm-4.6v",
 };
 
@@ -76,9 +72,6 @@ export async function callLLM(
 ): Promise<LLMResponse> {
   const config = getModelConfig();
 
-  if (config.provider === "local") {
-    return callLocalLLM(config, systemPrompt, userText, screenshot, options);
-  }
   if (config.provider === "aether") {
     return callAetherLLM(systemPrompt, userText, screenshot);
   }
@@ -115,78 +108,31 @@ async function callCloudLLM(
   };
 }
 
-// ---- Local (OpenAI-compatible: Ollama, llama.cpp, vLLM, LM Studio, etc.) ----
-async function callLocalLLM(
-  config: ModelConfig,
-  systemPrompt: string,
-  userText: string,
-  screenshot?: string | null,
-  _options?: { thinking?: boolean }
-): Promise<LLMResponse> {
-  const endpoint = config.localEndpoint.replace(/\/$/, "") + "/chat/completions";
-
-  // Build the message content — if the model supports vision and we have a screenshot, include it
-  const hasImage = config.localHasVision && screenshot;
-  const userContent: Array<VisionContent> = [{ type: "text", text: userText }];
-  if (hasImage) {
-    userContent.push({ type: "image_url", image_url: { url: screenshot! } });
-  }
-
-  const body: Record<string, unknown> = {
-    model: config.localModel,
-    messages: [
-      { role: "system", content: systemPrompt },
-      { role: "user", content: hasImage ? userContent : userText },
-    ],
-    stream: false,
-    temperature: 0.7,
-    max_tokens: 4096,
-  };
-
-  const headers: Record<string, string> = { "content-type": "application/json" };
-  if (config.localApiKey) {
-    headers["authorization"] = `Bearer ${config.localApiKey}`;
-  }
-
-  const res = await fetch(endpoint, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(body),
-  });
-
-  if (!res.ok) {
-    const errText = await res.text().catch(() => "");
-    throw new Error(`Local LLM error (${res.status}): ${errText.slice(0, 200)}`);
-  }
-
-  const data = await res.json();
-  const content = data?.choices?.[0]?.message?.content ?? "";
-  return { content, raw: data };
-}
-
 // ---- Aether Engine (Rust inference orchestrator with memory graph) ----
 // The Aether Engine at localhost:3004 receives the chat request, retrieves
 // relevant memories from its semantic graph, augments the prompt, and
-// forwards to the backend GGUF model. It returns an OpenAI-compatible response.
+// forwards to the loaded GGUF model from the models/ folder.
+// It returns an OpenAI-compatible response.
 async function callAetherLLM(
   systemPrompt: string,
   userText: string,
   screenshot?: string | null
 ): Promise<LLMResponse> {
-  // The Aether Engine proxy is at /api/alpha/aether?endpoint=chat
+  const config = getModelConfig();
+  const hasImage = config.aetherHasVision && screenshot;
   const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [{ type: "text", text: userText }];
-  if (screenshot) {
-    content.push({ type: "image_url", image_url: { url: screenshot } });
+  if (hasImage) {
+    content.push({ type: "image_url", image_url: { url: screenshot! } });
   }
 
   const res = await fetch("/api/alpha/aether?endpoint=chat", {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
-      model: "aether",
+      model: config.aetherModel || "aether",
       messages: [
         { role: "system", content: systemPrompt },
-        { role: "user", content },
+        { role: "user", content: hasImage ? content : userText },
       ],
       stream: false,
       temperature: 0.7,
@@ -218,34 +164,15 @@ export async function testModelConnection(): Promise<{
   const start = Date.now();
 
   try {
-    if (config.provider === "local") {
-      const endpoint = config.localEndpoint.replace(/\/$/, "") + "/chat/completions";
-      const headers: Record<string, string> = { "content-type": "application/json" };
-      if (config.localApiKey) headers["authorization"] = `Bearer ${config.localApiKey}`;
-
-      const res = await fetch(endpoint, {
-        method: "POST",
-        headers,
-        body: JSON.stringify({
-          model: config.localModel,
-          messages: [{ role: "user", content: "ping" }],
-          stream: false,
-          max_tokens: 5,
-        }),
-      });
-      if (!res.ok) {
-        const errText = await res.text().catch(() => "");
-        return { ok: false, latency: Date.now() - start, error: `HTTP ${res.status}: ${errText.slice(0, 100)}`, provider: "local", model: config.localModel };
-      }
-      return { ok: true, latency: Date.now() - start, provider: "local", model: config.localModel };
-    } else if (config.provider === "aether") {
+    if (config.provider === "aether") {
       // Aether Engine — check health endpoint
       const res = await fetch("http://localhost:3004/health", { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
-        return { ok: true, latency: Date.now() - start, provider: "aether", model: `aether (${data.nodes} nodes, ${data.edges} edges, ${data.cache_hits} cache hits)` };
+        const modelInfo = config.aetherModel || "(no model loaded)";
+        return { ok: true, latency: Date.now() - start, provider: "aether", model: `${modelInfo} (${data.nodes} nodes, ${data.edges} edges, ${data.cache_hits} cache hits)` };
       }
-      return { ok: false, latency: Date.now() - start, error: "Aether Engine not reachable on port 3004", provider: "aether", model: "aether" };
+      return { ok: false, latency: Date.now() - start, error: "Aether Engine not reachable on port 3004", provider: "aether", model: config.aetherModel || "aether" };
     } else {
       // Cloud — just check the SDK loads
       const ZAI = (await import("z-ai-web-dev-sdk")).default;

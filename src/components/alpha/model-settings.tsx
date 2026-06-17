@@ -2,15 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Brain, Cloud, Cpu, Loader2, Settings, X, Zap, CheckCircle, XCircle } from "lucide-react";
+import { Brain, Cloud, Loader2, X, Zap, CheckCircle, XCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 interface ModelConfig {
-  provider: "cloud" | "local" | "aether";
-  localEndpoint: string;
-  localModel: string;
-  localApiKey: string;
-  localHasVision: boolean;
+  provider: "cloud" | "aether";
+  aetherModel: string;
+  aetherHasVision: boolean;
   cloudModel: string;
 }
 
@@ -85,15 +83,13 @@ export function ModelSettings() {
         title="Model Settings — switch between cloud and local AI"
         data-ai-skip="true"
       >
-        {config?.provider === "local" ? (
-          <Cpu className="h-3.5 w-3.5 text-[oklch(0.85_0.16_85)]" />
-        ) : config?.provider === "aether" ? (
+        {config?.provider === "aether" ? (
           <Zap className="h-3.5 w-3.5 text-[oklch(0.85_0.16_85)]" />
         ) : (
           <Cloud className="h-3.5 w-3.5 text-[oklch(0.82_0.17_195)]" />
         )}
         <span className="hidden font-mono-ae sm:inline">
-          {config?.provider === "local" ? "local" : config?.provider === "aether" ? "aether" : "cloud"}
+          {config?.provider === "aether" ? "aether" : "cloud"}
         </span>
       </button>
 
@@ -141,104 +137,68 @@ export function ModelSettings() {
                     {/* Provider toggle */}
                     <div>
                       <label className="eyebrow mb-2 block">provider</label>
-                      <div className="grid grid-cols-3 gap-2">
+                      <div className="grid grid-cols-2 gap-2">
                         <button
                           onClick={() => updateConfig({ provider: "cloud" })}
                           className={cn(
-                            "flex items-center gap-2 rounded-xl border p-2.5 text-left transition-all",
+                            "flex items-center gap-2 rounded-xl border p-3 text-left transition-all",
                             config.provider === "cloud"
                               ? "border-[oklch(0.82_0.17_195)]/40 bg-[oklch(0.82_0.17_195)]/10 glow-cyan"
                               : "border-border/60 bg-card/40 hover:bg-card/70"
                           )}
                         >
-                          <Cloud className={cn("h-4 w-4", config.provider === "cloud" ? "text-[oklch(0.82_0.17_195)]" : "text-muted-foreground")} />
+                          <Cloud className={cn("h-5 w-5", config.provider === "cloud" ? "text-[oklch(0.82_0.17_195)]" : "text-muted-foreground")} />
                           <div>
                             <div className="font-mono-ae text-xs font-semibold">Cloud</div>
-                            <div className="text-[0.55rem] text-muted-foreground">GLM 4.6V</div>
-                          </div>
-                        </button>
-                        <button
-                          onClick={() => updateConfig({ provider: "local" })}
-                          className={cn(
-                            "flex items-center gap-2 rounded-xl border p-2.5 text-left transition-all",
-                            config.provider === "local"
-                              ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 glow-gold"
-                              : "border-border/60 bg-card/40 hover:bg-card/70"
-                          )}
-                        >
-                          <Cpu className={cn("h-4 w-4", config.provider === "local" ? "text-[oklch(0.85_0.16_85)]" : "text-muted-foreground")} />
-                          <div>
-                            <div className="font-mono-ae text-xs font-semibold">Local</div>
-                            <div className="text-[0.55rem] text-muted-foreground">Ollama/vLLM</div>
+                            <div className="text-[0.6rem] text-muted-foreground">GLM 4.6V (vision)</div>
                           </div>
                         </button>
                         <button
                           onClick={() => updateConfig({ provider: "aether" })}
                           className={cn(
-                            "flex items-center gap-2 rounded-xl border p-2.5 text-left transition-all",
+                            "flex items-center gap-2 rounded-xl border p-3 text-left transition-all",
                             config.provider === "aether"
                               ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 glow-gold"
                               : "border-border/60 bg-card/40 hover:bg-card/70"
                           )}
                         >
-                          <Zap className={cn("h-4 w-4", config.provider === "aether" ? "text-[oklch(0.85_0.16_85)]" : "text-muted-foreground")} />
+                          <Zap className={cn("h-5 w-5", config.provider === "aether" ? "text-[oklch(0.85_0.16_85)]" : "text-muted-foreground")} />
                           <div>
                             <div className="font-mono-ae text-xs font-semibold">Aether</div>
-                            <div className="text-[0.55rem] text-muted-foreground">Rust + Graph</div>
+                            <div className="text-[0.6rem] text-muted-foreground">GGUF + Graph (10x context)</div>
                           </div>
                         </button>
                       </div>
                     </div>
 
-                    {/* Local settings */}
-                    {config.provider === "local" && (
+                    {/* Aether settings — GGUF model picker */}
+                    {config.provider === "aether" && (
                       <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="space-y-3 overflow-hidden">
-                        <div>
-                          <label className="eyebrow mb-1 block">endpoint (OpenAI-compatible API)</label>
-                          <input
-                            value={config.localEndpoint}
-                            onChange={(e) => updateConfig({ localEndpoint: e.target.value })}
-                            placeholder="http://localhost:11434/v1"
-                            className="w-full rounded-lg border border-border/60 bg-card/40 px-3 py-2 font-mono-ae text-xs text-foreground focus:border-[oklch(0.85_0.16_85)]/50 focus:outline-none"
-                          />
-                          <p className="mt-0.5 text-[0.55rem] text-muted-foreground/60">
-                            Ollama: http://localhost:11434/v1 · LM Studio: http://localhost:1234/v1 · vLLM: http://localhost:8000/v1
-                          </p>
-                        </div>
-                        <div>
-                          <label className="eyebrow mb-1 block">model name</label>
-                          <input
-                            value={config.localModel}
-                            onChange={(e) => updateConfig({ localModel: e.target.value })}
-                            placeholder="llama3.2-vision"
-                            className="w-full rounded-lg border border-border/60 bg-card/40 px-3 py-2 font-mono-ae text-xs text-foreground focus:border-[oklch(0.85_0.16_85)]/50 focus:outline-none"
-                          />
-                          <p className="mt-0.5 text-[0.55rem] text-muted-foreground/60">
-                            Vision models: llama3.2-vision, qwen2-vl · Text-only: llama3.1, qwen2.5, mistral
-                          </p>
-                        </div>
-                        <div>
-                          <label className="eyebrow mb-1 block">API key (optional — leave empty for local)</label>
-                          <input
-                            value={config.localApiKey}
-                            onChange={(e) => updateConfig({ localApiKey: e.target.value })}
-                            placeholder="(empty for Ollama)"
-                            className="w-full rounded-lg border border-border/60 bg-card/40 px-3 py-2 font-mono-ae text-xs text-foreground focus:border-[oklch(0.85_0.16_85)]/50 focus:outline-none"
-                          />
-                        </div>
+                        <GgufModelPicker
+                          selected={config.aetherModel}
+                          onSelect={(model) => updateConfig({ aetherModel: model })}
+                        />
                         <div>
                           <label className="flex items-center gap-2 cursor-pointer">
                             <input
                               type="checkbox"
-                              checked={config.localHasVision}
-                              onChange={(e) => updateConfig({ localHasVision: e.target.checked })}
+                              checked={config.aetherHasVision}
+                              onChange={(e) => updateConfig({ aetherHasVision: e.target.checked })}
                               className="h-4 w-4 accent-[oklch(0.85_0.16_85)]"
                             />
                             <span className="font-mono-ae text-xs text-foreground">Model supports vision (image input)</span>
                           </label>
                           <p className="mt-0.5 ml-6 text-[0.55rem] text-muted-foreground/60">
-                            If unchecked, the AI operates without screenshots but retains full OS control via text context.
+                            If unchecked, the AI operates without screenshots but retains full OS control via text context + memory graph.
                           </p>
+                        </div>
+                        <div className="rounded-xl border border-[oklch(0.85_0.16_85)]/20 bg-[oklch(0.85_0.16_85)]/[0.05] p-3">
+                          <div className="flex items-center gap-2">
+                            <Zap className="h-3.5 w-3.5 text-[oklch(0.85_0.16_85)]" />
+                            <span className="font-mono-ae text-[0.65rem] text-foreground/80">
+                              Aether Engine augments your GGUF model with semantic memory graph retrieval — 10x effective context.
+                            </span>
+                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -256,29 +216,6 @@ export function ModelSettings() {
                           <p className="mt-1 text-[0.6rem] text-muted-foreground/70">
                             No configuration needed — the cloud model handles screenshots and full OS context out of the box.
                           </p>
-                        </div>
-                      </motion.div>
-                    )}
-
-                    {/* Aether settings */}
-                    {config.provider === "aether" && (
-                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="overflow-hidden">
-                        <div className="rounded-xl border border-[oklch(0.85_0.16_85)]/20 bg-[oklch(0.85_0.16_85)]/[0.05] p-3">
-                          <div className="flex items-center gap-2">
-                            <Zap className="h-4 w-4 text-[oklch(0.85_0.16_85)]" />
-                            <span className="font-mono-ae text-xs text-foreground/80">
-                              Aether Engine — Rust inference orchestrator with semantic memory graph
-                            </span>
-                          </div>
-                          <p className="mt-1 text-[0.6rem] text-muted-foreground/70">
-                            The Aether Engine (port 3004) retrieves relevant memories from its graph,
-                            augments the prompt, and forwards to your GGUF backend. This gives a 4K-context
-                            model 40K+ effective context. Set AETHER_BACKEND env to point at your Ollama/llama.cpp server.
-                          </p>
-                          <div className="mt-2 flex items-center gap-2 font-mono-ae text-[0.55rem] text-[oklch(0.85_0.16_85)]">
-                            <span className="h-1 w-1 rounded-full bg-[oklch(0.85_0.16_85)] neural-dot" />
-                            graph retrieval · action cache · speculative prefetch · 10x context
-                          </div>
                         </div>
                       </motion.div>
                     )}
@@ -340,5 +277,62 @@ export function ModelSettings() {
         )}
       </AnimatePresence>
     </>
+  );
+}
+
+/** GGUF model picker — scans the models/ folder for .gguf files */
+function GgufModelPicker({ selected, onSelect }: { selected: string; onSelect: (model: string) => void }) {
+  const [models, setModels] = useState<{ name: string; sizeMB: number }[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    void fetch("/api/alpha/models-list")
+      .then((r) => r.json())
+      .then((data) => {
+        setModels(data.models || []);
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, []);
+
+  if (loading) {
+    return <div className="flex items-center gap-2 py-2"><Loader2 className="h-3 w-3 animate-spin text-muted-foreground" /><span className="font-mono-ae text-[0.65rem] text-muted-foreground">scanning models/…</span></div>;
+  }
+
+  return (
+    <div>
+      <label className="eyebrow mb-1 block">GGUF model (from models/ folder)</label>
+      {models.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3 text-center">
+          <p className="font-mono-ae text-[0.65rem] text-muted-foreground/70">
+            No .gguf files found in <code className="text-[oklch(0.85_0.16_85)]">models/</code>
+          </p>
+          <p className="mt-1 text-[0.55rem] text-muted-foreground/50">
+            Drop your GGUF model file in the models/ folder and it will appear here.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1">
+          {models.map((m) => (
+            <button
+              key={m.name}
+              onClick={() => onSelect(m.name)}
+              className={cn(
+                "flex w-full items-center justify-between rounded-lg border px-3 py-2 text-left transition-all",
+                selected === m.name
+                  ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10"
+                  : "border-border/40 bg-card/30 hover:bg-card/50"
+              )}
+            >
+              <div className="flex items-center gap-2">
+                <Zap className={cn("h-3 w-3", selected === m.name ? "text-[oklch(0.85_0.16_85)]" : "text-muted-foreground")} />
+                <span className="font-mono-ae text-[0.7rem] text-foreground/85">{m.name}</span>
+              </div>
+              <span className="font-mono-ae text-[0.55rem] text-muted-foreground">{m.sizeMB > 0 ? `${m.sizeMB} MB` : ""}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
   );
 }
