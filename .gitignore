@@ -1,70 +1,57 @@
-# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
-
-# dependencies
+# Dependencies
 node_modules
-/.pnp
-.pnp.*
-.yarn/*
-!.yarn/patches
-!.yarn/plugins
-!.yarn/releases
-!.yarn/versions
 
-# testing
-/coverage
-
-# next.js
+# Next.js
 /.next/
 /out/
 
-# production
+# Production
 /build
 
-# misc
+# Misc
 .DS_Store
 *.pem
 
-# debug
+# Debug logs
 npm-debug.log*
 yarn-debug.log*
-yarn-error.log*
 .pnpm-debug.log*
+*.log
 
-# env files (can opt-in for committing if needed)
+# Env files
 .env*
 
-# vercel
+# Vercel
 .vercel
 
-
-# typescript
+# TypeScript
 *.tsbuildinfo
 next-env.d.ts
-local-*
-.claude
-.z-ai-config
-*.log
-dev.log
-dev.out.log
-test
-prompt
-
-server.log
-# Skills directory
-/skills/
 
 # Alpha-N specific
 *.db
 *.db-journal
-dev.log
-server.log
-aether-engine.log
-terminal-service.log
 upload/
 download/
 models/*.gguf
+skills/
+aether-engine-standalone/
+
+# Mini-services build artifacts
 mini-services/*/target/
 mini-services/*/node_modules/
-skills/
-.env
 
+# Screenshots and temporary images
+*.png
+*.jpg
+*.jpeg
+*.gif
+*.webp
+
+# Tool results
+tool-results/
+
+# Local config
+local-*
+.claude
+.z-ai-config
