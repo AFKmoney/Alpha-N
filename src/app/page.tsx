@@ -20,10 +20,7 @@ import { WORKSPACE_TOP, WORKSPACE_BOTTOM_MARGIN } from "@/lib/alpha/os-types";
 
 export default function Page() {
   const workspaceRef = useRef<HTMLElement>(null);
-  const openApp = useOS((s) => s.openApp);
-  const windowsLen = useOS((s) => s.windows.length);
   const setViewport = useOS((s) => s.setViewport);
-  const booted = useEvolution((s) => s.uptimeMs > 0 || s.generation >= 0);
 
   // Track the workspace viewport and update the store on resize.
   // The viewport = full width, from below the top bar to above the dock+status.
@@ -43,18 +40,9 @@ export default function Page() {
     return () => window.removeEventListener("resize", update);
   }, [setViewport]);
 
-  // Open default apps on first mount (the "desktop session")
-  useEffect(() => {
-    if (windowsLen > 0) return;
-    const t = setTimeout(() => {
-      openApp("editor", { x: 280, y: 64, w: 560, h: 440 });
-      openApp("terminal", { x: 24, y: 64, w: 460, h: 340 });
-      openApp("monitor", { x: 860, y: 64, w: 380, h: 380 });
-      openApp("agents", { x: 24, y: 420, w: 300, h: 300 });
-      openApp("security", { x: 860, y: 460, w: 380, h: 280 });
-    }, 100);
-    return () => clearTimeout(t);
-  }, [openApp, windowsLen]);
+  // On boot: NO apps open. The OS starts clean — only the chat panel is
+  // visible (it's a floating overlay, not a window). Apps open only when
+  // the user asks the AI or opens them manually from the dock.
 
   return (
     <div className="relative flex min-h-screen flex-col overflow-hidden">

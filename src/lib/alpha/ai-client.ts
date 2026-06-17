@@ -43,6 +43,29 @@ export interface ThinkResponse {
   error?: string;
 }
 
+export interface WebSearchResponse {
+  query: string;
+  count: number;
+  results: { rank: number; title: string; url: string; snippet: string; host: string; date: string }[];
+  error?: string;
+}
+
+/**
+ * Perform a web search via the backend. Used when the AI emits a web_search mutation.
+ */
+export async function webSearch(query: string, signal?: AbortSignal): Promise<WebSearchResponse> {
+  const res = await fetch("/api/alpha/search", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ query, num: 6 }),
+    signal,
+  });
+  if (!res.ok) {
+    throw new Error(`search failed: ${res.status}`);
+  }
+  return res.json();
+}
+
 /**
  * Ask N-Core to think. Sends the current screenshot + state + optional
  * user instruction, receives structured mutations to apply to the UI.

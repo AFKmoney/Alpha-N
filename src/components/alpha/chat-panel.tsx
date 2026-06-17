@@ -43,7 +43,7 @@ export function ChatPanel() {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: 24 }}
           transition={{ type: "spring", stiffness: 280, damping: 28 }}
-          className="glass-strong pointer-events-auto fixed bottom-16 right-3 z-40 flex h-[42vh] w-[min(92vw,400px)] flex-col overflow-hidden rounded-2xl glow-amethyst sm:bottom-20 sm:right-4"
+          className="glass-strong pointer-events-auto fixed bottom-16 right-3 z-40 flex h-[38vh] w-[min(88vw,340px)] flex-col overflow-hidden rounded-2xl glow-amethyst sm:bottom-20 sm:right-4"
           data-ai-skip="true"
         >
           {/* header */}

@@ -3,9 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
-import { captureScreenshot, think } from "@/lib/alpha/ai-client";
-import type { Mutation } from "@/lib/alpha/mutations";
-import type { BeforeAfter } from "@/lib/alpha/mutations";
+import { captureScreenshot, think, webSearch } from "@/lib/alpha/ai-client";
+import type { Mutation, BeforeAfter, WebSearchResult } from "@/lib/alpha/mutations";
 
 const CYCLE_MS = 32000;
 const MUTATION_STEP_MS = 380;
@@ -54,7 +53,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
 
       setAiBusy(true, "Consulting the cognitive council…");
 
-      // 3. think
+      // 3. think — include recent web search results so the AI can reason with them
       let result;
       try {
         result = await think({
@@ -76,6 +75,10 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             windows: osS.windows.map((w) => ({ id: w.id, kind: w.kind, title: w.title })),
             violations: osS.violationAttempts.slice(0, 4).map((v) => ({ path: v.path, reason: v.reason })),
             rollbacks: osS.rollbackEvents.length,
+            searchResults: s.searchResults.slice(0, 2).map((sr) => ({
+              query: sr.query,
+              top: sr.results.slice(0, 4).map((r) => `${r.title} — ${r.snippet.slice(0, 120)} (${r.host})`),
+            })),
           },
           userMessage: userMessage ?? null,
           history: s.chat.slice(-8).map((m) => ({ role: m.role, content: m.content })),
@@ -112,6 +115,32 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
           const latest = stream[0];
           if (latest.kind === "violation") {
             hadError = true;
+          }
+        }
+        // ---- WEB SEARCH tool: when the AI emits a web_search mutation,
+        // perform the search and store results for the next cycle ----
+        if (m.type === "web_search" && m.query) {
+          setAiBusy(true, `Searching the web: "${m.query.slice(0, 50)}"…`);
+          try {
+            const searchRes = await webSearch(m.query);
+            const wsr: WebSearchResult = {
+              query: m.query,
+              time: Date.now(),
+              results: searchRes.results,
+            };
+            store.getState().addSearchResults(wsr);
+            // also open a browser window showing the first result so the user sees the research
+            if (searchRes.results[0]?.url) {
+              store.getState().applyMutation({
+                type: "create_app",
+                appType: "browser",
+                title: `🔍 ${m.query.slice(0, 30)}`,
+                url: searchRes.results[0].url,
+              });
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "search failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Web search failed: ${msg.slice(0, 60)}` });
           }
         }
       }

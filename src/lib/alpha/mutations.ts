@@ -106,7 +106,15 @@ export type Mutation =
   | { type: "focus_app"; windowId: string }
   | { type: "move_window"; windowId: string; x: number; y: number }
   | { type: "run_terminal"; command: string }
+  | { type: "web_search"; query: string }
   | { type: "rollback" };
+
+// ---- Web search result (fed back to the AI) ----
+export interface WebSearchResult {
+  query: string;
+  time: number;
+  results: { rank: number; title: string; url: string; snippet: string; host: string; date: string }[];
+}
 
 // ---- Code validation: detects obviously broken AI output ----
 export interface ValidationResult {
@@ -293,6 +301,8 @@ export function describeMutation(m: Mutation): string {
       return `moved window ${m.windowId.slice(0, 8)} → (${m.x},${m.y})`;
     case "run_terminal":
       return `$ ${m.command.slice(0, 64)}`;
+    case "web_search":
+      return `🔍 web: "${m.query.slice(0, 56)}"`;
     case "rollback":
       return `↺ ROLLBACK — restored previous snapshot`;
   }

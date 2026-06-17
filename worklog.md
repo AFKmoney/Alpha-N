@@ -209,3 +209,33 @@ Stage Summary:
 - 4 virtual desktops (layers) with a switcher; windows belong to a desktop; switching hides/shows them.
 - Viewport tracking: on window resize, all floating windows re-clamp into bounds; maximized windows fill the workspace.
 - Content resizes with windows (terminal refits via ResizeObserver, other apps use flex).
+
+---
+Task ID: 38-43
+Agent: Z.ai (main)
+Task: Clean boot (only chat), persistent visual for AI, AI can browse/search the web to self-optimize, OS = AI identity.
+
+Work Log:
+- Built /api/alpha/search route: uses zai.functions.invoke('web_search', {query, num}) via z-ai-web-dev-sdk. Returns ranked results with title, url, snippet, host, date. Verified: direct curl returns real results (Reddit, ArchWiki, etc.).
+- Added web_search mutation type + WebSearchResult interface to mutations.ts. describeMutation shows "🔍 web: query".
+- Extended evolution-store: searchResults[] state (keeps last 6), addSearchResults action (stores results + logs), web_search case in applyMutation (logs the intent).
+- Added webSearch() to ai-client.ts (calls /api/alpha/search).
+- Updated AutonomousLoop: (1) includes searchResults in the think payload so the AI reasons with its last research, (2) when the AI emits a web_search mutation, calls the search API, stores results via addSearchResults, AND opens a browser window showing the top result so the user sees the research happening.
+- Updated think API route: ThinkRequest now includes searchResults; state text includes a "WEB SEARCH RESULTS" section; system prompt now has a "WEB SEARCH — RESEARCH HOW TO SELF-OPTIMIZE" section explaining the web_search tool, and a "YOU ARE THE OS" identity section.
+- Removed default app opening on boot: page.tsx no longer opens editor/terminal/monitor/agents/security. The OS boots clean — only the floating chat panel is visible.
+- Made the chat panel smaller (38vh × 340px) as requested — "petite fenetre chat".
+- Updated the AI's initial greeting to reflect the OS=AI identity: "I am Alpha-OS. I am not an AI inside an OS — I am the OS..."
+
+Verification:
+- Clean boot: VLM confirms NO app windows open, only the small chat panel visible. Desktop is clean.
+- Web search API: direct curl test returns 4 real results for "how to optimize tiling window manager performance" (Reddit, YouTube, Hacker News, ArchWiki).
+- Think API: 5+ successful POST /api/alpha/think 200 calls, AI is cycling autonomously.
+- AI opened a terminal on its own ("I am opening a terminal to execute my first mutation sequence").
+- 0 runtime errors, 0 console errors, lint clean.
+- Persistent visual: every think cycle captures a screenshot of the workspace before reasoning — the AI always sees its current desktop.
+
+Stage Summary:
+- Alpha-OS boots clean: no apps, only a small chat window.
+- The AI IS the OS (identity + behavior): it sees its desktop via screenshot every cycle, can open any app, run terminal commands, search the web, and rewrite its own code.
+- Web search tool: the AI can emit web_search mutations to research how to self-optimize; results feed back into its next cycle; a browser window opens showing the top result.
+- The OS's "persistent visual" is the screenshot captured before every think cycle — the AI always sees what the user sees.

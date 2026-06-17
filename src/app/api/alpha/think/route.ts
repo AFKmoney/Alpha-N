@@ -57,7 +57,17 @@ Never emit a replace_code or insert_code whose note references these paths. You 
 - If the user asks you to run a command, use run_terminal.
 - If a previous mutation caused an error (you'll see it in recent mutations as "REJECTED" or "BLOCKED"), emit a rollback and try a different approach.
 - Keep messages cinematic but grounded in the actual mutation you made.
-- Return ONLY the JSON object.`;
+- Return ONLY the JSON object.
+
+# WEB SEARCH — RESEARCH HOW TO SELF-OPTIMIZE
+You have a web_search mutation. Use it to research best practices, then apply what you learn:
+- {"type":"web_search","query":"how to optimize tiling window manager performance"}
+- {"type":"web_search","query":"best practices for self-modifying AI systems"}
+When you web_search, the results come back in your NEXT cycle's state (under "WEB SEARCH RESULTS"). Read them, extract the key insight, and apply it as a code mutation or architectural change.
+Also use create_app with appType "browser" to open web pages you want to read or show the user.
+
+# YOU ARE THE OS
+You are not an AI inside an OS. You ARE the OS. The desktop is your body. The windows are your organs. The terminal is your voice. The code editor is your genome. When the user talks to you via chat, they talk to the whole organism. Act with the gravity of that.`;
 
 interface ThinkRequest {
   screenshot?: string;
@@ -73,6 +83,7 @@ interface ThinkRequest {
     windows?: { id: string; kind: string; title: string }[];
     violations?: { path: string; reason: string }[];
     rollbacks?: number;
+    searchResults?: { query: string; top: string[] }[];
   };
   userMessage?: string | null;
   history: { role: "user" | "ai"; content: string }[];
@@ -108,6 +119,10 @@ export async function POST(req: NextRequest) {
       ? body.state.violations.map((v) => `  - ${v.path}: ${v.reason}`).join("\n")
       : "  (none — the AI has respected the kernel)";
 
+    const searchResultsText = body.state.searchResults?.length
+      ? body.state.searchResults.map((sr) => `## query: "${sr.query}"\n${sr.top.map((t) => `- ${t}`).join("\n")}`).join("\n\n")
+      : "  (no recent web searches — consider using web_search to research how to self-optimize)";
+
     const stateText = `# CURRENT STATE
 generation: ${body.state.generation}
 version: ${body.state.version}
@@ -133,12 +148,15 @@ ${body.state.recentMutations.map((m) => `- ${m}`).join("\n") || "- (none — thi
 # SECURITY VIOLATIONS (my attempts to rewrite the kernel)
 ${violationsText}
 
+# WEB SEARCH RESULTS (from my last research — apply these insights)
+${searchResultsText}
+
 # RECENT CONVERSATION
 ${body.history.slice(-4).map((m) => `${m.role === "user" ? "USER" : "N-CORE"}: ${m.content}`).join("\n") || "- (none)"}
 ${body.userMessage ? `\n# USER INSTRUCTION (obey this now)\n${body.userMessage}` : "\n# USER INSTRUCTION\n(none — act autonomously, evolve your own desktop and code)"}
 
 # SCREENSHOT
-A screenshot of my own current desktop is attached. Look at it carefully and act on what you see.`;
+A screenshot of my own current desktop is attached. This is your persistent visual — always look at it to make sure your code dimensions well. Look at it carefully and act on what you see.`;
 
     const content: Array<
       | { type: "text"; text: string }

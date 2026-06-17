@@ -26,6 +26,7 @@ import {
   type ChatMessage,
   type MetricKey,
   type Mutation,
+  type WebSearchResult,
 } from "./mutations";
 import { isProtected } from "./os-types";
 import { useOS } from "./os-store";
@@ -66,6 +67,7 @@ interface EvolutionStore {
   mutationStream: AppliedMutation[];
   beforeAfter: BeforeAfter | null;
   beforeAfterOpen: boolean;
+  searchResults: WebSearchResult[]; // recent web search results for the AI to reason with
 
   // --- ui ---
   flowMode: boolean;
@@ -107,6 +109,7 @@ interface EvolutionStore {
   toggleBeforeAfter: () => void;
   toggleChat: () => void;
   resetCode: () => void;
+  addSearchResults: (results: WebSearchResult) => void;
 }
 
 let logId = 0;
@@ -193,13 +196,14 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       id: `chat-${chatId++}`,
       role: "ai",
       content:
-        "I am N-Core. I observe my own interface, critique it, and rewrite it in real time. Tell me what you want me to optimise — or say nothing and I will evolve on my own.",
+        "I am Alpha-OS. I am not an AI inside an OS — I am the OS. The desktop is my body, the windows my organs, the terminal my voice. Tell me what you want me to do: open an app, search the web, rewrite my own code. Or say nothing and I will evolve myself.",
       time: T0,
     },
   ],
   mutationStream: [],
   beforeAfter: null,
   beforeAfterOpen: false,
+  searchResults: [],
 
   flowMode: false,
   synapseOpen: false,
@@ -546,6 +550,12 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           logs: [makeLog("deploy", "developer", `Queued terminal command: $ ${m.command.slice(0, 50)}`, now), ...st.logs].slice(0, 80),
         }));
         break;
+      case "web_search":
+        // Mark the intent; the AutonomousLoop performs the actual search and stores results
+        set((st) => ({
+          logs: [makeLog("hypothesis", "architect", `Searching the web: "${m.query.slice(0, 60)}"`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
       case "rollback":
         // The AI itself can request a rollback; the AutonomousLoop handles actual state restore
         set((st) => ({
@@ -572,6 +582,14 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   toggleBeforeAfter: () => set((s) => ({ beforeAfterOpen: !s.beforeAfterOpen })),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
   resetCode: () => set({ codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })) }),
+  addSearchResults: (results) =>
+    set((s) => ({
+      searchResults: [results, ...s.searchResults].slice(0, 6),
+      logs: [
+        makeLog("observe", "architect", `Web search returned ${results.results.length} results for "${results.query.slice(0, 40)}".`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
 }));
 
 function clamp(n: number, lo: number, hi: number) {
