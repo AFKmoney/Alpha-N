@@ -27,6 +27,15 @@ export function ModelSettings() {
   const [testResult, setTestResult] = useState<TestResult | null>(null);
   const [saving, setSaving] = useState(false);
 
+  // Notify the sidebar when modal opens/closes so it doesn't auto-hide
+  useEffect(() => {
+    if (open) {
+      window.dispatchEvent(new Event("alpha-modal-open"));
+    } else {
+      window.dispatchEvent(new Event("alpha-modal-close"));
+    }
+  }, [open]);
+
   // Load current config
   useEffect(() => {
     if (!open) return;

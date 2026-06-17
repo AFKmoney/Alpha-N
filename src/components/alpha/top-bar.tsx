@@ -188,14 +188,28 @@ export function TopBar() {
  */
 function SideBar({ children }: { children: React.ReactNode }) {
   const [visible, setVisible] = useState(false);
+  const [modalOpen, setModalOpen] = useState(false);
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Listen for child modals opening/closing — when a modal is open,
+  // the sidebar stays pinned and doesn't auto-hide on mouse leave.
+  useEffect(() => {
+    const onModalOpen = () => { setModalOpen(true); if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } };
+    const onModalClose = () => setModalOpen(false);
+    window.addEventListener("alpha-modal-open", onModalOpen);
+    window.addEventListener("alpha-modal-close", onModalClose);
+    return () => {
+      window.removeEventListener("alpha-modal-open", onModalOpen);
+      window.removeEventListener("alpha-modal-close", onModalClose);
+    };
+  }, []);
 
   useEffect(() => {
     const onMove = (e: MouseEvent) => {
       if (e.clientX < 60) {
         if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
         setVisible(true);
-      } else if (e.clientX > 320) {
+      } else if (e.clientX > 320 && !modalOpen) {
         if (!hideTimer.current) {
           hideTimer.current = setTimeout(() => setVisible(false), 400);
         }
@@ -206,7 +220,7 @@ function SideBar({ children }: { children: React.ReactNode }) {
       window.removeEventListener("mousemove", onMove);
       if (hideTimer.current) clearTimeout(hideTimer.current);
     };
-  }, []);
+  }, [modalOpen]);
 
   return (
     <AnimatePresence>
@@ -219,7 +233,7 @@ function SideBar({ children }: { children: React.ReactNode }) {
           className="glass-strong fixed left-2 top-2 z-40 flex max-h-[96vh] w-[300px] flex-col gap-3 overflow-y-auto rounded-2xl border border-border/60 p-4 scroll-ae"
           data-ai-skip="true"
           onMouseEnter={() => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } }}
-          onMouseLeave={() => { hideTimer.current = setTimeout(() => setVisible(false), 400); }}
+          onMouseLeave={() => { if (!modalOpen) { hideTimer.current = setTimeout(() => setVisible(false), 400); } }}
         >
           {children}
         </motion.div>
