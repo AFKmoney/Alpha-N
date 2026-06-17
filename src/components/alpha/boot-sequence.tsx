@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { useEvolution } from "@/lib/alpha/evolution-store";
 
 const BOOT_LINES = [
   "mounting executive layer  · filesystem + compilers ............ ok",
@@ -17,7 +16,6 @@ const BOOT_LINES = [
 export function BootSequence() {
   const [visible, setVisible] = useState(0);
   const [done, setDone] = useState(false);
-  const { startEvolution } = useEvolution();
 
   useEffect(() => {
     if (visible >= BOOT_LINES.length) {
@@ -28,13 +26,8 @@ export function BootSequence() {
     return () => clearTimeout(t);
   }, [visible]);
 
-  // After boot, kick off a first scripted beat so the UI shows life
-  // immediately, then the autonomous LLM loop takes over.
-  useEffect(() => {
-    if (!done) return;
-    const t = setTimeout(() => startEvolution(), 3200);
-    return () => clearTimeout(t);
-  }, [done, startEvolution]);
+  // No scripted evolution. The real LLM-driven AutonomousLoop takes over
+  // once boot completes — nothing here is simulated.
 
   return (
     <AnimatePresence>

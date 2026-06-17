@@ -1,7 +1,7 @@
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";
-import { ArrowRight, Brain, GitCompare, Sparkles, TrendingUp, X } from "lucide-react";
+import { ArrowRight, Brain, GitCompare, Maximize2, Sparkles, TrendingUp, X } from "lucide-react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { AGENT_META, type DiffLine } from "@/lib/alpha/evolution-data";
 import { cn } from "@/lib/utils";
@@ -31,18 +31,104 @@ export function NeuralDiff() {
   const { diffOpen, pendingDiff, dismissDiff } = useEvolution();
 
   return (
+    <>
+      {/* The notification toast — small, non-intrusive */}
+      <NeuralDiffNotification />
+      {/* The full modal — only opens when the notification is clicked */}
+      <NeuralDiffModal open={diffOpen} pendingDiff={pendingDiff} onClose={dismissDiff} />
+    </>
+  );
+}
+
+// ---- Notification toast (always shows first, doesn't take the screen) ----
+function NeuralDiffNotification() {
+  const { pendingDiff, diffOpen, dismissDiff, openHistoryDiff } = useEvolution();
+  const show = pendingDiff && !diffOpen;
+
+  return (
     <AnimatePresence>
-      {diffOpen && pendingDiff && (
+      {show && pendingDiff && (
+        <motion.div
+          initial={{ opacity: 0, y: 20, x: 20 }}
+          animate={{ opacity: 1, y: 0, x: 0 }}
+          exit={{ opacity: 0, y: 20, x: 20 }}
+          transition={{ type: "spring", stiffness: 300, damping: 26 }}
+          className="glass-strong fixed top-14 right-3 z-40 w-[min(92vw,360px)] cursor-pointer overflow-hidden rounded-xl border border-[oklch(0.82_0.17_195)]/30 glow-cyan sm:right-4"
+          data-ai-skip="true"
+          onClick={() => openHistoryDiff(pendingDiff.id)}
+        >
+          <div className="flex items-start gap-2.5 p-3">
+            <div className="mt-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[oklch(0.82_0.17_195)]/15 text-[oklch(0.82_0.17_195)]">
+              <GitCompare className="h-3.5 w-3.5" />
+            </div>
+            <div className="min-w-0 flex-1">
+              <div className="flex items-center gap-1.5">
+                <span className="eyebrow text-[oklch(0.82_0.17_195)]">
+                  evolution · v{pendingDiff.version}
+                </span>
+                <span className="rounded-full border border-border/50 px-1.5 py-0 font-mono-ae text-[0.5rem] text-muted-foreground">
+                  {CATEGORY_LABEL[pendingDiff.category]}
+                </span>
+              </div>
+              <p className="mt-0.5 truncate font-mono-ae text-xs font-semibold text-foreground">
+                {pendingDiff.title}
+              </p>
+              <p className="mt-0.5 line-clamp-2 text-[0.65rem] leading-snug text-muted-foreground">
+                {pendingDiff.summary}
+              </p>
+              <div className="mt-1.5 flex items-center gap-1.5">
+                <Maximize2 className="h-2.5 w-2.5 text-[oklch(0.82_0.17_195)]" />
+                <span className="font-mono-ae text-[0.55rem] text-[oklch(0.82_0.17_195)]">
+                  click to view full diff
+                </span>
+              </div>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                dismissDiff();
+              }}
+              className="shrink-0 rounded p-1 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+              aria-label="Dismiss"
+            >
+              <X className="h-3 w-3" />
+            </button>
+          </div>
+          {/* progress shimmer */}
+          <motion.div
+            initial={{ scaleX: 1 }}
+            animate={{ scaleX: 0 }}
+            transition={{ duration: 12, ease: "linear" }}
+            className="h-0.5 origin-left bg-[oklch(0.82_0.17_195)]"
+            onAnimationComplete={() => dismissDiff()}
+          />
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+// ---- Full modal (only when explicitly opened by clicking the notification) ----
+function NeuralDiffModal({
+  open,
+  pendingDiff,
+  onClose,
+}: {
+  open: boolean;
+  pendingDiff: ReturnType<typeof useEvolution.getState>["pendingDiff"];
+  onClose: () => void;
+}) {
+  return (
+    <AnimatePresence>
+      {open && pendingDiff && (
         <motion.div
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
           className="fixed inset-0 z-50 flex items-center justify-center p-4 sm:p-6"
+          data-ai-skip="true"
         >
-          <div
-            className="absolute inset-0 bg-background/70 backdrop-blur-md"
-            onClick={dismissDiff}
-          />
+          <div className="absolute inset-0 bg-background/70 backdrop-blur-md" onClick={onClose} />
           <motion.div
             initial={{ opacity: 0, scale: 0.96, y: 16 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
@@ -50,31 +136,23 @@ export function NeuralDiff() {
             transition={{ type: "spring", stiffness: 280, damping: 26 }}
             className="glass-strong relative z-10 flex max-h-[88vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl glow-cyan"
           >
-            {/* Header */}
             <div className="flex items-start justify-between gap-4 border-b border-border/50 p-5">
               <div className="flex items-start gap-3">
                 <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-[oklch(0.82_0.17_195)]/15 text-[oklch(0.82_0.17_195)] glow-cyan">
                   <GitCompare className="h-5 w-5" />
                 </div>
                 <div>
-                  <div className="flex items-center gap-2">
-                    <span className="eyebrow text-glow-cyan text-[oklch(0.82_0.17_195)]">
-                      Neural Diff · v{pendingDiff.version}
-                    </span>
-                    <span className="rounded-full border border-border/60 px-2 py-0.5 font-mono-ae text-[0.6rem] text-muted-foreground">
-                      {CATEGORY_LABEL[pendingDiff.category]}
-                    </span>
+                  <div className="eyebrow text-glow-cyan text-[oklch(0.82_0.17_195)]">
+                    Neural Diff · v{pendingDiff.version}
                   </div>
                   <h2 className="mt-1 font-mono-ae text-lg font-semibold leading-tight">
                     {pendingDiff.title}
                   </h2>
-                  <p className="mt-1 text-sm text-muted-foreground">
-                    {pendingDiff.summary}
-                  </p>
+                  <p className="mt-1 text-sm text-muted-foreground">{pendingDiff.summary}</p>
                 </div>
               </div>
               <button
-                onClick={dismissDiff}
+                onClick={onClose}
                 className="shrink-0 rounded-lg p-1.5 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
                 aria-label="Close diff"
               >
@@ -82,7 +160,6 @@ export function NeuralDiff() {
               </button>
             </div>
 
-            {/* The explanation — "I noticed… I rewrote…" */}
             <div className="border-b border-border/50 bg-[oklch(0.74_0.22_300)]/[0.05] px-5 py-3">
               <div className="flex items-start gap-2">
                 <Brain className="mt-0.5 h-4 w-4 shrink-0 text-[oklch(0.74_0.22_300)]" />
@@ -99,7 +176,6 @@ export function NeuralDiff() {
               </div>
             </div>
 
-            {/* Metric deltas */}
             {pendingDiff.deltas.length > 0 && (
               <div className="grid grid-cols-1 gap-2 border-b border-border/50 p-5 sm:grid-cols-3">
                 {pendingDiff.deltas.map((d, i) => {
@@ -136,7 +212,6 @@ export function NeuralDiff() {
               </div>
             )}
 
-            {/* The patch — healing code */}
             <div className="scroll-ae min-h-0 flex-1 overflow-y-auto p-5">
               <div className="eyebrow mb-2">the patch · cicatrising</div>
               {pendingDiff.diff.map((hunk, hi) => (
@@ -172,14 +247,13 @@ export function NeuralDiff() {
               ))}
             </div>
 
-            {/* Footer */}
             <div className="flex items-center justify-between gap-3 border-t border-border/50 px-5 py-3">
               <div className="flex items-center gap-2 font-mono-ae text-[0.65rem] text-muted-foreground">
                 <span className="h-1.5 w-1.5 rounded-full bg-[oklch(0.7_0.18_145)] neural-dot" />
-                shadow-clone validated · 313 tests green · hot-swapped
+                shadow-clone validated · hot-swapped
               </div>
               <button
-                onClick={dismissDiff}
+                onClick={onClose}
                 className="rounded-lg bg-[oklch(0.82_0.17_195)]/15 px-4 py-1.5 font-mono-ae text-xs font-semibold text-[oklch(0.82_0.17_195)] transition-colors hover:bg-[oklch(0.82_0.17_195)]/25"
               >
                 acknowledge

@@ -6,8 +6,8 @@ import { useOS } from "@/lib/alpha/os-store";
 import { captureScreenshot, think, webSearch } from "@/lib/alpha/ai-client";
 import type { Mutation, BeforeAfter, WebSearchResult } from "@/lib/alpha/mutations";
 
-const CYCLE_MS = 32000;
-const MUTATION_STEP_MS = 380;
+const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
+const MUTATION_STEP_MS = 320;
 
 export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject<HTMLElement | null> }) {
   const store = useEvolution;
@@ -37,14 +37,13 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
         generation: curState.generation,
       });
 
-      // 1. BEFORE screenshot
+      // 1. BEFORE screenshot — the AI's persistent visual of its own body
       const before = await captureScreenshot(workspaceRef.current, "before");
 
-      // 2. state snapshot for the LLM
+      // 2. FULL OS state for the LLM (1M token consciousness)
       const s = store.getState();
       const osS = osStore.getState();
-      const codePreview = s.codeLines
-        .slice(0, 18)
+      const fullCode = s.codeLines
         .map((l) => {
           const text = l.tokens.map((t) => t.text).join("");
           return `${String(l.no).padStart(2, "0")}│ ${text}`;
@@ -53,7 +52,9 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
 
       setAiBusy(true, "Consulting the cognitive council…");
 
-      // 3. think — include recent web search results so the AI can reason with them
+      // 3. think — feed the FULL OS context: all code, all logs, all mutations,
+      //    full chat history, all windows with positions, Akasha memory + intentions,
+      //    protected files, search results. GLM 5.2 has 1M tokens — use them.
       let result;
       try {
         result = await think({
@@ -63,25 +64,40 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             version: s.version,
             aiState: s.aiState,
             metrics: s.metrics,
-            codePreview,
+            fullCode,
             agents: s.agents.map((a) => ({
               role: a.role,
               status: a.status,
               thought: a.thought,
               load: a.load,
             })),
-            recentLogs: s.logs.slice(0, 6).map((l) => `[${l.level}] ${l.agent}: ${l.message}`),
-            recentMutations: s.mutationStream.slice(0, 6).map((m) => m.description),
-            windows: osS.windows.map((w) => ({ id: w.id, kind: w.kind, title: w.title })),
-            violations: osS.violationAttempts.slice(0, 4).map((v) => ({ path: v.path, reason: v.reason })),
+            allLogs: s.logs.map((l) => `[${l.level}] ${l.agent}: ${l.message}`),
+            allMutations: s.mutationStream.map((m) => m.description),
+            windows: osS.windows.map((w) => ({
+              id: w.id,
+              kind: w.kind,
+              title: w.title,
+              x: Math.round(w.x),
+              y: Math.round(w.y),
+              w: Math.round(w.w),
+              h: Math.round(w.h),
+              desktop: w.desktop,
+            })),
+            violations: osS.violationAttempts.map((v) => ({ path: v.path, reason: v.reason })),
             rollbacks: osS.rollbackEvents.length,
-            searchResults: s.searchResults.slice(0, 2).map((sr) => ({
+            searchResults: s.searchResults.slice(0, 3).map((sr) => ({
               query: sr.query,
               top: sr.results.slice(0, 4).map((r) => `${r.title} — ${r.snippet.slice(0, 120)} (${r.host})`),
             })),
+            akashaMemory: s.akashaMemory.map((m) => ({ text: m.text, kind: m.kind })),
+            akashaIntentions: s.akashaIntentions.map((i) => ({ text: i.text, priority: i.priority, resolved: i.resolved })),
+            protectedFiles: osS.protectedFiles.map((f) => ({ path: f.path, reason: f.reason, critical: f.critical })),
+            desktops: 4,
+            activeDesktop: osS.activeDesktop,
+            layoutMode: osS.layoutMode,
           },
           userMessage: userMessage ?? null,
-          history: s.chat.slice(-8).map((m) => ({ role: m.role, content: m.content })),
+          history: s.chat.map((m) => ({ role: m.role, content: m.content })),
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown";
@@ -194,17 +210,26 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   const autonomy = useEvolution((s) => s.autonomy);
   const aiBusy = useEvolution((s) => s.aiBusy);
   const activeEvolution = useEvolution((s) => s.activeEvolution);
-  const diffOpen = useEvolution((s) => s.diffOpen);
-  const beforeAfterOpen = useEvolution((s) => s.beforeAfterOpen);
+  const forceCycle = useEvolution((s) => s.forceCycle);
   const chat = useEvolution((s) => s.chat);
+
+  // Manual "evolve" button forces an immediate real AI cycle.
+  useEffect(() => {
+    if (!forceCycle) return;
+    if (aiBusy) return;
+    useEvolution.setState({ forceCycle: false });
+    void runCycle();
+  }, [forceCycle, aiBusy, runCycle]);
 
   useEffect(() => {
     if (!autonomy) return;
     if (aiBusy || activeEvolution) return;
-    if (diffOpen || beforeAfterOpen) return;
+    // Don't block on diffOpen/beforeAfterOpen anymore — those are now
+    // non-intrusive notifications, not full-screen modals. The AI can keep
+    // cycling while notifications are visible.
     const id = setTimeout(() => { void runCycle(); }, CYCLE_MS);
     return () => clearTimeout(id);
-  }, [autonomy, aiBusy, activeEvolution, diffOpen, beforeAfterOpen, chat.length, runCycle]);
+  }, [autonomy, aiBusy, activeEvolution, chat.length, runCycle]);
 
   const lastChatLen = useRef(chat.length);
   useEffect(() => {

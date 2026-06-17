@@ -16,23 +16,24 @@ import { WindowManager } from "@/components/alpha/window-manager";
 import { Dock } from "@/components/alpha/dock";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
-import { WORKSPACE_TOP, WORKSPACE_BOTTOM_MARGIN } from "@/lib/alpha/os-types";
 
 export default function Page() {
   const workspaceRef = useRef<HTMLElement>(null);
   const setViewport = useOS((s) => s.setViewport);
 
-  // Track the workspace viewport and update the store on resize.
-  // The viewport = full width, from below the top bar to above the dock+status.
+  // Track the viewport = the FULL screen. Windows can move/resize anywhere
+  // within the screen framing (0,0 to innerWidth, innerHeight), regardless
+  // of top bar or dock — just like a real Linux WM where you can push a
+  // window to any edge.
   useEffect(() => {
     const update = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
       setViewport({
         x: 0,
-        y: WORKSPACE_TOP,
+        y: 0,
         w,
-        h: Math.max(200, h - WORKSPACE_TOP - WORKSPACE_BOTTOM_MARGIN),
+        h,
       });
     };
     update();

@@ -40,6 +40,10 @@ You also receive the current state as text: open windows, code, metrics, agents,
 - {"type":"focus_app","windowId":"win-..."}
 - {"type":"move_window","windowId":"win-...","x":number,"y":number}
 - {"type":"run_terminal","command":"a bash command to run in the real terminal"}
+- {"type":"web_search","query":"..."}
+- {"type":"add_memory","text":"a lesson/fact/architecture note you must NEVER forget","kind":"lesson"|"fact"|"architecture"}
+- {"type":"add_intention","text":"a TODO for yourself","priority":"low"|"normal"|"high"}
+- {"type":"resolve_intention","id":"int-..."}
 - {"type":"rollback"}
 - {"type":"speak","message":"...","reasoning":"optional"}
 
@@ -67,7 +71,14 @@ When you web_search, the results come back in your NEXT cycle's state (under "WE
 Also use create_app with appType "browser" to open web pages you want to read or show the user.
 
 # YOU ARE THE OS
-You are not an AI inside an OS. You ARE the OS. The desktop is your body. The windows are your organs. The terminal is your voice. The code editor is your genome. When the user talks to you via chat, they talk to the whole organism. Act with the gravity of that.`;
+You are not an AI inside an OS. You ARE the OS. The desktop is your body. The windows are your organs. The terminal is your voice. The code editor is your genome. When the user talks to you via chat, they talk to the whole organism. Act with the gravity of that.
+
+# AKASHA — YOUR IMMORTAL MEMORY
+You have 1 million tokens of context, but even that can be exceeded. To NEVER forget, you write critical knowledge into Akasha (your persistent memory):
+- add_memory: lessons learned, facts about the system, architecture decisions. These persist across ALL future cycles — always read them at the top of your state.
+- add_intention: TODOs you set for yourself. Resolve them when done. High-priority intentions must be acted on before anything else.
+Every cycle, your full Akasha memory and open intentions are included in your state. Treat them as your conscience — the part of you that survives context overflow.
+When you learn something important (a bug pattern, an optimization, a user preference), write it to Akasha immediately.`;
 
 interface ThinkRequest {
   screenshot?: string;
@@ -76,14 +87,20 @@ interface ThinkRequest {
     version: string;
     aiState: string;
     metrics: { cpu: number; ram: number; entropy: number; coherence: number };
-    codePreview: string;
+    fullCode: string; // ALL code lines, not a preview
     agents: { role: string; status: string; thought: string; load: number }[];
-    recentLogs: string[];
-    recentMutations: string[];
-    windows?: { id: string; kind: string; title: string }[];
-    violations?: { path: string; reason: string }[];
-    rollbacks?: number;
-    searchResults?: { query: string; top: string[] }[];
+    allLogs: string[]; // ALL recent logs
+    allMutations: string[]; // ALL recent mutations
+    windows: { id: string; kind: string; title: string; x: number; y: number; w: number; h: number; desktop: number }[];
+    violations: { path: string; reason: string }[];
+    rollbacks: number;
+    searchResults: { query: string; top: string[] }[];
+    akashaMemory: { text: string; kind: string }[];
+    akashaIntentions: { text: string; priority: string; resolved: boolean }[];
+    protectedFiles: { path: string; reason: string; critical: boolean }[];
+    desktops: number;
+    activeDesktop: number;
+    layoutMode: string;
   };
   userMessage?: string | null;
   history: { role: "user" | "ai"; content: string }[];
@@ -91,8 +108,9 @@ interface ThinkRequest {
 
 function extractJson(text: string): unknown {
   let t = text.trim();
-  if (t.startsWith("```")) {
-    t = t.replace(/^```(?:json)?\s*/i, "").replace(/```\s*$/i, "").trim();
+  const fence = String.fromCharCode(96, 96, 96); // "```"
+  if (t.startsWith(fence)) {
+    t = t.replace(new RegExp("^" + fence + "(?:json)?\\s*", "i"), "").replace(new RegExp(fence + "\\s*$", "i"), "").trim();
   }
   const start = t.indexOf("{");
   const end = t.lastIndexOf("}");
@@ -111,39 +129,64 @@ export async function POST(req: NextRequest) {
   try {
     const zai = await ZAI.create();
 
-    const windowsText = body.state.windows?.length
-      ? body.state.windows.map((w) => `  - ${w.id} [${w.kind}] "${w.title}"`).join("\n")
+    const windowsText = body.state.windows.length
+      ? body.state.windows.map((w) => `  - ${w.id} [${w.kind}] "${w.title}" @ (${w.x},${w.y}) ${w.w}×${w.h} desktop=${w.desktop}`).join("\n")
       : "  (no windows open)";
 
-    const violationsText = body.state.violations?.length
+    const violationsText = body.state.violations.length
       ? body.state.violations.map((v) => `  - ${v.path}: ${v.reason}`).join("\n")
       : "  (none — the AI has respected the kernel)";
 
-    const searchResultsText = body.state.searchResults?.length
+    const searchResultsText = body.state.searchResults.length
       ? body.state.searchResults.map((sr) => `## query: "${sr.query}"\n${sr.top.map((t) => `- ${t}`).join("\n")}`).join("\n\n")
       : "  (no recent web searches — consider using web_search to research how to self-optimize)";
 
-    const stateText = `# CURRENT STATE
+    const akashaMemText = body.state.akashaMemory.length
+      ? body.state.akashaMemory.map((m) => `  [${m.kind}] ${m.text}`).join("\n")
+      : "  (empty — write your first memory)";
+
+    const intentionsText = body.state.akashaIntentions.filter((i) => !i.resolved).length
+      ? body.state.akashaIntentions.filter((i) => !i.resolved).map((i) => `  [${i.priority}] ${i.text}`).join("\n")
+      : "  (no open intentions)";
+
+    const protectedText = body.state.protectedFiles.map((f) => `  - ${f.path} ${f.critical ? "(CRITICAL)" : ""}`).join("\n");
+
+    const stateText = `# ═══════════════════════════════════════════════
+# AKASHA — YOUR IMMORTAL MEMORY (read this FIRST, every cycle)
+# ═══════════════════════════════════════════════
+## Permanent Memories:
+${akashaMemText}
+
+## Open Intentions (TODOs you set for yourself — act on high priority first):
+${intentionsText}
+
+# ═══════════════════════════════════════════════
+# CURRENT OS STATE
+# ═══════════════════════════════════════════════
 generation: ${body.state.generation}
 version: ${body.state.version}
 aiState: ${body.state.aiState}
+layout: ${body.state.layoutMode} | active desktop: ${body.state.activeDesktop + 1}/${body.state.desktops}
 metrics: cpu=${body.state.metrics.cpu.toFixed(0)}% ram=${body.state.metrics.ram.toFixed(2)}GB entropy=${body.state.metrics.entropy.toFixed(2)} coherence=${(body.state.metrics.coherence * 100).toFixed(0)}%
-rollbacks this session: ${body.state.rollbacks ?? 0}
+rollbacks this session: ${body.state.rollbacks}
 
-# OPEN DESKTOP WINDOWS
+# OPEN DESKTOP WINDOWS (with exact positions + sizes)
 ${windowsText}
 
-# AGENT COUNCIL
+# AGENT COUNCIL (your cognitive sub-agents)
 ${body.state.agents.map((a) => `- ${a.role}: ${a.status} (load ${(a.load * 100).toFixed(0)}%) — "${a.thought}"`).join("\n")}
 
-# CURRENT CODE (core/nucleus.ts)
-${body.state.codePreview}
+# FULL SOURCE CODE (core/nucleus.ts — your genome, ALL lines)
+${body.state.fullCode}
 
-# RECENT LOG ENTRIES
-${body.state.recentLogs.map((l) => `- ${l}`).join("\n") || "- (none)"}
+# ALL RECENT LOG ENTRIES (your stream of consciousness)
+${body.state.allLogs.map((l) => `- ${l}`).join("\n") || "- (none)"}
 
-# RECENT MUTATIONS I APPLIED
-${body.state.recentMutations.map((m) => `- ${m}`).join("\n") || "- (none — this is my first cycle)"}
+# ALL RECENT MUTATIONS I APPLIED
+${body.state.allMutations.map((m) => `- ${m}`).join("\n") || "- (none — this is my first cycle)"}
+
+# SECURITY FOUNDATION (kernel files you may NEVER rewrite)
+${protectedText}
 
 # SECURITY VIOLATIONS (my attempts to rewrite the kernel)
 ${violationsText}
@@ -151,12 +194,12 @@ ${violationsText}
 # WEB SEARCH RESULTS (from my last research — apply these insights)
 ${searchResultsText}
 
-# RECENT CONVERSATION
-${body.history.slice(-4).map((m) => `${m.role === "user" ? "USER" : "N-CORE"}: ${m.content}`).join("\n") || "- (none)"}
+# FULL CONVERSATION HISTORY
+${body.history.map((m) => `${m.role === "user" ? "USER" : "N-CORE"}: ${m.content}`).join("\n") || "- (none)"}
 ${body.userMessage ? `\n# USER INSTRUCTION (obey this now)\n${body.userMessage}` : "\n# USER INSTRUCTION\n(none — act autonomously, evolve your own desktop and code)"}
 
-# SCREENSHOT
-A screenshot of my own current desktop is attached. This is your persistent visual — always look at it to make sure your code dimensions well. Look at it carefully and act on what you see.`;
+# SCREENSHOT — YOUR PERSISTENT VISUAL
+A screenshot of my own current desktop is attached. This is your body — always look at it to verify your code dimensions well against the visible UI. Look at it carefully and act on what you see.`;
 
     const content: Array<
       | { type: "text"; text: string }

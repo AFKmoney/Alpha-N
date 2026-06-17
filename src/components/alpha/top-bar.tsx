@@ -51,7 +51,7 @@ export function TopBar() {
     activeAgent,
     flowMode,
     synapseOpen,
-    startEvolution,
+    triggerCycle,
     toggleFlow,
     toggleSynapse,
     triggerGenerate,
@@ -201,10 +201,10 @@ export function TopBar() {
         </button>
 
         <button
-          onClick={() => startEvolution()}
-          disabled={busy}
+          onClick={() => triggerCycle()}
+          disabled={busy || aiBusy}
           className="flex items-center gap-1.5 rounded-full border border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 px-3 py-1.5 text-xs text-[oklch(0.85_0.16_85)] transition-all hover:bg-[oklch(0.85_0.16_85)]/20 disabled:opacity-40"
-          title="Force a self-improvement cycle"
+          title="Force a real AI self-improvement cycle"
         >
           <Sparkles className={cn("h-3.5 w-3.5", aiState === "self-improving" && "animate-spin")} />
           <span className="hidden font-mono-ae sm:inline">

@@ -73,16 +73,7 @@ export async function webSearch(query: string, signal?: AbortSignal): Promise<We
 export async function think(
   payload: {
     screenshot: string | null;
-    state: {
-      generation: number;
-      version: string;
-      aiState: string;
-      metrics: { cpu: number; ram: number; entropy: number; coherence: number };
-      codePreview: string;
-      agents: { role: string; status: string; thought: string; load: number }[];
-      recentLogs: string[];
-      recentMutations: string[];
-    };
+    state: Record<string, unknown>;
     userMessage?: string | null;
     history: { role: "user" | "ai"; content: string }[];
   },

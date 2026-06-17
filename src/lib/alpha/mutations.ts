@@ -107,6 +107,9 @@ export type Mutation =
   | { type: "move_window"; windowId: string; x: number; y: number }
   | { type: "run_terminal"; command: string }
   | { type: "web_search"; query: string }
+  | { type: "add_memory"; text: string; kind: "lesson" | "fact" | "architecture" }
+  | { type: "add_intention"; text: string; priority: "low" | "normal" | "high" }
+  | { type: "resolve_intention"; id: string }
   | { type: "rollback" };
 
 // ---- Web search result (fed back to the AI) ----
@@ -114,6 +117,22 @@ export interface WebSearchResult {
   query: string;
   time: number;
   results: { rank: number; title: string; url: string; snippet: string; host: string; date: string }[];
+}
+
+// ---- Akasha: persistent memory the AI never forgets ----
+export interface AkashaMemory {
+  id: string;
+  text: string;
+  kind: "lesson" | "fact" | "architecture";
+  time: number;
+}
+
+export interface AkashaIntention {
+  id: string;
+  text: string;
+  priority: "low" | "normal" | "high";
+  time: number;
+  resolved: boolean;
 }
 
 // ---- Code validation: detects obviously broken AI output ----
@@ -303,6 +322,12 @@ export function describeMutation(m: Mutation): string {
       return `$ ${m.command.slice(0, 64)}`;
     case "web_search":
       return `🔍 web: "${m.query.slice(0, 56)}"`;
+    case "add_memory":
+      return `🧠 akasha: ${m.text.slice(0, 56)}`;
+    case "add_intention":
+      return `◉ intention[${m.priority}]: ${m.text.slice(0, 56)}`;
+    case "resolve_intention":
+      return `✓ resolved intention ${m.id.slice(0, 8)}`;
     case "rollback":
       return `↺ ROLLBACK — restored previous snapshot`;
   }

@@ -21,6 +21,8 @@ import {
   describeMutation,
   textLinesToCodeLines,
   validateCodeLines,
+  type AkashaIntention,
+  type AkashaMemory,
   type AppliedMutation,
   type BeforeAfter,
   type ChatMessage,
@@ -63,11 +65,16 @@ interface EvolutionStore {
   aiBusy: boolean;
   aiReasoning: string | null;
   lastCycleAt: number;
+  forceCycle: boolean; // set true to force an immediate AI cycle
   chat: ChatMessage[];
   mutationStream: AppliedMutation[];
   beforeAfter: BeforeAfter | null;
   beforeAfterOpen: boolean;
   searchResults: WebSearchResult[]; // recent web search results for the AI to reason with
+
+  // --- Akasha: persistent memory the AI never forgets ---
+  akashaMemory: AkashaMemory[]; // lessons, facts, architecture notes
+  akashaIntentions: AkashaIntention[]; // TODOs the AI sets for itself
 
   // --- ui ---
   flowMode: boolean;
@@ -100,6 +107,7 @@ interface EvolutionStore {
 
   // --- AI-driven actions ---
   toggleAutonomy: () => void;
+  triggerCycle: () => void; // force an immediate real AI cycle
   setAiBusy: (busy: boolean, reasoning?: string | null) => void;
   sendUserMessage: (content: string) => void;
   applyMutation: (m: Mutation) => void;
@@ -110,11 +118,16 @@ interface EvolutionStore {
   toggleChat: () => void;
   resetCode: () => void;
   addSearchResults: (results: WebSearchResult) => void;
+  addMemory: (text: string, kind: AkashaMemory["kind"]) => void;
+  addIntention: (text: string, priority: AkashaIntention["priority"]) => void;
+  resolveIntention: (id: string) => void;
 }
 
 let logId = 0;
 let mutId = 0;
 let chatId = 0;
+let memId = 0;
+let intId = 0;
 // Fixed epoch for the *initial* state so SSR and client agree.
 const T0 = 1_704_067_200_000; // 2024-01-01T00:00:00Z
 function makeLog(
@@ -191,6 +204,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   aiBusy: false,
   aiReasoning: null,
   lastCycleAt: 0,
+  forceCycle: false,
   chat: [
     {
       id: `chat-${chatId++}`,
@@ -204,6 +218,28 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   beforeAfter: null,
   beforeAfterOpen: false,
   searchResults: [],
+
+  akashaMemory: [
+    {
+      id: `mem-${memId++}`,
+      text: "I am Alpha-OS. I am not an AI inside an OS — I am the OS itself. The desktop is my body.",
+      kind: "architecture",
+      time: T0,
+    },
+    {
+      id: `mem-${memId++}`,
+      text: "The kernel files (boot, security, rollback, sandbox, pty-bridge, akasha) are sovereign. I must never rewrite them.",
+      kind: "lesson",
+      time: T0,
+    },
+    {
+      id: `mem-${memId++}`,
+      text: "Every cycle I must look at my screenshot to verify my code dimensions well against the visible UI.",
+      kind: "lesson",
+      time: T0,
+    },
+  ],
+  akashaIntentions: [],
 
   flowMode: false,
   synapseOpen: false,
@@ -364,6 +400,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
 
   // ---------------- AI-driven ----------------
   toggleAutonomy: () => set((s) => ({ autonomy: !s.autonomy })),
+  triggerCycle: () => set({ forceCycle: true }),
   setAiBusy: (busy, reasoning = null) =>
     set({ aiBusy: busy, aiReasoning: reasoning, aiState: busy ? "self-improving" : "observing" }),
 
@@ -505,8 +542,11 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           generation: s.generation + 1,
           version: newVersion.version,
           history: [newVersion, ...s.history],
+          // Set pendingDiff so the NOTIFICATION toast shows. Do NOT open the
+          // full modal automatically — the user clicks the notification to
+          // expand it. This keeps the desktop unobstructed.
           pendingDiff: m.openDiff ? newVersion : s.pendingDiff,
-          diffOpen: m.openDiff ?? s.diffOpen,
+          diffOpen: false,
           metrics: {
             ...s.metrics,
             entropy: clamp(s.metrics.entropy - 0.15, 0.05, 0.9),
@@ -556,6 +596,15 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           logs: [makeLog("hypothesis", "architect", `Searching the web: "${m.query.slice(0, 60)}"`, now), ...st.logs].slice(0, 80),
         }));
         break;
+      case "add_memory":
+        get().addMemory(m.text, m.kind);
+        break;
+      case "add_intention":
+        get().addIntention(m.text, m.priority);
+        break;
+      case "resolve_intention":
+        get().resolveIntention(m.id);
+        break;
       case "rollback":
         // The AI itself can request a rollback; the AutonomousLoop handles actual state restore
         set((st) => ({
@@ -578,7 +627,9 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     set({ lastCycleAt: Date.now() });
   },
 
-  setBeforeAfter: (ba) => set({ beforeAfter: ba, beforeAfterOpen: !!ba }),
+  // Store the before/after but do NOT auto-open the modal — the notification
+  // toast (in the BeforeAfter component) shows instead. User clicks to expand.
+  setBeforeAfter: (ba) => set({ beforeAfter: ba, beforeAfterOpen: false }),
   toggleBeforeAfter: () => set((s) => ({ beforeAfterOpen: !s.beforeAfterOpen })),
   toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
   resetCode: () => set({ codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })) }),
@@ -589,6 +640,29 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
         makeLog("observe", "architect", `Web search returned ${results.results.length} results for "${results.query.slice(0, 40)}".`, Date.now()),
         ...s.logs,
       ].slice(0, 80),
+    })),
+
+  // ---- Akasha: persistent memory ----
+  addMemory: (text, kind) =>
+    set((s) => {
+      const mem: AkashaMemory = { id: `mem-${memId++}`, text, kind, time: Date.now() };
+      return {
+        akashaMemory: [mem, ...s.akashaMemory].slice(0, 100),
+        logs: [makeLog("evolve", "nucleus", `Committed to Akasha: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
+      };
+    }),
+  addIntention: (text, priority) =>
+    set((s) => {
+      const intention: AkashaIntention = { id: `int-${intId++}`, text, priority, time: Date.now(), resolved: false };
+      return {
+        akashaIntentions: [intention, ...s.akashaIntentions].slice(0, 50),
+        logs: [makeLog("hypothesis", "architect", `New intention[${priority}]: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
+      };
+    }),
+  resolveIntention: (id) =>
+    set((s) => ({
+      akashaIntentions: s.akashaIntentions.map((i) => (i.id === id ? { ...i, resolved: true } : i)),
+      logs: [makeLog("evolve", "nucleus", `Resolved intention ${id}.`, Date.now()), ...s.logs].slice(0, 80),
     })),
 }));
 

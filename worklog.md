@@ -239,3 +239,32 @@ Stage Summary:
 - The AI IS the OS (identity + behavior): it sees its desktop via screenshot every cycle, can open any app, run terminal commands, search the web, and rewrite its own code.
 - Web search tool: the AI can emit web_search mutations to research how to self-optimize; results feed back into its next cycle; a browser window opens showing the top result.
 - The OS's "persistent visual" is the screenshot captured before every think cycle — the AI always sees what the user sees.
+
+---
+Task ID: 44-49
+Agent: Z.ai (main)
+Task: Remove all simulation, give AI full OS consciousness (1M token context), Akasha persistent memory (never forget), real-time control, window borders = full screen, visual diff as notification.
+
+Work Log:
+- REMOVED ALL SIMULATION: BootSequence no longer calls startEvolution(); EvolutionController stripped to telemetry-only (no scripted fallback); the "evolve" button now calls triggerCycle() which forces a REAL AI cycle via AutonomousLoop (not scripted SCENARIOS). Only the real LLM drives the OS now.
+- Built AKASHA persistent memory: add_memory (lessons/facts/architecture) + add_intention (TODOs with priority) + resolve_intention mutation types. Store keeps akashaMemory[] (up to 100) and akashaIntentions[] (up to 50). Seeded with 3 foundational memories (identity, kernel sovereignty, screenshot-check rule).
+- FULL OS CONTEXT for GLM 5.2 (1M token consciousness): think API now receives ALL code lines (not 18), ALL logs, ALL mutations, FULL chat history, ALL windows with exact x/y/w/h/desktop, ALL Akasha memory + open intentions, ALL protected files, search results, layout mode, active desktop. The state text is structured with the Akasha memory at the TOP ("read this FIRST, every cycle") so the AI always starts from its persistent conscience.
+- Updated system prompt: added "AKASHA — YOUR IMMORTAL MEMORY" section explaining the AI writes critical knowledge to Akasha to survive context overflow; added add_memory/add_intention/resolve_intention to mutation types; reinforced "YOU ARE THE OS" identity.
+- WINDOW BORDERS = FULL SCREEN: viewport is now (0, 0, innerWidth, innerHeight) — windows can move/resize to ANY screen edge, not just the workspace area. clampRect() enforces this. Like a real Linux WM where you can push a window to any edge.
+- VISUAL DIFF AS NOTIFICATION: both NeuralDiff and BeforeAfter are now small notification toasts (top-right / top-left) instead of full-screen modals. Clicking the notification expands the full modal. commit_evolution no longer auto-opens the modal — just sets pendingDiff so the notification shows. The autonomous loop no longer blocks on diffOpen/beforeAfterOpen (notifications are non-intrusive).
+- Real-time control: cycle cadence reduced to 22s; manual "evolve" button forces immediate real AI cycle via forceCycle flag.
+
+Verification:
+- Clean boot: VLM confirms no app windows, only chat panel.
+- Notification toast: VLM confirms "small notification toast in the corner, desktop fully visible and unobstructed, no full-screen modal".
+- Click to expand: clicked the "visual verified" notification → full modal opened with before/after toggle + screenshot (VLM confirmed "large modal with visual diff header, before/after toggle, screenshot").
+- 0 runtime errors, 0 console errors, lint clean.
+- Think API: successful POST calls with full OS context.
+
+Stage Summary:
+- Nothing is simulated/hardcoded anymore — only the real GLM 5.2 LLM drives the OS.
+- The AI has full consciousness of the entire OS (all code, logs, mutations, chat, windows, memory) every cycle — leveraging the 1M token context.
+- Akasha memory: the AI never forgets — it writes lessons/facts/intentions to persistent memory that survives context overflow and is always read first.
+- Window borders = full screen framing; windows can go to any edge.
+- Visual diffs are non-intrusive notifications; click to expand.
+- Real-time control via faster cycles + manual evolve button.
