@@ -125,6 +125,12 @@ export type Mutation =
   // ---- Real file access ----
   | { type: "read_file"; path: string }
   | { type: "write_file"; path: string; content: string }
+  // ---- Agent debate ----
+  | { type: "debate"; proposal: string }
+  // ---- Sandboxed code execution ----
+  | { type: "execute_code"; code: string; language: "javascript" | "typescript" | "bash" }
+  // ---- Real compilation ----
+  | { type: "compile"; check: "tsc" | "eslint" | "both" }
   | { type: "rollback" };
 
 // ---- Web search result (fed back to the AI) ----
@@ -177,6 +183,54 @@ export interface AkashaGoal {
 export interface FileReadResult {
   path: string;
   content: string;
+  time: number;
+}
+
+// ---- Agent debate result ----
+export interface AgentOpinion {
+  agent: string;
+  opinion: string;
+  verdict: "PROCEED" | "REVISE" | "REJECT";
+}
+
+export interface DebateResult {
+  proposal: string;
+  opinions: AgentOpinion[];
+  consensus: "PROCEED" | "REVISE" | "REJECT";
+  tally: { proceed: number; revise: number; reject: number };
+  time: number;
+}
+
+// ---- Code execution result ----
+export interface CodeExecResult {
+  code: string;
+  language: string;
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  ok: boolean;
+  time: number;
+}
+
+// ---- Compilation result ----
+export interface CompileResult {
+  check: string;
+  tscOk?: boolean;
+  tscOutput?: string;
+  eslintOk?: boolean;
+  eslintOutput?: string;
+  ok: boolean;
+  time: number;
+}
+
+// ---- Reward model entry ----
+export interface MutationRewardEntry {
+  kind: string;
+  description: string;
+  coherenceBefore: number;
+  coherenceAfter: number;
+  delta: number;
+  helpful: boolean;
   time: number;
 }
 
@@ -387,6 +441,12 @@ export function describeMutation(m: Mutation): string {
       return `📂 read: ${m.path}`;
     case "write_file":
       return `💾 wrote: ${m.path} (${m.content.length}b)`;
+    case "debate":
+      return `💬 debate: ${m.proposal.slice(0, 56)}`;
+    case "execute_code":
+      return `⚙ exec[${m.language}]: ${m.code.slice(0, 56).replace(/\n/g, " ")}`;
+    case "compile":
+      return `🔧 compile[${m.check}]`;
     case "rollback":
       return `↺ ROLLBACK — restored previous snapshot`;
   }

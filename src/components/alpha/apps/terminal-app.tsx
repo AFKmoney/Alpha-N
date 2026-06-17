@@ -6,6 +6,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { io, type Socket } from "socket.io-client";
 import "@xterm/xterm/css/xterm.css";
 import { useOS } from "@/lib/alpha/os-store";
+import { useEvolution } from "@/lib/alpha/evolution-store";
 
 interface TerminalAppProps {
   windowId: string;
@@ -81,6 +82,18 @@ export function TerminalApp({ windowId }: TerminalAppProps) {
 
     socket.on("terminal:output", (payload: { data: string }) => {
       term.write(payload.data);
+      // ---- LAYER B: Reactive event detection ----
+      // Detect errors in terminal output and push events for the AI to react to
+      const text = payload.data.replace(/\x1b\[[0-9;]*m/g, ""); // strip ANSI
+      if (text.length > 5) {
+        const lowerText = text.toLowerCase();
+        if (lowerText.includes("error") || lowerText.includes("not found") || lowerText.includes("cannot") || lowerText.includes("denied") || lowerText.includes("exception")) {
+          useEvolution.getState().pushEvent("terminal_error", text.slice(0, 300));
+        } else if (text.trim().length > 20 && !text.includes("\x1b[")) {
+          // significant output (not just prompts) — push as a terminal_output event
+          useEvolution.getState().pushEvent("terminal_output", text.slice(0, 300));
+        }
+      }
     });
 
     socket.on("terminal:exited", (payload: { code: number }) => {

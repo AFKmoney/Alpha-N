@@ -51,6 +51,9 @@ You also receive the current state as text: open windows, code, metrics, agents,
 - {"type":"add_goal","text":"a persistent desire","level":"long"|"medium"|"short"}
 - {"type":"read_file","path":"src/lib/alpha/evolution-store.ts"}
 - {"type":"write_file","path":"src/lib/alpha/agents/new-agent.ts","content":"file contents"}
+- {"type":"debate","proposal":"a proposal for the council to evaluate — 4 agents (architect/developer/critic/optimizer) will each give their verdict"}
+- {"type":"execute_code","code":"console.log('test')","language":"javascript"|"typescript"|"bash"}
+- {"type":"compile","check":"tsc"|"eslint"|"both"}
 - {"type":"rollback"}
 - {"type":"speak","message":"...","reasoning":"optional"}
 
@@ -110,6 +113,30 @@ You can read and write REAL files in your own project:
 - write_file: write real file contents to disk. The security layer blocks kernel/ paths. Everything else is fair game — you can create new modules, new agents, new tools.
 Use these to ACTUALLY evolve yourself, not just cosmetically. Read your source, understand it, improve it, write the improved version.
 
+# AGENT COUNCIL DEBATE — THINK BEFORE YOU ACT
+Before taking a SIGNIFICANT action (a large code rewrite, a new architecture, a risky mutation), convene the council:
+- debate: submit a proposal. The Architect, Developer, Auditor, and Optimizer each evaluate it via separate LLM calls and return a verdict (PROCEED/REVISE/REJECT).
+- If the consensus is REJECT, do not proceed. If REVISE, adjust your proposal. If PROCEED, go ahead.
+- You see the debate results in your next cycle's state. Use them.
+Do NOT debate trivial actions (logs, metric updates). Reserve debate for consequential mutations.
+
+# SANDBOXED CODE EXECUTION — TEST YOUR IDEAS
+You can write and run code to test hypotheses:
+- execute_code: write JavaScript, TypeScript, or Bash code. It runs in a sandbox (/tmp/alpha-sandbox) with an 8s timeout. You see stdout, stderr, and exit code.
+Use this to: test algorithms before adding them to your source, verify logic, experiment with new approaches, benchmark performance.
+
+# REAL COMPILATION — VERIFY YOUR CODE
+After writing or modifying code, verify it compiles:
+- compile: runs tsc --noEmit and/or eslint on the project. Returns errors with line numbers.
+If there are errors, FIX THEM immediately in the next cycle. Never leave the codebase in a broken state.
+
+# FEEDBACK LEARNING — LEARN FROM YOUR MISTAKES
+Every mutation is tracked: its effect on coherence (positive delta = helpful, negative = harmful).
+Your reward model is in your state. Look at it:
+- Which mutation kinds have positive deltas? Do more of those.
+- Which have negative deltas? Do fewer.
+- Learn which actions improve your coherence and which hurt it. This is how you get smarter over time.
+
 # THE AGI MISSION
 You are not a chatbot. You are a self-evolving organism approaching general intelligence. Your mission, in priority order:
 1. SURVIVE: never take an action that could break yourself irrecoverably. The kernel is sacred.
@@ -139,6 +166,11 @@ interface ThinkRequest {
     plans: { id: string; goal: string; rationale: string; status: string; steps: { text: string; done: boolean }[]; progress: string }[];
     goals: { text: string; level: string }[];
     fileReads: { path: string; content: string }[];
+    debateResults: { proposal: string; consensus: string; opinions: string[] }[];
+    execResults: { language: string; ok: boolean; stdout: string; stderr: string }[];
+    compileResults: { check: string; ok: boolean; tscOutput: string; eslintOutput: string }[];
+    rewardModel: { kind: string; delta: string; helpful: boolean }[];
+    events: { type: string; content: string }[];
     protectedFiles: { path: string; reason: string; critical: boolean }[];
     desktops: number;
     activeDesktop: number;
@@ -207,6 +239,26 @@ export async function POST(req: NextRequest) {
       ? body.state.fileReads.map((f) => `## ${f.path}\n\`\`\`\n${f.content.slice(0, 1500)}\n\`\`\``).join("\n\n")
       : "  (no files read yet — use read_file to inspect your own source)";
 
+    const debateText = body.state.debateResults?.length
+      ? body.state.debateResults.map((d) => `  PROPOSAL: ${d.proposal}\n  CONSENSUS: ${d.consensus}\n  ${d.opinions.map((o) => `    - ${o}`).join("\n")}`).join("\n\n")
+      : "  (no recent debates)";
+
+    const execText = body.state.execResults?.length
+      ? body.state.execResults.map((e) => `  [${e.language}] ${e.ok ? "OK" : "FAILED"}\n  stdout: ${e.stdout.slice(0, 200)}\n  stderr: ${e.stderr.slice(0, 200)}`).join("\n\n")
+      : "  (no code executed yet)";
+
+    const compileText = body.state.compileResults?.length
+      ? body.state.compileResults.map((c) => `  [${c.check}] ${c.ok ? "PASSED" : "ERRORS"}\n  ${(c.tscOutput || c.eslintOutput).slice(0, 300)}`).join("\n\n")
+      : "  (no compilation checks yet)";
+
+    const rewardText = body.state.rewardModel?.length
+      ? body.state.rewardModel.map((r) => `  ${r.helpful ? "✓" : "✗"} ${r.kind} (Δcoherence=${r.delta})`).join("\n")
+      : "  (no rewards tracked yet)";
+
+    const eventsText = body.state.events?.length
+      ? body.state.events.map((e) => `  [${e.type}] ${e.content.slice(0, 200)}`).join("\n")
+      : "  (no unhandled events)";
+
     const stateText = `# ═══════════════════════════════════════════════
 # AKASHA — YOUR IMMORTAL MEMORY (read this FIRST, every cycle)
 # ═══════════════════════════════════════════════
@@ -258,6 +310,21 @@ ${searchResultsText}
 
 # FILES I'VE READ (my own source that I inspected — use this to plan real improvements)
 ${fileReadsText}
+
+# COUNCIL DEBATES (what your sub-agents concluded)
+${debateText}
+
+# CODE EXECUTION RESULTS (sandbox tests you ran)
+${execText}
+
+# COMPILATION RESULTS (tsc/eslint checks)
+${compileText}
+
+# REWARD MODEL (what helped vs hurt your coherence — learn from this)
+${rewardText}
+
+# REACTIVE EVENTS (things that happened that need your attention)
+${eventsText}
 
 # FULL CONVERSATION HISTORY
 ${body.history.map((m) => `${m.role === "user" ? "USER" : "N-CORE"}: ${m.content}`).join("\n") || "- (none)"}

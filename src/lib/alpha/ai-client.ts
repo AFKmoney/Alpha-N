@@ -82,6 +82,49 @@ export async function writeFile(path: string, content: string): Promise<{ ok?: b
   return res.json();
 }
 
+/** Run an agent debate — 4 separate LLM calls, one per council member. */
+export async function runDebate(
+  proposal: string,
+  context: string,
+  recentActions: string[]
+): Promise<{
+  opinions: { agent: string; opinion: string; verdict: string }[];
+  consensus: string;
+  tally: { proceed: number; revise: number; reject: number };
+}> {
+  const res = await fetch("/api/alpha/debate", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ proposal, context, recentActions }),
+  });
+  return res.json();
+}
+
+/** Execute code in a sandbox. */
+export async function executeCode(
+  code: string,
+  language: "javascript" | "typescript" | "bash"
+): Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number; language: string; error?: string }> {
+  const res = await fetch("/api/alpha/exec", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ code, language }),
+  });
+  return res.json();
+}
+
+/** Run real compilation checks (tsc + eslint). */
+export async function runCompile(
+  check: "tsc" | "eslint" | "both"
+): Promise<{ ok: boolean; tscOk?: boolean; tscOutput?: string; eslintOk?: boolean; eslintOutput?: string; error?: string }> {
+  const res = await fetch("/api/alpha/compile", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ check }),
+  });
+  return res.json();
+}
+
 /**
  * Ask N-Core to think. Sends the current screenshot + state + optional
  * user instruction, receives structured mutations to apply to the UI.

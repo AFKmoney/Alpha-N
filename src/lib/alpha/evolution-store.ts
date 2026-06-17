@@ -28,9 +28,13 @@ import {
   type AppliedMutation,
   type BeforeAfter,
   type ChatMessage,
+  type CodeExecResult,
+  type CompileResult,
+  type DebateResult,
   type FileReadResult,
   type MetricKey,
   type Mutation,
+  type MutationRewardEntry,
   type WebSearchResult,
 } from "./mutations";
 import { isProtected } from "./os-types";
@@ -82,6 +86,17 @@ interface EvolutionStore {
   plans: AkashaPlan[]; // multi-step long-horizon plans
   goals: AkashaGoal[]; // the AI's persistent desires
   fileReads: FileReadResult[]; // files the AI has read (fed back into context)
+  // ---- Layer A: Agent debate results ----
+  debateResults: DebateResult[];
+  // ---- Layer C: Code execution results ----
+  execResults: CodeExecResult[];
+  // ---- Layer E: Compilation results ----
+  compileResults: CompileResult[];
+  // ---- Layer D: Reward model (feedback learning) ----
+  rewardModel: MutationRewardEntry[];
+  // ---- Layer B: Reactive event queue ----
+  eventQueue: { id: string; type: string; content: string; time: number; handled: boolean }[];
+  coherenceBefore: number; // tracked for reward calculation
 
   // --- ui ---
   flowMode: boolean;
@@ -135,6 +150,14 @@ interface EvolutionStore {
   abandonPlan: (id: string) => void;
   addGoal: (text: string, level: AkashaGoal["level"]) => void;
   addFileRead: (result: FileReadResult) => void;
+  // ---- Layer A/C/D/E/B actions ----
+  addDebateResult: (result: DebateResult) => void;
+  addExecResult: (result: CodeExecResult) => void;
+  addCompileResult: (result: CompileResult) => void;
+  addReward: (entry: MutationRewardEntry) => void;
+  pushEvent: (type: string, content: string) => void;
+  markEventHandled: (id: string) => void;
+  hasUnhandledEvents: () => boolean;
 }
 
 let logId = 0;
@@ -258,6 +281,12 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   plans: [],
   goals: [],
   fileReads: [],
+  debateResults: [],
+  execResults: [],
+  compileResults: [],
+  rewardModel: [],
+  eventQueue: [],
+  coherenceBefore: 0.88,
 
   flowMode: false,
   synapseOpen: false,
@@ -663,6 +692,24 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           logs: [makeLog("deploy", "developer", `Writing file: ${m.path} (${m.content.length} bytes)`, now), ...st.logs].slice(0, 80),
         }));
         break;
+      case "debate":
+        // The AutonomousLoop runs the real debate via /api/alpha/debate
+        set((st) => ({
+          logs: [makeLog("hypothesis", "architect", `Convening council debate: ${m.proposal.slice(0, 60)}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "execute_code":
+        // The AutonomousLoop runs the code via /api/alpha/exec
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Executing ${m.language} code (${m.code.length} chars)`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "compile":
+        // The AutonomousLoop runs tsc/eslint via /api/alpha/compile
+        set((st) => ({
+          logs: [makeLog("critique", "critic", `Running ${m.check} check`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
       case "rollback":
         // The AI itself can request a rollback; the AutonomousLoop handles actual state restore
         set((st) => ({
@@ -811,6 +858,60 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       fileReads: [result, ...s.fileReads.filter((f) => f.path !== result.path)].slice(0, 8),
       logs: [makeLog("observe", "architect", `Read ${result.path} (${result.content.length} bytes).`, Date.now()), ...s.logs].slice(0, 80),
     })),
+
+  // ---- Layer A: Agent debate ----
+  addDebateResult: (result) =>
+    set((s) => ({
+      debateResults: [result, ...s.debateResults].slice(0, 5),
+      logs: [
+        makeLog("hypothesis", "nucleus", `Council debated: ${result.consensus} (proceed:${result.tally.proceed} revise:${result.tally.revise} reject:${result.tally.reject})`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
+
+  // ---- Layer C: Code execution ----
+  addExecResult: (result) =>
+    set((s) => ({
+      execResults: [result, ...s.execResults].slice(0, 5),
+      logs: [
+        makeLog(result.ok ? "deploy" : "critique", "developer", `Code exec ${result.ok ? "succeeded" : "failed"} (exit ${result.exitCode}): ${result.stdout.slice(0, 40) || result.stderr.slice(0, 40)}`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
+
+  // ---- Layer E: Compilation ----
+  addCompileResult: (result) =>
+    set((s) => ({
+      compileResults: [result, ...s.compileResults].slice(0, 5),
+      logs: [
+        makeLog(result.ok ? "evolve" : "critique", "critic", `Compile check ${result.ok ? "passed" : "found errors"}: ${(result.tscOutput ?? "").slice(0, 30) || (result.eslintOutput ?? "").slice(0, 30)}`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
+
+  // ---- Layer D: Reward model ----
+  addReward: (entry) =>
+    set((s) => {
+      const newRewards = [entry, ...s.rewardModel].slice(0, 50);
+      return {
+        rewardModel: newRewards,
+        coherenceBefore: s.metrics.coherence, // track for next mutation
+      };
+    }),
+
+  // ---- Layer B: Reactive event queue ----
+  pushEvent: (type, content) =>
+    set((s) => ({
+      eventQueue: [
+        ...s.eventQueue,
+        { id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, type, content, time: Date.now(), handled: false },
+      ].slice(-30),
+    })),
+  markEventHandled: (id) =>
+    set((s) => ({
+      eventQueue: s.eventQueue.map((e) => (e.id === id ? { ...e, handled: true } : e)),
+    })),
+  hasUnhandledEvents: () => get().eventQueue.some((e) => !e.handled),
 }));
 
 function clamp(n: number, lo: number, hi: number) {

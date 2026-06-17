@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
-import { captureScreenshot, think, webSearch, readFile, writeFile } from "@/lib/alpha/ai-client";
-import type { Mutation, BeforeAfter, WebSearchResult, FileReadResult } from "@/lib/alpha/mutations";
+import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile } from "@/lib/alpha/ai-client";
+import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type FileReadResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry } from "@/lib/alpha/mutations";
 
 const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
 const MUTATION_STEP_MS = 320;
@@ -102,6 +102,29 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             })),
             goals: s.goals.map((g) => ({ text: g.text, level: g.level })),
             fileReads: s.fileReads.slice(0, 4).map((f) => ({ path: f.path, content: f.content.slice(0, 2000) })),
+            debateResults: s.debateResults.slice(0, 2).map((d) => ({
+              proposal: d.proposal,
+              consensus: d.consensus,
+              opinions: d.opinions.map((o) => `${o.agent}: ${o.verdict} — ${o.opinion.slice(0, 100)}`),
+            })),
+            execResults: s.execResults.slice(0, 2).map((e) => ({
+              language: e.language,
+              ok: e.ok,
+              stdout: e.stdout.slice(0, 500),
+              stderr: e.stderr.slice(0, 300),
+            })),
+            compileResults: s.compileResults.slice(0, 2).map((c) => ({
+              check: c.check,
+              ok: c.ok,
+              tscOutput: (c.tscOutput ?? "").slice(0, 400),
+              eslintOutput: (c.eslintOutput ?? "").slice(0, 400),
+            })),
+            rewardModel: s.rewardModel.slice(0, 10).map((r) => ({
+              kind: r.kind,
+              delta: r.delta.toFixed(3),
+              helpful: r.helpful,
+            })),
+            events: s.eventQueue.filter((e) => !e.handled).slice(0, 5).map((e) => ({ type: e.type, content: e.content.slice(0, 300) })),
             protectedFiles: osS.protectedFiles.map((f) => ({ path: f.path, reason: f.reason, critical: f.critical })),
             desktops: 4,
             activeDesktop: osS.activeDesktop,
@@ -211,6 +234,105 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File write failed: ${msg.slice(0, 60)}` });
           }
         }
+        // ---- LAYER A: AGENT DEBATE ----
+        if (m.type === "debate" && m.proposal) {
+          setAiBusy(true, `Convening the council to debate…`);
+          try {
+            const debateRes = await runDebate(
+              m.proposal,
+              `Generation ${store.getState().generation}, coherence ${store.getState().metrics.coherence.toFixed(2)}, entropy ${store.getState().metrics.entropy.toFixed(2)}`,
+              store.getState().mutationStream.slice(0, 5).map((mut) => mut.description)
+            );
+            const dr: DebateResult = {
+              proposal: m.proposal,
+              opinions: debateRes.opinions.map((o) => ({
+                agent: o.agent,
+                opinion: o.opinion,
+                verdict: o.verdict as "PROCEED" | "REVISE" | "REJECT",
+              })),
+              consensus: debateRes.consensus as "PROCEED" | "REVISE" | "REJECT",
+              tally: debateRes.tally,
+              time: Date.now(),
+            };
+            store.getState().addDebateResult(dr);
+            // If the council says REJECT, push a log so the AI knows
+            if (dr.consensus === "REJECT") {
+              applyMutation({ type: "add_log", level: "critique", agent: "critic", message: `Council REJECTED: "${m.proposal.slice(0, 50)}". Do not proceed.` });
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "debate failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Debate failed: ${msg.slice(0, 60)}` });
+          }
+        }
+        // ---- LAYER C: SANDBOXED CODE EXECUTION ----
+        if (m.type === "execute_code" && m.code) {
+          setAiBusy(true, `Executing ${m.language} code…`);
+          try {
+            const execRes = await executeCode(m.code, m.language);
+            const cer: CodeExecResult = {
+              code: m.code,
+              language: m.language,
+              stdout: execRes.stdout ?? "",
+              stderr: execRes.stderr ?? "",
+              exitCode: execRes.exitCode ?? 1,
+              ok: execRes.ok,
+              time: Date.now(),
+            };
+            store.getState().addExecResult(cer);
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "exec failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Code exec failed: ${msg.slice(0, 60)}` });
+          }
+        }
+        // ---- LAYER E: REAL COMPILATION ----
+        if (m.type === "compile") {
+          setAiBusy(true, `Running ${m.check} check…`);
+          try {
+            const compileRes = await runCompile(m.check);
+            const cr: CompileResult = {
+              check: m.check,
+              tscOk: compileRes.tscOk,
+              tscOutput: compileRes.tscOutput,
+              eslintOk: compileRes.eslintOk,
+              eslintOutput: compileRes.eslintOutput,
+              ok: compileRes.ok,
+              time: Date.now(),
+            };
+            store.getState().addCompileResult(cr);
+            // If compilation found errors, push them as events so the AI fixes them
+            if (!cr.ok) {
+              store.getState().pushEvent("compile_error", `${cr.tscOutput ?? ""}${cr.eslintOutput ?? ""}`.slice(0, 500));
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "compile failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Compile failed: ${msg.slice(0, 60)}` });
+          }
+        }
+      }
+
+      // ---- LAYER D: FEEDBACK LEARNING — track reward for each mutation ----
+      const afterMutations = store.getState();
+      const coherenceAfter = afterMutations.metrics.coherence;
+      const coherenceBefore = afterMutations.coherenceBefore;
+      const delta = coherenceAfter - coherenceBefore;
+      for (const m of mutations) {
+        if (m.type === "set_state" || m.type === "speak" || m.type === "set_generation" || m.type === "set_version") continue;
+        const entry: MutationRewardEntry = {
+          kind: m.type,
+          description: describeMutation(m),
+          coherenceBefore,
+          coherenceAfter,
+          delta,
+          helpful: delta >= 0,
+          time: Date.now(),
+        };
+        store.getState().addReward(entry);
+      }
+
+      // ---- LAYER B: mark all events as handled (the AI has now seen them) ----
+      const unhandled = store.getState().eventQueue.filter((e) => !e.handled);
+      for (const e of unhandled) {
+        store.getState().markEventHandled(e.id);
       }
 
       // ---- AUTO-ROLLBACK if the AI broke something ----
@@ -265,6 +387,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   const forceCycle = useEvolution((s) => s.forceCycle);
   const chat = useEvolution((s) => s.chat);
   const hydrateFromDb = useEvolution((s) => s.hydrateFromDb);
+  const eventQueue = useEvolution((s) => s.eventQueue);
 
   // Hydrate persistent cognition (Akasha, plans, goals) from the DB on mount.
   // This is what makes the AI never forget — even across reloads.
@@ -279,6 +402,16 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
     useEvolution.setState({ forceCycle: false });
     void runCycle();
   }, [forceCycle, aiBusy, runCycle]);
+
+  // ---- LAYER B: REACTIVE EVENTS — when unhandled events exist, fire an immediate cycle ----
+  const unhandledCount = eventQueue.filter((e) => !e.handled).length;
+  useEffect(() => {
+    if (unhandledCount === 0) return;
+    if (aiBusy) return;
+    // Fire immediately — the AI needs to react to this event
+    const t = setTimeout(() => void runCycle(), 500);
+    return () => clearTimeout(t);
+  }, [unhandledCount, aiBusy, runCycle]);
 
   useEffect(() => {
     if (!autonomy) return;

@@ -77,3 +77,15 @@ model SystemEvent {
   content   String
   createdAt DateTime @default(now())
 }
+
+// Reward model — tracks which mutations helped vs hurt coherence
+model MutationReward {
+  id           String   @id @default(cuid())
+  mutationKind String
+  description  String
+  coherenceBefore Float
+  coherenceAfter  Float
+  delta        Float
+  helpful      Boolean
+  createdAt    DateTime @default(now())
+}
