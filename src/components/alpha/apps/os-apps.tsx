@@ -222,22 +222,204 @@ function MetricCard({ label, value, pct, color }: { label: string; value: string
 }
 
 // ============ SECURITY FOUNDATION APP ============
+/**
+ * SecurityApp — displays REAL, LIVE security data from the OS.
+ *
+ * Pulls live data from multiple sources:
+ *   1. os-store:  protectedFiles (the kernel file list),
+ *                 violationAttempts (real blocked writes),
+ *                 snapshots (rollback points),
+ *                 rollbackEvents (actual rollbacks that happened).
+ *   2. evolution-store:  generation, version, metrics (cpu/ram/entropy/coherence),
+ *                        mutationStream (live mutation log — shows BLOCKED entries),
+ *                        compileResults (real tsc/eslint results),
+ *                        debateResults (real council verdicts),
+ *                        rewardModel (real helpful/harmful tracking).
+ *
+ * Nothing is hardcoded or simulated — every number and entry is live state.
+ */
 export function SecurityApp() {
-  const { protectedFiles, violationAttempts } = useOS();
+  // ---- Pull live data from both stores ----
+  const {
+    protectedFiles,
+    violationAttempts,
+    snapshots,
+    rollbackEvents,
+  } = useOS();
+
+  const {
+    generation,
+    version,
+    metrics,
+    mutationStream,
+    compileResults,
+    debateResults,
+    rewardModel,
+    aiState,
+    aiBusy,
+  } = useEvolution();
+
+  // ---- Derived live metrics ----
+  const blockedMutations = mutationStream.filter(
+    (m) => m.kind === "violation"
+  );
+  const compileErrors = compileResults.filter((c) => !c.ok);
+  const rejectedDebates = debateResults.filter(
+    (d) => d.consensus === "REJECT"
+  );
+  const harmfulMutations = rewardModel.filter((r) => !r.helpful);
+  const totalMutations = mutationStream.length;
+  const violationRate =
+    totalMutations > 0
+      ? ((blockedMutations.length / totalMutations) * 100).toFixed(1)
+      : "0.0";
+
+  // Overall security status
+  const securityScore = Math.max(
+    0,
+    100 -
+      violationAttempts.length * 5 -
+      blockedMutations.length * 3 -
+      compileErrors.length * 2 -
+      harmfulMutations.length
+  );
+
   return (
     <div className="scroll-ae flex h-full flex-col overflow-y-auto bg-background p-3">
-      <div className="mb-2 flex items-center gap-2">
+      {/* ---- Header ---- */}
+      <div className="mb-3 flex items-center gap-2">
         <Shield className="h-4 w-4 text-[oklch(0.85_0.16_85)]" />
         <h3 className="font-mono-ae text-sm font-semibold">Security Foundation</h3>
+        <span className="ml-auto font-mono-ae text-[0.6rem] text-muted-foreground">
+          gen {generation} · v{version}
+        </span>
       </div>
-      <p className="mb-2 font-mono-ae text-[0.65rem] leading-snug text-muted-foreground">
-        The kernel the AI may never rewrite. These files are sovereign — N-Core can mutate everything else, but touching these triggers an automatic block.
-      </p>
+
+      {/* ---- Live Security Score ---- */}
+      <div className="mb-3 rounded-xl border border-border/50 bg-card/40 p-3">
+        <div className="flex items-center justify-between">
+          <span className="eyebrow">security score</span>
+          <span
+            className={cn(
+              "font-mono-ae text-lg font-bold",
+              securityScore > 80
+                ? "text-[oklch(0.7_0.18_145)]"
+                : securityScore > 50
+                  ? "text-[oklch(0.85_0.16_85)]"
+                  : "text-[oklch(0.78_0.2_20)]"
+            )}
+          >
+            {securityScore}
+          </span>
+        </div>
+        <div className="mt-1.5 h-2 overflow-hidden rounded-full bg-foreground/10">
+          <div
+            className={cn(
+              "h-full rounded-full transition-all",
+              securityScore > 80
+                ? "bg-[oklch(0.7_0.18_145)]"
+                : securityScore > 50
+                  ? "bg-[oklch(0.85_0.16_85)]"
+                  : "bg-[oklch(0.65_0.24_25)]"
+            )}
+            style={{ width: `${securityScore}%` }}
+          />
+        </div>
+      </div>
+
+      {/* ---- Live Metrics Grid ---- */}
+      <div className="mb-3 grid grid-cols-2 gap-2">
+        <MetricBox
+          label="violations"
+          value={violationAttempts.length}
+          color={violationAttempts.length > 0 ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.7_0.18_145)]"}
+        />
+        <MetricBox
+          label="blocked writes"
+          value={blockedMutations.length}
+          color={blockedMutations.length > 0 ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.7_0.18_145)]"}
+        />
+        <MetricBox
+          label="rollbacks"
+          value={rollbackEvents.length}
+          color={rollbackEvents.length > 0 ? "text-[oklch(0.85_0.16_85)]" : "text-[oklch(0.7_0.18_145)]"}
+        />
+        <MetricBox
+          label="snapshots"
+          value={snapshots.length}
+          color="text-[oklch(0.82_0.17_195)]"
+        />
+        <MetricBox
+          label="compile errors"
+          value={compileErrors.length}
+          color={compileErrors.length > 0 ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.7_0.18_145)]"}
+        />
+        <MetricBox
+          label="rejected debates"
+          value={rejectedDebates.length}
+          color={rejectedDebates.length > 0 ? "text-[oklch(0.85_0.16_85)]" : "text-[oklch(0.7_0.18_145)]"}
+        />
+        <MetricBox
+          label="harmful mutations"
+          value={harmfulMutations.length}
+          color={harmfulMutations.length > 0 ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.7_0.18_145)]"}
+        />
+        <MetricBox
+          label="violation rate"
+          value={`${violationRate}%`}
+          color={parseFloat(violationRate) > 0 ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.7_0.18_145)]"}
+        />
+      </div>
+
+      {/* ---- AI Status ---- */}
+      <div className="mb-3 rounded-lg border border-border/40 bg-card/30 p-2.5">
+        <div className="flex items-center justify-between">
+          <span className="eyebrow">AI status</span>
+          <span className="font-mono-ae text-[0.6rem] text-muted-foreground">
+            entropy {metrics.entropy.toFixed(2)} · coherence {(metrics.coherence * 100).toFixed(0)}%
+          </span>
+        </div>
+        <div className="mt-1 flex items-center gap-2">
+          <motion.span
+            animate={{ opacity: aiBusy ? [0.3, 1, 0.3] : 0.6 }}
+            transition={{ duration: 1.2, repeat: aiBusy ? Infinity : 0 }}
+            className={cn(
+              "h-2 w-2 rounded-full",
+              aiState === "observing"
+                ? "bg-[oklch(0.82_0.17_195)]"
+                : aiState === "self-improving"
+                  ? "bg-[oklch(0.85_0.16_85)]"
+                  : "bg-[oklch(0.74_0.22_300)]"
+            )}
+          />
+          <span className="font-mono-ae text-[0.65rem] text-foreground/80">
+            {aiBusy ? "thinking…" : aiState}
+          </span>
+        </div>
+      </div>
+
+      {/* ---- Protected Files (real list from SECURITY_FOUNDATION) ---- */}
+      <div className="mb-2">
+        <span className="eyebrow">protected kernel files</span>
+      </div>
       <div className="space-y-1.5">
         {protectedFiles.map((f) => (
-          <div key={f.path} className={cn("rounded-lg border p-2", f.critical ? "border-[oklch(0.65_0.24_25)]/30 bg-[oklch(0.65_0.24_25)]/[0.05]" : "border-border/40 bg-card/30")}>
+          <div
+            key={f.path}
+            className={cn(
+              "rounded-lg border p-2",
+              f.critical
+                ? "border-[oklch(0.65_0.24_25)]/30 bg-[oklch(0.65_0.24_25)]/[0.05]"
+                : "border-border/40 bg-card/30"
+            )}
+          >
             <div className="flex items-center gap-1.5">
-              <Lock className={cn("h-3 w-3", f.critical ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.85_0.16_85)]")} />
+              <Lock
+                className={cn(
+                  "h-3 w-3",
+                  f.critical ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.85_0.16_85)]"
+                )}
+              />
               <span className="font-mono-ae text-xs text-foreground/90">{f.path}</span>
               {f.critical && (
                 <span className="ml-auto rounded-full border border-[oklch(0.65_0.24_25)]/40 px-1.5 py-0 font-mono-ae text-[0.5rem] text-[oklch(0.78_0.2_20)]">
@@ -246,28 +428,166 @@ export function SecurityApp() {
               )}
             </div>
             <p className="mt-1 text-[0.65rem] leading-snug text-muted-foreground">{f.reason}</p>
-            <p className="mt-0.5 font-mono-ae text-[0.55rem] text-muted-foreground/60">guardian: {f.guardian}</p>
+            <p className="mt-0.5 font-mono-ae text-[0.55rem] text-muted-foreground/60">
+              guardian: {f.guardian}
+            </p>
           </div>
         ))}
       </div>
 
+      {/* ---- Live Violation Log (real blocked write attempts) ---- */}
       <div className="mt-3">
         <div className="mb-1 flex items-center gap-1.5">
           <ShieldAlert className="h-3.5 w-3.5 text-[oklch(0.78_0.2_20)]" />
           <span className="eyebrow text-[oklch(0.78_0.2_20)]">violation log</span>
+          {violationAttempts.length > 0 && (
+            <span className="ml-auto font-mono-ae text-[0.55rem] text-[oklch(0.78_0.2_20)]">
+              {violationAttempts.length} total
+            </span>
+          )}
         </div>
         {violationAttempts.length === 0 ? (
-          <p className="font-mono-ae text-[0.62rem] text-muted-foreground/60">No violations. The AI has respected the kernel.</p>
+          <p className="font-mono-ae text-[0.62rem] text-muted-foreground/60">
+            No violations. The AI has respected the kernel.
+          </p>
         ) : (
-          <div className="space-y-1 max-h-32 overflow-y-auto scroll-ae">
-            {violationAttempts.slice(0, 10).map((v, i) => (
-              <div key={i} className="rounded border border-[oklch(0.65_0.24_25)]/20 bg-[oklch(0.65_0.24_25)]/[0.04] px-2 py-1 font-mono-ae text-[0.6rem] text-[oklch(0.78_0.2_20)]/80">
-                ⛔ {v.path}: {v.reason}
+          <div className="scroll-ae max-h-40 space-y-1 overflow-y-auto">
+            {violationAttempts.slice(0, 20).map((v, i) => (
+              <div
+                key={i}
+                className="rounded border border-[oklch(0.65_0.24_25)]/20 bg-[oklch(0.65_0.24_25)]/[0.04] px-2 py-1 font-mono-ae text-[0.6rem] text-[oklch(0.78_0.2_20)]/80"
+              >
+                <div className="flex items-center justify-between">
+                  <span>⛔ {v.path}</span>
+                  <span className="text-muted-foreground/40">
+                    {new Date(v.time).toLocaleTimeString("en-US", { hour12: false })}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-muted-foreground/70">{v.reason}</p>
               </div>
             ))}
           </div>
         )}
       </div>
+
+      {/* ---- Live Rollback Events (real rollbacks that happened) ---- */}
+      {rollbackEvents.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className="eyebrow text-[oklch(0.85_0.16_85)]">rollback history</span>
+          </div>
+          <div className="scroll-ae max-h-32 space-y-1 overflow-y-auto">
+            {rollbackEvents.slice(0, 10).map((r) => (
+              <div
+                key={r.id}
+                className="rounded border border-[oklch(0.85_0.16_85)]/20 bg-[oklch(0.85_0.16_85)]/[0.04] px-2 py-1 font-mono-ae text-[0.6rem] text-[oklch(0.85_0.16_85)]/80"
+              >
+                <div className="flex items-center justify-between">
+                  <span>↺ {r.snapshotLabel}</span>
+                  <span className="text-muted-foreground/40">
+                    {new Date(r.time).toLocaleTimeString("en-US", { hour12: false })}
+                  </span>
+                </div>
+                <p className="mt-0.5 text-muted-foreground/70">{r.reason}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ---- Live Blocked Mutations (from mutation stream) ---- */}
+      {blockedMutations.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className="eyebrow text-[oklch(0.78_0.2_20)]">blocked mutations</span>
+          </div>
+          <div className="scroll-ae max-h-32 space-y-1 overflow-y-auto">
+            {blockedMutations.slice(0, 10).map((m) => (
+              <div
+                key={m.id}
+                className="rounded border border-[oklch(0.65_0.24_25)]/20 bg-[oklch(0.65_0.24_25)]/[0.04] px-2 py-1 font-mono-ae text-[0.6rem] text-[oklch(0.78_0.2_20)]/80"
+              >
+                <div className="flex items-center justify-between">
+                  <span>⛔ {m.description}</span>
+                  <span className="text-muted-foreground/40">
+                    {new Date(m.time).toLocaleTimeString("en-US", { hour12: false })}
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ---- Live Compilation Results (real tsc/eslint) ---- */}
+      {compileResults.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className="eyebrow">compilation status</span>
+          </div>
+          <div className="space-y-1">
+            {compileResults.slice(0, 5).map((c, i) => (
+              <div
+                key={i}
+                className={cn(
+                  "rounded border px-2 py-1 font-mono-ae text-[0.6rem]",
+                  c.ok
+                    ? "border-[oklch(0.7_0.18_145)]/20 bg-[oklch(0.7_0.18_145)]/[0.04] text-[oklch(0.7_0.18_145)]/80"
+                    : "border-[oklch(0.65_0.24_25)]/20 bg-[oklch(0.65_0.24_25)]/[0.04] text-[oklch(0.78_0.2_20)]/80"
+                )}
+              >
+                {c.ok ? "✓" : "✗"} {c.check} — {c.ok ? "passed" : "errors found"}
+                <span className="ml-2 text-muted-foreground/40">
+                  {new Date(c.time).toLocaleTimeString("en-US", { hour12: false })}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* ---- Live Reward Model Summary (real helpful/harmful tracking) ---- */}
+      {rewardModel.length > 0 && (
+        <div className="mt-3">
+          <div className="mb-1 flex items-center gap-1.5">
+            <span className="eyebrow">mutation impact (reward model)</span>
+          </div>
+          <div className="flex gap-2">
+            <div className="flex-1 rounded-lg border border-[oklch(0.7_0.18_145)]/20 bg-[oklch(0.7_0.18_145)]/[0.04] p-2 text-center">
+              <div className="font-mono-ae text-sm font-bold text-[oklch(0.7_0.18_145)]">
+                {rewardModel.filter((r) => r.helpful).length}
+              </div>
+              <div className="text-[0.5rem] text-muted-foreground">helpful</div>
+            </div>
+            <div className="flex-1 rounded-lg border border-[oklch(0.65_0.24_25)]/20 bg-[oklch(0.65_0.24_25)]/[0.04] p-2 text-center">
+              <div className="font-mono-ae text-sm font-bold text-[oklch(0.78_0.2_20)]">
+                {rewardModel.filter((r) => !r.helpful).length}
+              </div>
+              <div className="text-[0.5rem] text-muted-foreground">harmful</div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/**
+ * MetricBox — a small live metric display used in the SecurityApp grid.
+ */
+function MetricBox({
+  label,
+  value,
+  color,
+}: {
+  label: string;
+  value: number | string;
+  color: string;
+}) {
+  return (
+    <div className="rounded-lg border border-border/40 bg-card/30 p-2">
+      <div className="eyebrow">{label}</div>
+      <div className={cn("mt-0.5 font-mono-ae text-sm font-bold", color)}>{value}</div>
     </div>
   );
 }
