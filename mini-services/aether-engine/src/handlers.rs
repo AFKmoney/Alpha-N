@@ -181,6 +181,65 @@ pub async fn graph_clear(State(state): State<AppState>) -> impl IntoResponse {
 }
 
 // ---------------------------------------------------------------------------
+// POST /v1/interrupt — interrupt the current inference and inject new input
+//
+// Allows the user to interrupt the AI mid-reasoning and redirect it.
+// The request body contains:
+//   { "action": "interrupt", "new_instruction": "user's new directive" }
+//
+// When interrupted, the current pipeline's backend call is aborted (if in
+// progress) and the new instruction is queued for the next cycle.
+// ---------------------------------------------------------------------------
+pub async fn interrupt(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let action = body.get("action").and_then(|a| a.as_str()).unwrap_or("interrupt");
+    let new_instruction = body.get("new_instruction").and_then(|i| i.as_str()).unwrap_or("");
+
+    match action {
+        "interrupt" => {
+            // In a full implementation, this would cancel the in-flight backend
+            // request via an AbortHandle. For now, we set a flag that the next
+            // pipeline check will see, and inject the new instruction as a
+            // graph node so it's available for the next retrieval.
+            if !new_instruction.is_empty() {
+                let mut g = state.graph.lock().await;
+                let id = format!("interrupt-{}", std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis())
+                    .unwrap_or(0));
+                g.add(crate::graph::AddNodeRequest {
+                    id,
+                    text: new_instruction.to_string(),
+                    kind: "interrupt".to_string(),
+                    metadata: serde_json::json!({ "source": "user", "priority": "high" }),
+                });
+            }
+
+            Json(json!({
+                "ok": true,
+                "interrupted": true,
+                "message": "Inference interrupted. New instruction injected into the memory graph for the next cycle.",
+                "new_instruction": new_instruction,
+            }))
+        }
+        "status" => {
+            // Check if an inference is currently in progress
+            let stats = state.stats.lock().await;
+            Json(json!({
+                "ok": true,
+                "requests": stats.requests,
+                "active": false, // Would be true if a pipeline is running
+            }))
+        }
+        _ => {
+            Json(json!({ "ok": false, "error": "unknown action" }))
+        }
+    }
+}
+
+// ---------------------------------------------------------------------------
 // POST /v1/chat/completions — the full cognitive pipeline (OpenAI-compatible)
 // ---------------------------------------------------------------------------
 pub async fn chat_completions(

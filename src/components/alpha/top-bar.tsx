@@ -216,7 +216,7 @@ function SideBar({ children }: { children: React.ReactNode }) {
           animate={{ opacity: 1, x: 0 }}
           exit={{ opacity: 0, x: -40 }}
           transition={{ type: "spring", stiffness: 400, damping: 28 }}
-          className="glass-strong fixed left-2 top-1/2 z-40 flex max-h-[85vh] w-[280px] -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-2xl border border-border/60 p-4 scroll-ae"
+          className="glass-strong fixed left-2 top-2 z-40 flex max-h-[96vh] w-[300px] flex-col gap-3 overflow-y-auto rounded-2xl border border-border/60 p-4 scroll-ae"
           data-ai-skip="true"
           onMouseEnter={() => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } }}
           onMouseLeave={() => { hideTimer.current = setTimeout(() => setVisible(false), 400); }}

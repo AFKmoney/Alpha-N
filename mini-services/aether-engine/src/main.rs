@@ -110,6 +110,7 @@ async fn main() {
 
     let app = Router::new()
         .route("/v1/chat/completions", post(handlers::chat_completions))
+        .route("/v1/interrupt", post(handlers::interrupt))
         .route("/graph/add", post(handlers::graph_add))
         .route("/graph", get(handlers::graph_get))
         .route("/graph/search", post(handlers::graph_search))

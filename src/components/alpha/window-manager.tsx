@@ -17,6 +17,7 @@ import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
 import { EvolutionTree } from "./evolution-tree";
 import { CodeEditor } from "./code-editor";
+import { LoomApp } from "./apps/loom-app";
 import { SplitHandleBar } from "./split-handle";
 
 export function WindowManager() {
@@ -59,7 +60,7 @@ function renderAppContent(kind: string, windowId: string) {
     case "terminal":
       return <TerminalApp windowId={windowId} />;
     case "editor":
-      return <CodeEditor />;
+      return <LoomApp />;
     case "files":
       return <FilesApp />;
     case "browser":
