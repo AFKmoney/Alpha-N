@@ -28,10 +28,11 @@ export function BootSequence() {
     return () => clearTimeout(t);
   }, [visible]);
 
-  // After boot, kick off the first autonomous evolution a few seconds later.
+  // After boot, kick off a first scripted beat so the UI shows life
+  // immediately, then the autonomous LLM loop takes over.
   useEffect(() => {
     if (!done) return;
-    const t = setTimeout(() => startEvolution(), 4200);
+    const t = setTimeout(() => startEvolution(), 3200);
     return () => clearTimeout(t);
   }, [done, startEvolution]);
 

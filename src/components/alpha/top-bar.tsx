@@ -3,8 +3,10 @@
 import { motion } from "framer-motion";
 import {
   Activity,
+  Bot,
   GitBranch,
   Network,
+  Play,
   Sparkles,
   Target,
   Zap,
@@ -49,6 +51,11 @@ export function TopBar() {
     toggleFlow,
     toggleSynapse,
     triggerGenerate,
+    autonomy,
+    toggleAutonomy,
+    aiBusy,
+    toggleChat,
+    chatOpen,
   } = useEvolution();
 
   const busy = aiState !== "observing";
@@ -113,7 +120,7 @@ export function TopBar() {
 
         <button
           onClick={triggerGenerate}
-          disabled={busy}
+          disabled={busy || aiBusy}
           className={cn(
             "flex items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 text-xs transition-all hover:border-[oklch(0.74_0.22_300)]/50 hover:bg-card/70 disabled:opacity-40",
             aiState === "generating" && "glow-amethyst border-transparent"
@@ -122,6 +129,41 @@ export function TopBar() {
         >
           <Zap className={cn("h-3.5 w-3.5", aiState === "generating" && "text-[oklch(0.74_0.22_300)]")} />
           <span className="hidden font-mono-ae sm:inline">generate</span>
+        </button>
+
+        <button
+          onClick={toggleChat}
+          className={cn(
+            "relative flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all",
+            chatOpen
+              ? "border-transparent glow-amethyst bg-card/70"
+              : "border-border/60 bg-card/40 hover:bg-card/70"
+          )}
+          title="Talk to N-Core"
+        >
+          <Bot className={cn("h-3.5 w-3.5", chatOpen && "text-[oklch(0.74_0.22_300)]")} />
+          <span className="hidden font-mono-ae sm:inline">chat</span>
+          {aiBusy && (
+            <motion.span
+              animate={{ scale: [1, 1.8, 1], opacity: [0.7, 0, 0.7] }}
+              transition={{ duration: 1.4, repeat: Infinity }}
+              className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[oklch(0.74_0.22_300)]"
+            />
+          )}
+        </button>
+
+        <button
+          onClick={toggleAutonomy}
+          className={cn(
+            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all",
+            autonomy
+              ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 text-[oklch(0.85_0.16_85)]"
+              : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70"
+          )}
+          title="Toggle autonomous self-improvement"
+        >
+          {autonomy ? <Sparkles className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+          <span className="hidden font-mono-ae sm:inline">{autonomy ? "autonomous" : "paused"}</span>
         </button>
 
         <button

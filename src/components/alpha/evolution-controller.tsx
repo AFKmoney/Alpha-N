@@ -4,10 +4,12 @@ import { useEffect } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 
 /**
- * EvolutionController — runs the organism's heartbeat.
- * Every second it ticks telemetry. When the organism is at rest
- * for a while, it autonomously initiates a self-improvement cycle.
- * It never asks permission.
+ * EvolutionController — the organism's heartbeat + scripted fallback.
+ *
+ * - Always ticks telemetry every second.
+ * - The scripted evolution loop only fires when the AI autonomy is OFF,
+ *   acting as a non-network fallback so the UI still feels alive offline.
+ * - When autonomy is ON, the real LLM-driven AutonomousLoop owns self-improvement.
  */
 export function EvolutionController() {
   const tick = useEvolution((s) => s.tick);
@@ -15,23 +17,27 @@ export function EvolutionController() {
   const aiState = useEvolution((s) => s.aiState);
   const activeEvolution = useEvolution((s) => s.activeEvolution);
   const diffOpen = useEvolution((s) => s.diffOpen);
+  const beforeAfterOpen = useEvolution((s) => s.beforeAfterOpen);
+  const autonomy = useEvolution((s) => s.autonomy);
+  const aiBusy = useEvolution((s) => s.aiBusy);
 
   useEffect(() => {
     const id = setInterval(() => tick(), 1000);
     return () => clearInterval(id);
   }, [tick]);
 
-  // Autonomous self-improvement: when resting and no diff is showing,
-  // the metacognitive loop stirs and mutates on its own.
+  // Scripted fallback: only when autonomy is off and nothing else is happening.
   useEffect(() => {
+    if (autonomy) return;
+    if (aiBusy) return;
     if (aiState !== "observing") return;
     if (activeEvolution) return;
-    if (diffOpen) return;
+    if (diffOpen || beforeAfterOpen) return;
 
-    const delay = 22000 + Math.random() * 14000;
+    const delay = 16000 + Math.random() * 10000;
     const id = setTimeout(() => startEvolution(), delay);
     return () => clearTimeout(id);
-  }, [aiState, activeEvolution, diffOpen, startEvolution]);
+  }, [aiState, activeEvolution, diffOpen, beforeAfterOpen, autonomy, aiBusy, startEvolution]);
 
   return null;
 }

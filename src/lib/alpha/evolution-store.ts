@@ -17,10 +17,19 @@ import {
   type LogLevel,
   type Scenario,
 } from "./evolution-data";
+import {
+  describeMutation,
+  textLinesToCodeLines,
+  type AppliedMutation,
+  type BeforeAfter,
+  type ChatMessage,
+  type MetricKey,
+  type Mutation,
+} from "./mutations";
 
 interface ActiveEvolution {
   scenario: Scenario;
-  phase: number; // index into scenario.logs
+  phase: number;
   startedAt: number;
 }
 
@@ -40,12 +49,26 @@ interface EvolutionStore {
   history: EvolutionVersion[];
   logs: LogEntry[];
   activeEvolution: ActiveEvolution | null;
-  pendingDiff: EvolutionVersion | null; // diff awaiting user dismissal
+  pendingDiff: EvolutionVersion | null;
+
+  // --- living code (now mutable) ---
+  codeLines: CodeLine[];
+
+  // --- AI autonomy ---
+  autonomy: boolean;
+  aiBusy: boolean;
+  aiReasoning: string | null;
+  lastCycleAt: number;
+  chat: ChatMessage[];
+  mutationStream: AppliedMutation[];
+  beforeAfter: BeforeAfter | null;
+  beforeAfterOpen: boolean;
 
   // --- ui ---
   flowMode: boolean;
   synapseOpen: boolean;
   diffOpen: boolean;
+  chatOpen: boolean;
   selectedHistoryId: string | null;
   hoveredLink: string | null;
   ghostVisible: boolean;
@@ -69,12 +92,25 @@ interface EvolutionStore {
   setHoveredLink: (id: string | null) => void;
   toggleGhost: () => void;
   triggerGenerate: () => void;
+
+  // --- AI-driven actions ---
+  toggleAutonomy: () => void;
+  setAiBusy: (busy: boolean, reasoning?: string | null) => void;
+  sendUserMessage: (content: string) => void;
+  applyMutation: (m: Mutation) => void;
+  applyMutations: (ms: Mutation[]) => void;
+  pushAiMessage: (content: string, reasoning?: string) => void;
+  setBeforeAfter: (ba: BeforeAfter | null) => void;
+  toggleBeforeAfter: () => void;
+  toggleChat: () => void;
+  resetCode: () => void;
 }
 
 let logId = 0;
+let mutId = 0;
+let chatId = 0;
 // Fixed epoch for the *initial* state so SSR and client agree.
-// All time-based randomness is deferred to post-mount effects.
-const T0 = 1_704_067_200_000; // 2024-01-01T00:00:00Z — a stable sentinel
+const T0 = 1_704_067_200_000; // 2024-01-01T00:00:00Z
 function makeLog(
   level: LogLevel,
   agent: AgentRole | "nucleus",
@@ -143,9 +179,29 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   activeEvolution: null,
   pendingDiff: null,
 
+  codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })),
+
+  autonomy: true,
+  aiBusy: false,
+  aiReasoning: null,
+  lastCycleAt: 0,
+  chat: [
+    {
+      id: `chat-${chatId++}`,
+      role: "ai",
+      content:
+        "I am N-Core. I observe my own interface, critique it, and rewrite it in real time. Tell me what you want me to optimise — or say nothing and I will evolve on my own.",
+      time: T0,
+    },
+  ],
+  mutationStream: [],
+  beforeAfter: null,
+  beforeAfterOpen: false,
+
   flowMode: false,
   synapseOpen: false,
   diffOpen: false,
+  chatOpen: true,
   selectedHistoryId: null,
   hoveredLink: null,
   ghostVisible: true,
@@ -169,7 +225,6 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       })),
     });
 
-    // Advance an in-flight evolution.
     const active = get().activeEvolution;
     if (active) {
       const now = Date.now();
@@ -195,7 +250,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       metrics: { ...s.metrics, entropy: clamp(s.metrics.entropy + 0.15, 0.05, 0.95) },
     });
     set((st) => ({
-      logs: [makeLog(sc.logs[0].level, sc.logs[0].agent, sc.logs[0].message), ...st.logs].slice(0, 80),
+      logs: [makeLog(sc.logs[0].level, sc.logs[0].agent, sc.logs[0].message, Date.now()), ...st.logs].slice(0, 80),
     }));
   },
 
@@ -206,7 +261,6 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     const sc = s.activeEvolution.scenario;
 
     if (nextPhase >= sc.logs.length) {
-      // Commit the evolution.
       const newVersion: EvolutionVersion = {
         id: `v-${s.generation + 1}`,
         version: bumpVersion(s.version),
@@ -236,7 +290,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           coherence: clamp(s.metrics.coherence + 0.03, 0.5, 0.99),
         },
         logs: [
-          makeLog("evolve", "nucleus", `Evolution ${newVersion.version} committed. "${sc.title}"`),
+          makeLog("evolve", "nucleus", `Evolution ${newVersion.version} committed. "${sc.title}"`, Date.now()),
           ...s.logs,
         ].slice(0, 80),
       });
@@ -259,7 +313,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
             : { ...a, load: clamp(a.load - 0.1, 0.1, 0.9) }
       ),
       activeAgent: step.agent === "nucleus" ? s.activeAgent : (step.agent as AgentRole),
-      logs: [makeLog(step.level, step.agent, step.message), ...s.logs].slice(0, 80),
+      logs: [makeLog(step.level, step.agent, step.message, Date.now()), ...s.logs].slice(0, 80),
     });
   },
 
@@ -284,7 +338,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           : a
       ),
       logs: [
-        makeLog("deploy", "developer", "Ghost-writing the next 3 lines from your intent."),
+        makeLog("deploy", "developer", "Ghost-writing the next 3 lines from your intent.", Date.now()),
         ...s.logs,
       ].slice(0, 80),
     });
@@ -300,6 +354,145 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       }));
     }, 2600);
   },
+
+  // ---------------- AI-driven ----------------
+  toggleAutonomy: () => set((s) => ({ autonomy: !s.autonomy })),
+  setAiBusy: (busy, reasoning = null) =>
+    set({ aiBusy: busy, aiReasoning: reasoning, aiState: busy ? "self-improving" : "observing" }),
+
+  sendUserMessage: (content) => {
+    const msg: ChatMessage = {
+      id: `chat-${chatId++}`,
+      role: "user",
+      content,
+      time: Date.now(),
+    };
+    set((s) => ({ chat: [...s.chat, msg] }));
+  },
+
+  pushAiMessage: (content, reasoning) => {
+    const msg: ChatMessage = {
+      id: `chat-${chatId++}`,
+      role: "ai",
+      content,
+      reasoning,
+      time: Date.now(),
+    };
+    set((s) => ({ chat: [...s.chat, msg] }));
+  },
+
+  applyMutation: (m) => {
+    const s = get();
+    const now = Date.now();
+    switch (m.type) {
+      case "set_state":
+        set({ aiState: m.state });
+        break;
+      case "set_active_agent":
+        set({ activeAgent: m.role });
+        break;
+      case "set_agent":
+        set({
+          agents: s.agents.map((a) =>
+            a.role === m.role
+              ? {
+                  ...a,
+                  status: m.status ?? a.status,
+                  thought: m.thought ?? a.thought,
+                  load: m.load ?? a.load,
+                }
+              : a
+          ),
+          activeAgent: m.role,
+        });
+        break;
+      case "add_log":
+        set({
+          logs: [makeLog(m.level, m.agent, m.message, now), ...s.logs].slice(0, 80),
+        });
+        break;
+      case "update_metric":
+        set({
+          metrics: { ...s.metrics, [m.key]: clamp(m.value, 0, m.key === "ram" ? 8 : 1) },
+        });
+        break;
+      case "replace_code": {
+        const newLines = textLinesToCodeLines(m.lines, m.startLine);
+        const lines = [...s.codeLines];
+        // remove existing lines in range, insert new
+        const end = m.startLine + m.lines.length;
+        const filtered = lines.filter((l) => l.no < m.startLine || l.no >= end);
+        const merged = [...filtered, ...newLines].sort((a, b) => a.no - b.no);
+        set({ codeLines: merged });
+        break;
+      }
+      case "insert_code": {
+        const newLines = textLinesToCodeLines(m.lines, m.afterLine + 1);
+        // shift subsequent line numbers
+        const shifted = s.codeLines.map((l) =>
+          l.no > m.afterLine ? { ...l, no: l.no + m.lines.length } : l
+        );
+        const merged = [...shifted, ...newLines].sort((a, b) => a.no - b.no);
+        set({ codeLines: merged });
+        break;
+      }
+      case "commit_evolution": {
+        const newVersion: EvolutionVersion = {
+          id: `v-${s.generation + 1}`,
+          version: bumpVersion(s.version),
+          generation: s.generation + 1,
+          timestamp: now,
+          title: m.title,
+          summary: m.summary,
+          category: m.category,
+          agentLead: m.agentLead,
+          deltas: m.deltas ?? [],
+          diff: m.diff ?? [],
+          insight: m.insight,
+        };
+        set({
+          generation: s.generation + 1,
+          version: newVersion.version,
+          history: [newVersion, ...s.history],
+          pendingDiff: m.openDiff ? newVersion : s.pendingDiff,
+          diffOpen: m.openDiff ?? s.diffOpen,
+          metrics: {
+            ...s.metrics,
+            entropy: clamp(s.metrics.entropy - 0.15, 0.05, 0.9),
+            coherence: clamp(s.metrics.coherence + 0.02, 0.5, 0.99),
+          },
+        });
+        break;
+      }
+      case "speak":
+        get().pushAiMessage(m.message, m.reasoning);
+        break;
+      case "set_generation":
+        set({ generation: m.n });
+        break;
+      case "set_version":
+        set({ version: m.v });
+        break;
+    }
+    // record in the optimization stream
+    const am: AppliedMutation = {
+      id: `mut-${mutId++}`,
+      kind: m.type,
+      description: describeMutation(m),
+      time: now,
+    };
+    set((st) => ({ mutationStream: [am, ...st.mutationStream].slice(0, 60) }));
+  },
+
+  applyMutations: (ms) => {
+    ms.forEach((m) => get().applyMutation(m));
+    set({ lastCycleAt: Date.now() });
+  },
+
+  setBeforeAfter: (ba) => set({ beforeAfter: ba, beforeAfterOpen: !!ba }),
+  toggleBeforeAfter: () => set((s) => ({ beforeAfterOpen: !s.beforeAfterOpen })),
+  toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+  resetCode: () => set({ codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })) }),
 }));
 
 function clamp(n: number, lo: number, hi: number) {
@@ -308,5 +501,8 @@ function clamp(n: number, lo: number, hi: number) {
 
 // Convenience selector hooks
 export function useCodeLines(): { lines: CodeLine[]; ghost: CodeLine[] } {
-  return { lines: LIVING_CODE, ghost: GHOST_CODE };
+  const codeLines = useEvolution((s) => s.codeLines);
+  return { lines: codeLines, ghost: GHOST_CODE };
 }
+
+export type { MetricKey };
