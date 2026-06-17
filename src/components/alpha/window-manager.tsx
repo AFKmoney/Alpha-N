@@ -2,6 +2,11 @@
 
 import { AnimatePresence } from "framer-motion";
 import { useOS } from "@/lib/alpha/os-store";
+import {
+  computeTiledLayout,
+  defaultSplits,
+  type SplitHandle,
+} from "@/lib/alpha/os-types";
 import { WindowFrame } from "./window-frame";
 import { TerminalApp } from "./apps/terminal-app";
 import { BrowserApp, FilesApp, MonitorApp, SecurityApp, CustomApp } from "./apps/os-apps";
@@ -9,19 +14,39 @@ import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
 import { EvolutionTree } from "./evolution-tree";
 import { CodeEditor } from "./code-editor";
+import { SplitHandleBar } from "./split-handle";
 
 export function WindowManager() {
-  const { windows } = useOS();
+  const { windows, layoutMode, activeDesktop, viewport, splitRatios } = useOS();
+
+  // windows visible on the active desktop (not minimized)
+  const visible = windows.filter((w) => w.desktop === activeDesktop && !w.minimized);
+
+  // compute tiled layout if in tile mode
+  const tiled =
+    layoutMode === "tile" && visible.length > 0
+      ? computeTiledLayout(
+          visible.length,
+          viewport,
+          splitRatios[activeDesktop] ?? defaultSplits(visible.length)
+        )
+      : null;
 
   return (
     <div className="absolute inset-0 overflow-hidden">
       <AnimatePresence>
-        {windows.map((win) => (
-          <WindowFrame key={win.id} win={win}>
+        {visible.map((win, i) => (
+          <WindowFrame key={win.id} win={win} tiledRect={tiled?.rects[i]}>
             {renderAppContent(win.kind, win.id)}
           </WindowFrame>
         ))}
       </AnimatePresence>
+
+      {/* Split handles — only in tile mode, rendered above windows */}
+      {tiled &&
+        tiled.handles.map((h) => (
+          <SplitHandleBar key={`h-${h.index}`} handle={h} desktop={activeDesktop} />
+        ))}
     </div>
   );
 }

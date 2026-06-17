@@ -16,17 +16,36 @@ import { WindowManager } from "@/components/alpha/window-manager";
 import { Dock } from "@/components/alpha/dock";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
+import { WORKSPACE_TOP, WORKSPACE_BOTTOM_MARGIN } from "@/lib/alpha/os-types";
 
 export default function Page() {
   const workspaceRef = useRef<HTMLElement>(null);
   const openApp = useOS((s) => s.openApp);
   const windowsLen = useOS((s) => s.windows.length);
+  const setViewport = useOS((s) => s.setViewport);
   const booted = useEvolution((s) => s.uptimeMs > 0 || s.generation >= 0);
+
+  // Track the workspace viewport and update the store on resize.
+  // The viewport = full width, from below the top bar to above the dock+status.
+  useEffect(() => {
+    const update = () => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      setViewport({
+        x: 0,
+        y: WORKSPACE_TOP,
+        w,
+        h: Math.max(200, h - WORKSPACE_TOP - WORKSPACE_BOTTOM_MARGIN),
+      });
+    };
+    update();
+    window.addEventListener("resize", update);
+    return () => window.removeEventListener("resize", update);
+  }, [setViewport]);
 
   // Open default apps on first mount (the "desktop session")
   useEffect(() => {
     if (windowsLen > 0) return;
-    // small delay so the boot overlay shows first
     const t = setTimeout(() => {
       openApp("editor", { x: 280, y: 64, w: 560, h: 440 });
       openApp("terminal", { x: 24, y: 64, w: 460, h: 340 });

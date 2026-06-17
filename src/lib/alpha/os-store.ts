@@ -3,9 +3,17 @@
 import { create } from "zustand";
 import {
   DOCK_APPS,
+  WORKSPACE_TOP,
+  WORKSPACE_BOTTOM_MARGIN,
+  MIN_WINDOW_W,
+  MIN_WINDOW_H,
+  clampRect,
+  defaultSplits,
   type AppKind,
   type AppWindow,
+  type LayoutMode,
   type ProtectedFile,
+  type Viewport,
   SECURITY_FOUNDATION,
 } from "./os-types";
 import type { CodeLine, Agent, MetricDelta } from "./evolution-data";
@@ -35,6 +43,12 @@ interface OSStore {
   zTop: number;
   activeWindowId: string | null;
 
+  // layout: tile (no overlap, resize affects neighbors) vs float (overlap)
+  layoutMode: LayoutMode;
+  activeDesktop: number;
+  viewport: Viewport;
+  splitRatios: Record<number, number[]>; // per-desktop split ratios keyed by desktop
+
   // security
   protectedFiles: ProtectedFile[];
   violationAttempts: { time: number; path: string; reason: string }[];
@@ -55,6 +69,14 @@ interface OSStore {
   moveWindow: (id: string, x: number, y: number) => void;
   resizeWindow: (id: string, w: number, h: number) => void;
   setWindowData: (id: string, data: Record<string, unknown>) => void;
+
+  // layout actions
+  setLayoutMode: (mode: LayoutMode) => void;
+  setActiveDesktop: (d: number) => void;
+  setSplitRatio: (desktop: number, handleIndex: number, ratio: number) => void;
+  setViewport: (vp: Viewport) => void;
+  reflowWindows: () => void; // re-clamp all windows into the viewport
+  moveWindowToDesktop: (id: string, desktop: number) => void;
 
   takeSnapshot: (label: string, state: Omit<OSSnapshot, "id" | "time" | "label" | "windows"> & { windows?: AppWindow[] }) => OSSnapshot;
   rollback: (snapshot: OSSnapshot, reason: string) => Omit<OSSnapshot, "id" | "time" | "windows"> & { windows: AppWindow[] };
@@ -97,6 +119,11 @@ export const useOS = create<OSStore>((set, get) => ({
   zTop: 10,
   activeWindowId: null,
 
+  layoutMode: "float",
+  activeDesktop: 0,
+  viewport: { x: 0, y: WORKSPACE_TOP, w: 1280, h: 600 },
+  splitRatios: {},
+
   protectedFiles: SECURITY_FOUNDATION,
   violationAttempts: [],
 
@@ -109,34 +136,64 @@ export const useOS = create<OSStore>((set, get) => ({
     const id = `win-${winId++}`;
     const dockApp = DOCK_APPS.find((d) => d.kind === kind);
     const rect = defaultRect(kind, get().windows.length);
+    const vp = get().viewport;
+    const desktop = opts?.desktop ?? get().activeDesktop;
+    // clamp the initial rect into the viewport so nothing spawns out of bounds
+    const clamped = clampRect(
+      {
+        x: opts?.x ?? rect.x,
+        y: opts?.y ?? rect.y,
+        w: opts?.w ?? rect.w,
+        h: opts?.h ?? rect.h,
+      },
+      vp
+    );
     const z = get().zTop + 1;
     const win: AppWindow = {
       id,
       kind,
       title: opts?.title ?? dockApp?.defaultTitle ?? kind,
       icon: opts?.icon ?? dockApp?.icon ?? "▢",
-      x: opts?.x ?? rect.x,
-      y: opts?.y ?? rect.y,
-      w: opts?.w ?? rect.w,
-      h: opts?.h ?? rect.h,
+      x: clamped.x,
+      y: clamped.y,
+      w: clamped.w,
+      h: clamped.h,
       z,
       minimized: false,
       maximized: false,
+      desktop,
       data: opts?.data,
     };
+    // when opening in tile mode, reset splits for that desktop to even
+    const newWindows = [...get().windows, win];
+    const onDesktop = newWindows.filter((w) => w.desktop === desktop && !w.minimized);
+    let newSplits = get().splitRatios;
+    if (get().layoutMode === "tile") {
+      newSplits = { ...newSplits, [desktop]: defaultSplits(onDesktop.length) };
+    }
     set((s) => ({
-      windows: [...s.windows, win],
+      windows: newWindows,
       zTop: z,
       activeWindowId: id,
+      splitRatios: newSplits,
     }));
     return id;
   },
 
-  closeWindow: (id) =>
+  closeWindow: (id) => {
+    const closed = get().windows.find((w) => w.id === id);
     set((s) => ({
       windows: s.windows.filter((w) => w.id !== id),
       activeWindowId: s.activeWindowId === id ? null : s.activeWindowId,
-    })),
+    }));
+    // reflow splits for that desktop if in tile mode
+    if (closed && get().layoutMode === "tile") {
+      const onDesktop = get().windows.filter((w) => w.desktop === closed.desktop && !w.minimized);
+      set((s) => ({
+        splitRatios: { ...s.splitRatios, [closed.desktop]: defaultSplits(onDesktop.length) },
+      }));
+    }
+  },
 
   focusWindow: (id) => {
     const z = get().zTop + 1;
@@ -149,51 +206,139 @@ export const useOS = create<OSStore>((set, get) => ({
     }));
   },
 
-  minimizeWindow: (id) =>
+  minimizeWindow: (id) => {
+    const win = get().windows.find((w) => w.id === id);
     set((s) => ({
       windows: s.windows.map((w) =>
         w.id === id ? { ...w, minimized: true } : w
       ),
       activeWindowId: s.activeWindowId === id ? null : s.activeWindowId,
-    })),
+    }));
+    // reflow splits if tiled
+    if (win && get().layoutMode === "tile") {
+      const onDesktop = get().windows.filter((w) => w.desktop === win.desktop && !w.minimized && w.id !== id);
+      set((s) => ({
+        splitRatios: { ...s.splitRatios, [win.desktop]: defaultSplits(onDesktop.length) },
+      }));
+    }
+  },
 
-  toggleMaximize: (id) =>
+  toggleMaximize: (id) => {
+    const vp = get().viewport;
     set((s) => ({
       windows: s.windows.map((w) => {
         if (w.id !== id) return w;
         if (w.maximized && w.prevRect) {
-          return { ...w, maximized: false, ...w.prevRect, prevRect: undefined };
+          // restore, clamped to viewport
+          const r = clampRect(w.prevRect, vp);
+          return { ...w, maximized: false, ...r, prevRect: undefined };
         }
+        // maximize fills the whole workspace viewport
         return {
           ...w,
           maximized: true,
           prevRect: { x: w.x, y: w.y, w: w.w, h: w.h },
-          x: 12,
-          y: 52,
-          w: typeof window !== "undefined" ? window.innerWidth - 24 : 1200,
-          h: typeof window !== "undefined" ? window.innerHeight - 140 : 700,
+          x: vp.x,
+          y: vp.y,
+          w: vp.w,
+          h: vp.h,
         };
       }),
-    })),
+    }));
+  },
 
-  moveWindow: (id, x, y) =>
+  moveWindow: (id, x, y) => {
+    // In tile mode, free movement is disabled (windows are tiled).
+    if (get().layoutMode === "tile") return;
+    const vp = get().viewport;
+    const win = get().windows.find((w) => w.id === id);
+    if (!win) return;
+    const clamped = clampRect({ x, y, w: win.w, h: win.h }, vp);
     set((s) => ({
       windows: s.windows.map((w) =>
-        w.id === id ? { ...w, x, y } : w
+        w.id === id ? { ...w, x: clamped.x, y: clamped.y } : w
       ),
-    })),
+    }));
+  },
 
-  resizeWindow: (id, w, h) =>
+  resizeWindow: (id, w, h) => {
+    if (get().layoutMode === "tile") return; // tiled windows resize via split handles
+    const vp = get().viewport;
+    const win = get().windows.find((w2) => w2.id === id);
+    if (!win) return;
+    const clamped = clampRect({ x: win.x, y: win.y, w, h }, vp);
     set((s) => ({
-      windows: s.windows.map((win) =>
-        win.id === id ? { ...win, w, h } : win
+      windows: s.windows.map((win2) =>
+        win2.id === id ? { ...win2, w: clamped.w, h: clamped.h } : win2
       ),
-    })),
+    }));
+  },
 
   setWindowData: (id, data) =>
     set((s) => ({
       windows: s.windows.map((w) =>
         w.id === id ? { ...w, data: { ...w.data, ...data } } : w
+      ),
+    })),
+
+  // ---------------- layout actions ----------------
+  setLayoutMode: (mode) => {
+    set({ layoutMode: mode });
+    // when entering tile mode, compute even splits for each desktop
+    if (mode === "tile") {
+      const wins = get().windows;
+      const splits: Record<number, number[]> = {};
+      for (let d = 0; d < 4; d++) {
+        const count = wins.filter((w) => w.desktop === d && !w.minimized).length;
+        if (count > 1) splits[d] = defaultSplits(count);
+      }
+      set({ splitRatios: splits });
+    }
+  },
+
+  setActiveDesktop: (d) => set({ activeDesktop: d }),
+
+  setSplitRatio: (desktop, handleIndex, ratio) => {
+    const wins = get().windows.filter((w) => w.desktop === desktop && !w.minimized);
+    const count = wins.length;
+    const cur = get().splitRatios[desktop] ?? defaultSplits(count);
+    const next = [...cur];
+    // clamp the new ratio between its neighbors
+    const lower = handleIndex === 0 ? 0.05 : (next[handleIndex - 1] ?? 0) + 0.05;
+    const upper = handleIndex === next.length - 1 ? 0.95 : (next[handleIndex + 1] ?? 1) - 0.05;
+    next[handleIndex] = Math.max(lower, Math.min(upper, ratio));
+    set((s) => ({ splitRatios: { ...s.splitRatios, [desktop]: next } }));
+  },
+
+  setViewport: (vp) => {
+    set({ viewport: vp });
+    // re-clamp every floating window into the new viewport
+    set((s) => ({
+      windows: s.windows.map((w) => {
+        if (w.maximized) {
+          return { ...w, x: vp.x, y: vp.y, w: vp.w, h: vp.h };
+        }
+        const r = clampRect({ x: w.x, y: w.y, w: w.w, h: w.h }, vp);
+        return { ...w, ...r };
+      }),
+    }));
+  },
+
+  reflowWindows: () => {
+    const vp = get().viewport;
+    set((s) => ({
+      windows: s.windows.map((w) => {
+        if (w.maximized) return { ...w, x: vp.x, y: vp.y, w: vp.w, h: vp.h };
+        const r = clampRect({ x: w.x, y: w.y, w: w.w, h: w.h }, vp);
+        return { ...w, ...r };
+      }),
+    }));
+  },
+
+  moveWindowToDesktop: (id, desktop) =>
+    set((s) => ({
+      windows: s.windows.map((w) =>
+        w.id === id ? { ...w, desktop } : w
       ),
     })),
 

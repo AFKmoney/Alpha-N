@@ -4,7 +4,9 @@ import { motion } from "framer-motion";
 import {
   Activity,
   Bot,
+  Columns2,
   GitBranch,
+  Layers,
   Network,
   Play,
   Sparkles,
@@ -13,6 +15,8 @@ import {
 } from "lucide-react";
 import { Nucleus } from "./nucleus";
 import { useEvolution } from "@/lib/alpha/evolution-store";
+import { useOS } from "@/lib/alpha/os-store";
+import { DESKTOPS } from "@/lib/alpha/os-types";
 import { AGENT_META, type Agent } from "@/lib/alpha/evolution-data";
 import { cn } from "@/lib/utils";
 
@@ -117,6 +121,8 @@ export function TopBar() {
           <div className="h-3 w-px bg-border/60" />
           <Telemetry icon={<Activity className="h-3 w-3" />} label="up" value={formatUptime(uptimeMs)} />
         </div>
+
+        <LayoutControls />
 
         <button
           onClick={triggerGenerate}
@@ -224,6 +230,58 @@ function Telemetry({
       <span className="text-muted-foreground">{icon}</span>
       <span className="eyebrow">{label}</span>
       <span className="font-mono-ae text-xs text-foreground">{value}</span>
+    </div>
+  );
+}
+
+/** Tile/float toggle + virtual desktop switcher (the "layers" of the desktop). */
+function LayoutControls() {
+  const { layoutMode, setLayoutMode, activeDesktop, setActiveDesktop, windows } = useOS();
+  const tiled = layoutMode === "tile";
+
+  return (
+    <div className="flex items-center gap-1.5">
+      {/* Tile / Float (overlap) toggle */}
+      <button
+        onClick={() => setLayoutMode(tiled ? "float" : "tile")}
+        className={cn(
+          "flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition-all",
+          tiled
+            ? "border-transparent glow-cyan bg-[oklch(0.82_0.17_195)]/15 text-[oklch(0.82_0.17_195)]"
+            : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70 hover:text-foreground"
+        )}
+        title={tiled ? "Tiling mode (no overlap) — click for floating" : "Floating mode (overlap) — click for tiling"}
+      >
+        <Columns2 className="h-3.5 w-3.5" />
+        <span className="hidden font-mono-ae sm:inline">{tiled ? "tile" : "float"}</span>
+      </button>
+
+      {/* Virtual desktops / layers */}
+      <div className="flex items-center gap-0.5 rounded-full border border-border/60 bg-card/40 px-1 py-1">
+        <Layers className="mr-0.5 hidden h-3 w-3 text-muted-foreground sm:block" />
+        {DESKTOPS.map((d) => {
+          const isActive = d.id === activeDesktop;
+          const count = windows.filter((w) => w.desktop === d.id && !w.minimized).length;
+          return (
+            <button
+              key={d.id}
+              onClick={() => setActiveDesktop(d.id)}
+              className={cn(
+                "relative flex h-5 w-5 items-center justify-center rounded-full font-mono-ae text-[0.6rem] transition-all",
+                isActive
+                  ? "bg-[oklch(0.82_0.17_195)]/20 text-[oklch(0.82_0.17_195)] glow-cyan"
+                  : "text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+              )}
+              title={`Desktop ${d.name} (${count} windows)`}
+            >
+              {d.name}
+              {count > 0 && !isActive && (
+                <span className="absolute -bottom-0.5 -right-0.5 h-1 w-1 rounded-full bg-muted-foreground/60" />
+              )}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

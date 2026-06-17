@@ -178,3 +178,34 @@ Stage Summary:
 - AI can create apps (browser, terminal, custom), run terminal commands, move windows.
 - Dense multi-window desktop with dock, top bar, live widgets.
 - The AI sees its desktop via screenshots and upgrades it autonomously.
+
+---
+Task ID: 31-37
+Agent: Z.ai (main)
+Task: Linux-style window management — tiling (resize one affects others), overlap toggle, viewport boundary clamping, content that resizes, virtual desktops (layers), no empty gaps.
+
+Work Log:
+- Added tiling engine to os-types.ts: LayoutMode (tile|float), Rect, Viewport, SplitHandle, TiledLayout, DESKTOPS (4 virtual desktops), WORKSPACE constants (TOP=50, BOTTOM_MARGIN=92), MIN_WINDOW sizes, SPLIT_HANDLE_W. computeTiledLayout() arranges N windows with NO gaps (columns for ≤4, master+stack for ≥5) and emits split-handle positions. defaultSplits() for even distribution. clampRect() enforces bounds.
+- Extended os-store.ts: added layoutMode, activeDesktop, viewport, splitRatios (per-desktop). Windows now have a `desktop` field. moveWindow/resizeWindow clamp to viewport AND are disabled in tile mode (tiled windows resize only via split handles). openApp clamps initial rect + assigns to active desktop + reflows splits. closeWindow/minimizeWindow reflow splits. toggleMaximize fills the workspace viewport. New actions: setLayoutMode (computes even splits on entering tile), setActiveDesktop, setSplitRatio (clamps between neighbors), setViewport (re-clamps all windows on resize), reflowWindows, moveWindowToDesktop.
+- Updated WindowFrame: accepts tiledRect (overrides stored rect in tile mode); disables free drag + resize handle in tile mode; shows a Columns2 icon + desktop-layer badge in the title bar; clamps to viewport.
+- Built SplitHandleBar: the draggable gap between tiled windows. Dragging a vertical handle changes the column split ratio (one window grows, the other shrinks — "resize one affects others"); horizontal handle adjusts stack rows. Glows cyan on hover.
+- Updated WindowManager: computes the tiled layout for the active desktop, passes each window its tiled rect, and renders split handles above windows in tile mode. Filters windows by active desktop.
+- Updated TopBar: added LayoutControls — a tile/float toggle button (Columns2 icon, glows cyan when tiling) + a virtual-desktop switcher (4 numbered buttons with window-count dots, active highlighted). Sits next to the framing/telemetry controls.
+- Updated page.tsx: tracks window viewport size (innerWidth × innerHeight minus top bar + dock/status margins) and pushes it to the store on mount + resize, which re-clamps all floating windows so nothing goes out of bounds.
+
+Verification (Agent Browser + VLM):
+- Tile mode: VLM confirms windows arranged side-by-side with NO gaps and NO overlap, filling the whole workspace; thin draggable split bars present between adjacent windows; nothing out of bounds; tile toggle + desktop 1-2-3-4 visible.
+- Split-handle drag: dragged a vertical split from x=720 to x=400; VLM confirmed "the left window shrank, the right window grew — both neighboring windows were resized". Core tiling WM behavior works.
+- Virtual desktops: switched to desktop 2 → empty fresh layer, "2" highlighted; switched back to desktop 1 → tiled windows restored.
+- Float mode: VLM confirms all windows fully within screen bounds (clamping works), windows float/overlap freely.
+- Content fill: tile mode has zero gaps (fills 100%); float mode windows are within bounds.
+- 0 runtime errors, 0 console errors, lint clean.
+
+Stage Summary:
+- Alpha-OS now has a proper Linux-style window manager.
+- Tiling mode: windows tile with no gaps; dragging a split handle resizes BOTH neighbors (one grows, one shrinks).
+- Float mode: windows overlap freely, draggable + resizable, clamped to viewport (nothing out of bounds).
+- Toggle (tile/float) is in the top bar next to the framing controls.
+- 4 virtual desktops (layers) with a switcher; windows belong to a desktop; switching hides/shows them.
+- Viewport tracking: on window resize, all floating windows re-clamp into bounds; maximized windows fill the workspace.
+- Content resizes with windows (terminal refits via ResizeObserver, other apps use flex).
