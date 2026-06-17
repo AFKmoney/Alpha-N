@@ -16,6 +16,7 @@ import { WindowManager } from "@/components/alpha/window-manager";
 import { Dock, DockHint } from "@/components/alpha/dock";
 import { StartMenu } from "@/components/alpha/start-menu";
 import { LiveMutationViewer } from "@/components/alpha/live-mutation-viewer";
+import { ContextMenu, triggerContextMenu, buildDesktopActions, buildDockAppActions } from "@/components/alpha/context-menu";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import type { AppKind } from "@/lib/alpha/os-types";
@@ -65,20 +66,24 @@ export default function Page() {
       <main
         ref={workspaceRef}
         className="relative flex-1 overflow-hidden"
+        onContextMenu={(e) => {
+          // Only trigger desktop context menu if clicking on empty desktop (not a window)
+          if (e.target === e.currentTarget) {
+            triggerContextMenu(e, buildDesktopActions(useOS.getState()));
+          }
+        }}
         onDragOver={(e) => {
-          // Allow drop of apps from the App Repository
           if (e.dataTransfer.types.includes("text/appkind")) {
             e.preventDefault();
             e.dataTransfer.dropEffect = "copy";
           }
         }}
         onDrop={(e) => {
-          // Drop an app from the App Repository → open it at the drop position
           const kind = e.dataTransfer.getData("text/appkind");
           if (kind) {
             e.preventDefault();
             const rect = e.currentTarget.getBoundingClientRect();
-            const x = e.clientX - rect.left - 200; // offset so the window centers on cursor
+            const x = e.clientX - rect.left - 200;
             const y = e.clientY - rect.top - 20;
             useOS.getState().openApp(kind as AppKind, { x: Math.max(0, x), y: Math.max(0, y) });
           }
@@ -98,6 +103,7 @@ export default function Page() {
       <LiveMutationViewer />
 
       {/* Overlays */}
+      <ContextMenu />
       <NeuralDiff />
       <SynapseMap />
       <BeforeAfter />

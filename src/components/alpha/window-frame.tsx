@@ -4,7 +4,9 @@ import { useEffect, useRef, useState } from "react";
 import { motion } from "framer-motion";
 import { Columns2, Minus, Square, X, Copy, RotateCw, Brain, Layers } from "lucide-react";
 import { useOS, type AppWindow } from "@/lib/alpha/os-store";
+import { useEvolution } from "@/lib/alpha/evolution-store";
 import type { Rect } from "@/lib/alpha/os-types";
+import { triggerContextMenu, buildWindowActions } from "./context-menu";
 import { cn } from "@/lib/utils";
 
 interface WindowFrameProps {
@@ -109,6 +111,10 @@ export function WindowFrame({ win, tiledRect, children }: WindowFrameProps) {
     window.dispatchEvent(event);
   };
 
+  const handleContextMenu = (e: React.MouseEvent) => {
+    triggerContextMenu(e, buildWindowActions(win.id, win.title, useOS.getState(), useEvolution.getState()));
+  };
+
   return (
     <motion.div
       initial={{ opacity: 0, scale: 0.96 }}
@@ -121,6 +127,7 @@ export function WindowFrame({ win, tiledRect, children }: WindowFrameProps) {
       )}
       style={{ left: rect.x, top: rect.y, width: rect.w, height: rect.h, zIndex: win.z }}
       onPointerDown={() => focusWindow(win.id)}
+      onContextMenu={handleContextMenu}
       data-ai-skip={win.kind === "terminal" ? undefined : "true"}
     >
       {/* Title bar */}
