@@ -47,9 +47,13 @@ pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
     let stats = state.stats.lock().await;
     let distillation_count = state.distillation.lock().await.len();
     let cache_count = state.cache.lock().await.len();
+    let (hcm_pairs, hcm_interference, hcm_memory, hcm_capacity) = {
+        let h = state.hcm.lock().await;
+        (h.pair_count, h.interference(), h.memory_bytes(), h.capacity())
+    };
     Json(json!({
         "ok": true,
-        "version": "2.0",
+        "version": "3.0",
         "nodes": nodes,
         "edges": edges,
         "cache_hits": stats.cache_hits,
@@ -60,6 +64,18 @@ pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
         "distillation_patterns": distillation_count,
         "distillation_hits": stats.distillation_hits,
         "requests": stats.requests,
+        "hcm_pairs_folded": stats.hcm_pairs_folded,
+        "hcm_probes": stats.hcm_probes,
+        "hcm_active_pairs": hcm_pairs,
+        "hcm_interference": (hcm_interference * 100.0).round() / 100.0,
+        "hcm_memory_bytes": hcm_memory,
+        "hcm_capacity": hcm_capacity,
+        "clt_loops": stats.clt_loops,
+        "clt_convergences": stats.clt_convergences,
+        "clt_total_steps": stats.clt_total_steps,
+        "atd_verifications": stats.atd_verifications,
+        "atd_validated": stats.atd_validated,
+        "atd_rejected": stats.atd_rejected,
     }))
 }
 
@@ -69,6 +85,10 @@ pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
 pub async fn pipeline_stats(State(state): State<AppState>) -> impl IntoResponse {
     let stats = state.stats.lock().await;
     let distillation_count = state.distillation.lock().await.len();
+    let (hcm_pairs, hcm_interference) = {
+        let h = state.hcm.lock().await;
+        (h.pair_count, h.interference())
+    };
     Json(json!({
         "decompositions": stats.decompositions,
         "verifications": stats.verifications,
@@ -82,6 +102,19 @@ pub async fn pipeline_stats(State(state): State<AppState>) -> impl IntoResponse 
         "distillation_hits": stats.distillation_hits,
         "cache_hits": stats.cache_hits,
         "total_requests": stats.requests,
+        "hcm_pairs": hcm_pairs,
+        "hcm_interference": (hcm_interference * 100.0).round() / 100.0,
+        "clt_loops": stats.clt_loops,
+        "clt_convergences": stats.clt_convergences,
+        "clt_avg_steps": if stats.clt_loops > 0 {
+            (stats.clt_total_steps as f64 / stats.clt_loops as f64).round()
+        } else { 0.0 },
+        "atd_verifications": stats.atd_verifications,
+        "atd_validated": stats.atd_validated,
+        "atd_rejected": stats.atd_rejected,
+        "atd_validation_rate": if stats.atd_verifications > 0 {
+            (stats.atd_validated as f64 / stats.atd_verifications as f64 * 100.0).round()
+        } else { 100.0 },
     }))
 }
 
@@ -93,10 +126,19 @@ pub async fn graph_add(
     Json(req): Json<AddNodeRequest>,
 ) -> impl IntoResponse {
     let id = req.id.clone();
+    let text = req.text.clone();
     let edges_created = {
         let mut g = state.graph.lock().await;
         g.add(req)
     };
+    // Also fold into the Holographic Context Memory (HCM)
+    {
+        let mut hcm = state.hcm.lock().await;
+        let key = crate::hcm::hash_to_vector(&id, hcm.dim);
+        let value = crate::hcm::hash_to_vector(&text, hcm.dim);
+        hcm.fold(&key, &value);
+    }
+    state.stats.lock().await.hcm_pairs_folded += 1;
     Json(json!({ "ok": true, "id": id, "edges_created": edges_created }))
 }
 
@@ -260,33 +302,54 @@ pub async fn chat_completions(
 
     pipeline.synthesis = Some(final_response.clone());
 
-    // ---- Stage 8: Self-verification ----
+    // ---- Stage 8: Asymmetric Tensor Dueling (ATD) verification ----
+    // Replaces the simple verify_response with a dual-graph collision:
+    // Graph A (likelihood) must overcome Graph B (entropy) for validation.
     state.stats.lock().await.verifications += 1;
-    let verified = decompose::verify_response(&final_response, &query);
+    state.stats.lock().await.atd_verifications += 1;
 
-    let final_output = if verified {
+    let atd_config = crate::atd::ATDConfig::default();
+    let atd_result = crate::atd::verify(&final_response, &query, &atd_config);
+
+    let final_output = if atd_result.validated {
+        // ATD validated — response survived the likelihood-entropy collision
         state.stats.lock().await.verifications_passed += 1;
+        state.stats.lock().await.atd_validated += 1;
         pipeline.verification_passed = true;
-        pipeline.stages_completed.push("verify-pass".into());
+        pipeline.stages_completed.push("atd-validated".into());
         final_response
     } else {
-        // Verification failed — retry once with a more explicit prompt
-        pipeline.stages_completed.push("verify-fail-retry".into());
-        let retry_body = inject_retry(&body, &context_block, &query);
+        // ATD rejected — retry based on the recommendation
+        state.stats.lock().await.atd_rejected += 1;
+        pipeline.stages_completed.push("atd-rejected-retry".into());
+
+        let retry_body = match atd_result.recommendation {
+            crate::atd::ATDRecommendation::FallBackToSimpleShot => {
+                // Model is confused — simplify
+                inject_simple_retry(&body, &context_block, &query)
+            }
+            _ => {
+                // Standard retry with more explicit prompt
+                inject_retry(&body, &context_block, &query)
+            }
+        };
         let retry_response = call_backend(&state, &retry_body, &context_block).await;
         pipeline.total_backend_calls += 1;
 
-        // Check the retry
-        if decompose::verify_response(&retry_response, &query) {
+        // Re-verify the retry with ATD
+        let retry_atd = crate::atd::verify(&retry_response, &query, &atd_config);
+        if retry_atd.validated {
             state.stats.lock().await.verifications_passed += 1;
+            state.stats.lock().await.atd_validated += 1;
             pipeline.verification_passed = true;
-            pipeline.stages_completed.push("retry-verify-pass".into());
+            pipeline.stages_completed.push("atd-retry-validated".into());
             retry_response
         } else {
-            // Both attempts failed verification — return the better of the two
+            // Both attempts failed ATD — return the one with better collision delta
+            state.stats.lock().await.atd_rejected += 1;
             pipeline.verification_passed = false;
-            pipeline.stages_completed.push("verify-fail-final".into());
-            if retry_response.len() > final_response.len() {
+            pipeline.stages_completed.push("atd-fail-final".into());
+            if retry_atd.collision_delta > atd_result.collision_delta {
                 retry_response
             } else {
                 final_response
@@ -450,6 +513,25 @@ fn inject_retry(body: &serde_json::Value, context_block: &str, query: &str) -> s
     );
     if let Some(messages) = out.get_mut("messages").and_then(|m| m.as_array_mut()) {
         messages.insert(0, json!({ "role": "system", "content": retry_prompt }));
+    }
+    out
+}
+
+/// Inject a simplified retry prompt for ATD FallBackToSimpleShot.
+/// Used when the model is deeply confused and needs a clean, simple instruction.
+fn inject_simple_retry(body: &serde_json::Value, context_block: &str, query: &str) -> serde_json::Value {
+    let mut out = body.clone();
+    let simple_prompt = format!(
+        "{context_block}\n\n\
+         # AETHER — SIMPLE MODE\n\
+         Answer this question directly and concisely: \"{query}\"\n\
+         Do not overthink. Provide a clear, short answer."
+    );
+    if let Some(messages) = out.get_mut("messages").and_then(|m| m.as_array_mut()) {
+        // Replace all messages with a clean, simple exchange
+        messages.clear();
+        messages.push(json!({ "role": "system", "content": simple_prompt }));
+        messages.push(json!({ "role": "user", "content": query }));
     }
     out
 }
