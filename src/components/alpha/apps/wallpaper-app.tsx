@@ -3,7 +3,7 @@
 import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Trash2, Plus, Check, Search, X } from "lucide-react";
-import { WALLPAPER_PRESETS, type WallpaperPreset } from "@/lib/alpha/wallpaper-presets";
+import { WALLPAPER_PRESETS, type WallpaperPreset, type WallpaperRenderCtx } from "@/lib/alpha/wallpaper-presets";
 import { cn } from "@/lib/utils";
 
 interface SavedWallpaper {
@@ -181,8 +181,9 @@ function WallpaperCard({
   onApply: () => void;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const mouseRef = useRef({ mx: 0.5, my: 0.5 });
 
-  // Render the live preview animation
+  // Render the live preview animation (mouse-reactive)
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -190,11 +191,11 @@ function WallpaperCard({
     if (!ctx) return;
 
     let raf = 0;
-    let start = Date.now();
+    const start = Date.now();
 
     const draw = () => {
       const t = Date.now() - start;
-      preset.render(ctx, canvas.width, canvas.height, t);
+      preset.render(ctx, canvas.width, canvas.height, t, mouseRef.current);
       raf = requestAnimationFrame(draw);
     };
     draw();
@@ -202,11 +203,20 @@ function WallpaperCard({
     return () => cancelAnimationFrame(raf);
   }, [preset]);
 
+  const handleMouseMove = (e: React.MouseEvent<HTMLButtonElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    mouseRef.current = {
+      mx: (e.clientX - rect.left) / rect.width,
+      my: (e.clientY - rect.top) / rect.height,
+    };
+  };
+
   return (
     <motion.button
       whileHover={{ scale: 1.03 }}
       whileTap={{ scale: 0.97 }}
       onClick={onApply}
+      onMouseMove={handleMouseMove}
       className={cn(
         "group relative overflow-hidden rounded-xl border-2 transition-all",
         isActive

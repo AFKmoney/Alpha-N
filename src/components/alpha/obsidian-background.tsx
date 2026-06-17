@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { WALLPAPER_PRESETS } from "@/lib/alpha/wallpaper-presets";
+import { WALLPAPER_PRESETS, type WallpaperRenderCtx } from "@/lib/alpha/wallpaper-presets";
 
 interface ActiveWallpaper {
   presetId: string;
@@ -12,23 +12,20 @@ interface ActiveWallpaper {
 /**
  * ObsidianBackground — the desktop wallpaper renderer.
  *
- * Loads the active wallpaper from the API on mount, then renders it
- * on a full-screen canvas. Listens for `alpha-wallpaper-change` events
- * to switch wallpapers instantly without reload.
- *
- * Falls back to "obsidian-oil" (preset-0) if no wallpaper is set.
+ * - Loads the active wallpaper from the API on mount (persistent).
+ * - Tracks mouse position and passes it to every renderer (mouse-reactive).
+ * - Listens for `alpha-wallpaper-change` events to switch instantly.
  */
 export function ObsidianBackground() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [wallpaper, setWallpaper] = useState<ActiveWallpaper | null>(null);
+  const mouseRef = useRef<WallpaperRenderCtx>({ mx: 0.5, my: 0.5 });
 
   // Load active wallpaper from API on mount
   useEffect(() => {
     void fetch("/api/alpha/wallpaper")
       .then((r) => r.json())
-      .then((data) => {
-        if (data.presetId) setWallpaper(data);
-      })
+      .then((data) => { if (data.presetId) setWallpaper(data); })
       .catch(() => {});
   }, []);
 
@@ -40,6 +37,26 @@ export function ObsidianBackground() {
     };
     window.addEventListener("alpha-wallpaper-change", onChange);
     return () => window.removeEventListener("alpha-wallpaper-change", onChange);
+  }, []);
+
+  // Track mouse position (throttled to 60fps via rAF)
+  useEffect(() => {
+    let raf = 0;
+    const onMove = (e: MouseEvent) => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        mouseRef.current = {
+          mx: e.clientX / window.innerWidth,
+          my: e.clientY / window.innerHeight,
+        };
+        raf = 0;
+      });
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, []);
 
   // Render the wallpaper
@@ -63,14 +80,13 @@ export function ObsidianBackground() {
     resize();
     window.addEventListener("resize", resize);
 
-    // Find the preset render function
     const presetId = wallpaper?.presetId || "preset-0";
     const preset = WALLPAPER_PRESETS.find((p) => p.id === presetId) || WALLPAPER_PRESETS[0];
 
     const start = Date.now();
     const draw = () => {
       const t = Date.now() - start;
-      preset.render(ctx, w, h, t);
+      preset.render(ctx, w, h, t, mouseRef.current);
       raf = requestAnimationFrame(draw);
     };
     draw();
