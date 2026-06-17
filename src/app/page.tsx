@@ -18,6 +18,7 @@ import { StartMenu } from "@/components/alpha/start-menu";
 import { LiveMutationViewer } from "@/components/alpha/live-mutation-viewer";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
+import type { AppKind } from "@/lib/alpha/os-types";
 
 export default function Page() {
   const workspaceRef = useRef<HTMLElement>(null);
@@ -59,7 +60,28 @@ export default function Page() {
       <TopBar />
 
       {/* The desktop — what N-Core screenshots and rewrites */}
-      <main ref={workspaceRef} className="relative flex-1 overflow-hidden">
+      <main
+        ref={workspaceRef}
+        className="relative flex-1 overflow-hidden"
+        onDragOver={(e) => {
+          // Allow drop of apps from the App Repository
+          if (e.dataTransfer.types.includes("text/appkind")) {
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+          }
+        }}
+        onDrop={(e) => {
+          // Drop an app from the App Repository → open it at the drop position
+          const kind = e.dataTransfer.getData("text/appkind");
+          if (kind) {
+            e.preventDefault();
+            const rect = e.currentTarget.getBoundingClientRect();
+            const x = e.clientX - rect.left - 200; // offset so the window centers on cursor
+            const y = e.clientY - rect.top - 20;
+            useOS.getState().openApp(kind as AppKind, { x: Math.max(0, x), y: Math.max(0, y) });
+          }
+        }}
+      >
         <WindowManager />
       </main>
 
