@@ -30,9 +30,11 @@ const LINK_COLORS = [
 
 export function CodeEditor() {
   const { lines } = useCodeLines();
-  const { hoveredLink, setHoveredLink, aiState, ghostVisible, generation } = useEvolution();
+  const { hoveredLink, setHoveredLink, aiState, ghostVisible, generation, mutationStream } = useEvolution();
 
   const [cursorLine, setCursorLine] = useState(11);
+  const [selectedLine, setSelectedLine] = useState<number | null>(null);
+  const [explanation, setExplanation] = useState<string | null>(null);
 
   // Cycle the cursor line subtly to feel alive.
   useEffect(() => {
@@ -115,9 +117,20 @@ export function CodeEditor() {
                 className={cn(
                   "group flex items-start gap-3 px-2 transition-colors",
                   line.status === "changed" &&
-                    "bg-[oklch(0.82_0.17_195)]/[0.06] border-l border-[oklch(0.82_0.17_195)]/40",
+                    "bg-[oklch(0.82_0.17_195)]/[0.06] border-l border-[oklch(0.82_0.17_195)]/40 cursor-pointer hover:bg-[oklch(0.82_0.17_195)]/[0.12]",
+                  selectedLine === line.no && "bg-[oklch(0.82_0.17_195)]/[0.15] border-l-2 border-[oklch(0.82_0.17_195)]",
                   cursorLine === line.no && "bg-foreground/[0.03]"
                 )}
+                onClick={() => {
+                  if (line.status === "changed") {
+                    setSelectedLine(line.no);
+                    // find the most recent replace_code/insert_code mutation
+                    const mut = mutationStream.find(
+                      (m) => m.kind === "replace_code" || m.kind === "insert_code"
+                    );
+                    setExplanation(mut?.description ?? "Modified by N-Core in this cycle.");
+                  }
+                }}
               >
                 <span
                   className={cn(
@@ -193,6 +206,40 @@ export function CodeEditor() {
           </div>
         </div>
       </div>
+
+      {/* Click-to-explain panel for changed lines */}
+      <AnimatePresence>
+        {selectedLine !== null && explanation && (
+          <motion.div
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            className="overflow-hidden border-t border-[oklch(0.82_0.17_195)]/30 bg-[oklch(0.82_0.17_195)]/[0.05]"
+          >
+            <div className="flex items-start gap-2 px-4 py-2.5">
+              <span className="mt-0.5 text-[oklch(0.82_0.17_195)]">✦</span>
+              <div className="min-w-0 flex-1">
+                <div className="eyebrow text-[oklch(0.82_0.17_195)]">
+                  line {selectedLine} · what N-Core did
+                </div>
+                <p className="mt-0.5 font-mono-ae text-[0.7rem] leading-snug text-foreground/85">
+                  {explanation}
+                </p>
+              </div>
+              <button
+                onClick={() => {
+                  setSelectedLine(null);
+                  setExplanation(null);
+                }}
+                className="shrink-0 rounded p-1 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                aria-label="Close explanation"
+              >
+                <Circle className="h-3 w-3" />
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
 
       {/* Bottom mini-status */}
       <div className="flex items-center justify-between border-t border-border/50 px-4 py-1.5 text-[0.65rem] text-muted-foreground">

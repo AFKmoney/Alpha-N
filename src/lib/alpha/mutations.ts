@@ -110,6 +110,7 @@ export type Mutation =
   | { type: "add_memory"; text: string; kind: "lesson" | "fact" | "architecture" }
   | { type: "add_intention"; text: string; priority: "low" | "normal" | "high" }
   | { type: "resolve_intention"; id: string }
+  | { type: "set_system_prompt"; additions: string }
   | { type: "rollback" };
 
 // ---- Web search result (fed back to the AI) ----
@@ -328,6 +329,8 @@ export function describeMutation(m: Mutation): string {
       return `◉ intention[${m.priority}]: ${m.text.slice(0, 56)}`;
     case "resolve_intention":
       return `✓ resolved intention ${m.id.slice(0, 8)}`;
+    case "set_system_prompt":
+      return `✎ self-prompt: ${m.additions.slice(0, 56)}`;
     case "rollback":
       return `↺ ROLLBACK — restored previous snapshot`;
   }

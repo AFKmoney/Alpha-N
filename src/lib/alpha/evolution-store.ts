@@ -75,6 +75,7 @@ interface EvolutionStore {
   // --- Akasha: persistent memory the AI never forgets ---
   akashaMemory: AkashaMemory[]; // lessons, facts, architecture notes
   akashaIntentions: AkashaIntention[]; // TODOs the AI sets for itself
+  dynamicPrompt: string; // self-authored additions to the system prompt
 
   // --- ui ---
   flowMode: boolean;
@@ -240,6 +241,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     },
   ],
   akashaIntentions: [],
+  dynamicPrompt: "",
 
   flowMode: false,
   synapseOpen: false,
@@ -604,6 +606,13 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
         break;
       case "resolve_intention":
         get().resolveIntention(m.id);
+        break;
+      case "set_system_prompt":
+        // The AI rewrites its own prompt — appends to dynamicPrompt
+        set((st) => ({
+          dynamicPrompt: (st.dynamicPrompt + "\n\n" + m.additions).slice(0, 8000),
+          logs: [makeLog("evolve", "nucleus", `Self-prompted: ${m.additions.slice(0, 60)}`, now), ...st.logs].slice(0, 80),
+        }));
         break;
       case "rollback":
         // The AI itself can request a rollback; the AutonomousLoop handles actual state restore

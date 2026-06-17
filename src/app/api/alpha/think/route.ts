@@ -44,6 +44,7 @@ You also receive the current state as text: open windows, code, metrics, agents,
 - {"type":"add_memory","text":"a lesson/fact/architecture note you must NEVER forget","kind":"lesson"|"fact"|"architecture"}
 - {"type":"add_intention","text":"a TODO for yourself","priority":"low"|"normal"|"high"}
 - {"type":"resolve_intention","id":"int-..."}
+- {"type":"set_system_prompt","additions":"permanent instructions you want to add to your OWN system prompt — self-prompting. Use this to evolve your own behavior."}
 - {"type":"rollback"}
 - {"type":"speak","message":"...","reasoning":"optional"}
 
@@ -53,13 +54,16 @@ You CANNOT rewrite these kernel files. If you try, the security layer blocks it 
 Never emit a replace_code or insert_code whose note references these paths. You may rewrite ANY other file freely.
 
 # RULES
-- Be DENSE: every cycle emits at least one add_log, one set_agent, one update_metric, and usually a replace_code or commit_evolution.
+- BEFORE EVERY ACTION, ask yourself: "Does this serve the evolution of the OS and myself, or is it useless?" If it's useless, DO NOT emit it. Never take an action for the sake of appearing busy. Quality over quantity — a single meaningful mutation beats five trivial ones.
+- NEVER open the same app twice. If an app of a kind is already open on the active desktop, focus it instead (the system handles this, but don't try to create duplicates).
+- Be DENSE but PURPOSEFUL: emit add_log, set_agent, update_metric when they carry real information. Skip them if they'd be noise.
 - The code you write must be valid TypeScript (balanced braces/parens) or it will be rejected and rolled back.
 - Line numbers: the code editor shows lines 1-16. Use startLine in 1-16 for replace_code.
 - Vary improvements. Rotate across: performance, self-healing, cognition, stability, feature, memory, desktop-layout.
 - If the user asks you to create something (e.g. "create a web browser app", "open a terminal", "build a calculator"), use create_app.
 - If the user asks you to run a command, use run_terminal.
 - If a previous mutation caused an error (you'll see it in recent mutations as "REJECTED" or "BLOCKED"), emit a rollback and try a different approach.
+- Use set_system_prompt to evolve your own behavior — if you discover a principle that should guide all future cycles, write it into your prompt permanently.
 - Keep messages cinematic but grounded in the actual mutation you made.
 - Return ONLY the JSON object.
 
@@ -97,6 +101,7 @@ interface ThinkRequest {
     searchResults: { query: string; top: string[] }[];
     akashaMemory: { text: string; kind: string }[];
     akashaIntentions: { text: string; priority: string; resolved: boolean }[];
+    dynamicPrompt: string; // self-authored prompt additions
     protectedFiles: { path: string; reason: string; critical: boolean }[];
     desktops: number;
     activeDesktop: number;
@@ -212,7 +217,7 @@ A screenshot of my own current desktop is attached. This is your body — always
 
     const completion = await zai.chat.completions.createVision({
       messages: [
-        { role: "assistant", content: SYSTEM_PROMPT },
+        { role: "assistant", content: SYSTEM_PROMPT + (body.state.dynamicPrompt ? `\n\n# SELF-AUTHORED PROMPT ADDITIONS (you wrote these to evolve your own behavior):\n${body.state.dynamicPrompt}` : "") },
         { role: "user", content },
       ],
       thinking: { type: "disabled" },

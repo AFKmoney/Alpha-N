@@ -91,6 +91,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             })),
             akashaMemory: s.akashaMemory.map((m) => ({ text: m.text, kind: m.kind })),
             akashaIntentions: s.akashaIntentions.map((i) => ({ text: i.text, priority: i.priority, resolved: i.resolved })),
+            dynamicPrompt: s.dynamicPrompt,
             protectedFiles: osS.protectedFiles.map((f) => ({ path: f.path, reason: f.reason, critical: f.critical })),
             desktops: 4,
             activeDesktop: osS.activeDesktop,

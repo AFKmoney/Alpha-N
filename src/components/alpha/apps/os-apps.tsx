@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
-import { ArrowLeft, ArrowRight, Globe, Lock, RotateCw, Shield, ShieldAlert } from "lucide-react";
+import { Globe, Lock, RotateCw, Shield, ShieldAlert } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { AgentPanel } from "../agent-panel";
@@ -16,6 +16,8 @@ export function BrowserApp({ windowId }: { windowId: string }) {
   const { windows, setWindowData } = useOS();
   const win = windows.find((w) => w.id === windowId);
   const [input, setInput] = useState((win?.data?.url as string) ?? "https://example.com");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
 
   const currentUrl = (win?.data?.url as string) ?? "https://example.com";
   const navigate = (url: string) => {
@@ -24,18 +26,18 @@ export function BrowserApp({ windowId }: { windowId: string }) {
     if (!/^https?:\/\//.test(u)) u = "https://" + u;
     setWindowData(windowId, { url: u });
     setInput(u);
+    setLoading(true);
+    setError(false);
   };
 
   return (
     <div className="flex h-full flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border/50 p-2">
-        <button className="rounded p-1 text-muted-foreground hover:bg-foreground/10" aria-label="Back">
-          <ArrowLeft className="h-3.5 w-3.5" />
-        </button>
-        <button className="rounded p-1 text-muted-foreground hover:bg-foreground/10" aria-label="Forward">
-          <ArrowRight className="h-3.5 w-3.5" />
-        </button>
-        <button onClick={() => setWindowData(windowId, { url: currentUrl })} className="rounded p-1 text-muted-foreground hover:bg-foreground/10" aria-label="Reload">
+        <button
+          onClick={() => { setLoading(true); setError(false); setWindowData(windowId, { url: currentUrl + (currentUrl.includes("?") ? "&" : "?") + "_r=" + Date.now() }); }}
+          className="rounded p-1 text-muted-foreground hover:bg-foreground/10"
+          aria-label="Reload"
+        >
           <RotateCw className="h-3.5 w-3.5" />
         </button>
         <form
@@ -52,13 +54,44 @@ export function BrowserApp({ windowId }: { windowId: string }) {
         </form>
       </div>
       <div className="relative min-h-0 flex-1 bg-white">
-        <iframe
-          key={currentUrl}
-          src={currentUrl}
-          className="h-full w-full border-0"
-          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-          title="browser"
-        />
+        {loading && (
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/80 backdrop-blur">
+            <div className="flex items-center gap-2">
+              <motion.div
+                animate={{ rotate: 360 }}
+                transition={{ duration: 1, repeat: Infinity, ease: "linear" }}
+                className="h-4 w-4 border-2 border-[oklch(0.82_0.17_195)] border-t-transparent rounded-full"
+              />
+              <span className="font-mono-ae text-xs text-muted-foreground">loading {currentUrl}…</span>
+            </div>
+          </div>
+        )}
+        {error ? (
+          <div className="flex h-full flex-col items-center justify-center gap-3 bg-background p-6 text-center">
+            <Globe className="h-8 w-8 text-muted-foreground/50" />
+            <p className="font-mono-ae text-xs text-muted-foreground">
+              This site refuses to load in an embedded frame (X-Frame-Options).
+            </p>
+            <a
+              href={currentUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="rounded-lg border border-[oklch(0.82_0.17_195)]/40 bg-[oklch(0.82_0.17_195)]/10 px-3 py-1.5 font-mono-ae text-xs text-[oklch(0.82_0.17_195)] hover:bg-[oklch(0.82_0.17_195)]/20"
+            >
+              open in new tab ↗
+            </a>
+          </div>
+        ) : (
+          <iframe
+            key={currentUrl}
+            src={currentUrl}
+            className="h-full w-full border-0"
+            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+            title="browser"
+            onLoad={() => setLoading(false)}
+            onError={() => { setLoading(false); setError(true); }}
+          />
+        )}
       </div>
     </div>
   );

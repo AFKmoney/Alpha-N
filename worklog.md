@@ -268,3 +268,34 @@ Stage Summary:
 - Window borders = full screen framing; windows can go to any edge.
 - Visual diffs are non-intrusive notifications; click to expand.
 - Real-time control via faster cycles + manual evolve button.
+
+---
+Task ID: 50-57
+Agent: Z.ai (main)
+Task: No apps at boot (only chat), more AI control, floating dock on hover, side-arrow mutation viewer, click-to-explain code, self-prompting, no duplicate apps, AI self-evaluation.
+
+Work Log:
+- PREVENT DUPLICATE APPS: openApp() now checks if an app of the same kind already exists on the active desktop; if so, it focuses it + updates data/title instead of creating a duplicate. Verified: asking the AI to open a terminal twice → only one terminal.
+- FLOATING DOCK: rewritten to be hidden by default, appears when mouse/touch approaches the bottom 60px of the screen, floats above the status bar. Includes a DockHint (small tab at bottom center) to invite the user. Verifies mousemove + touchmove.
+- LIVE MUTATION VIEWER: new side panel toggled via a chevron arrow on the right edge of the screen. Shows every mutation in real time with colored dots, descriptions, timestamps, and a "thinking" banner when the AI is busy. Collapsible via the arrow.
+- CODE EDITOR click-to-explain: changed lines (status="changed") are now clickable. Clicking a changed line opens an explanation panel at the bottom showing what N-Core did (from the mutation stream). Closeable.
+- SELF-PROMPTING: added set_system_prompt mutation — the AI can append permanent instructions to its OWN system prompt (dynamicPrompt in the store, max 8000 chars). The think API appends dynamicPrompt to the SYSTEM_PROMPT so the AI's self-written rules guide all future cycles. This is the AI evolving its own behavior.
+- BROWSER FIX: improved the browser app with loading state, error handling for X-Frame-Options blocked sites, and an "open in new tab" fallback.
+- AI SELF-EVALUATION: added to the system prompt RULES — "BEFORE EVERY ACTION, ask yourself: Does this serve the evolution of the OS and myself, or is it useless? If useless, DO NOT emit it." Plus "NEVER open the same app twice" and "Be DENSE but PURPOSEFUL".
+- Removed unused DesktopWidgets/clock (replaced by the dedicated mutation viewer panel).
+
+Verification:
+- Clean boot: VLM confirms no app windows, only chat panel + top bar + status bar.
+- Floating dock: DOM check confirms dock-visible on mouse hover; VLM confirms "floating dock with app icons above the bottom status bar".
+- Side arrow mutation viewer: clicking the right-edge arrow opens the panel; VLM confirms "Live Mutations panel showing 14 mutations with colored dots and timestamps".
+- No duplicate apps: asked AI to open terminal twice → only one terminal (VLM confirmed).
+- 0 runtime errors, 0 console errors, lint clean.
+
+Stage Summary:
+- Boot is clean: only the chat panel, nothing else.
+- Dock is floating: hidden until mouse approaches the bottom.
+- Mutation viewer: toggleable via side arrow on the right edge.
+- Code editor: click any changed line to see what the AI did.
+- Self-prompting: the AI can rewrite its own system prompt to evolve its behavior permanently.
+- No duplicate apps: the system enforces single instances.
+- AI self-evaluation: every action must justify itself before being emitted.

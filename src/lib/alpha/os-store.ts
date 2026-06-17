@@ -133,11 +133,33 @@ export const useOS = create<OSStore>((set, get) => ({
   terminalCommands: [],
 
   openApp: (kind, opts) => {
+    // PREVENT DUPLICATE APPS: if an app of this kind is already open on the
+    // active desktop, focus it instead of opening a second instance.
+    const activeDesktop = get().activeDesktop;
+    const existing = get().windows.find(
+      (w) => w.kind === kind && w.desktop === activeDesktop
+    );
+    if (existing) {
+      get().focusWindow(existing.id);
+      // update data if provided (e.g. browser URL change)
+      if (opts?.data) {
+        get().setWindowData(existing.id, opts.data);
+      }
+      if (opts?.title) {
+        set((s) => ({
+          windows: s.windows.map((w) =>
+            w.id === existing.id ? { ...w, title: opts.title! } : w
+          ),
+        }));
+      }
+      return existing.id;
+    }
+
     const id = `win-${winId++}`;
     const dockApp = DOCK_APPS.find((d) => d.kind === kind);
     const rect = defaultRect(kind, get().windows.length);
     const vp = get().viewport;
-    const desktop = opts?.desktop ?? get().activeDesktop;
+    const desktop = opts?.desktop ?? activeDesktop;
     // clamp the initial rect into the viewport so nothing spawns out of bounds
     const clamped = clampRect(
       {
