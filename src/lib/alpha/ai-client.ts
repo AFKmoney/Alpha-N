@@ -41,6 +41,7 @@ export interface ThinkResponse {
   mutations: Mutation[];
   raw?: string;
   error?: string;
+  rateLimited?: boolean;
 }
 
 export interface WebSearchResponse {
@@ -154,5 +155,6 @@ export async function think(
     mutations: (data.mutations ?? []) as Mutation[],
     raw: data.raw,
     error: data.error,
+    rateLimited: data.rateLimited ?? false,
   };
 }

@@ -13,6 +13,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   const store = useEvolution;
   const osStore = useOS;
   const runningRef = useRef(false);
+  const consecutiveErrorsRef = useRef(0); // for exponential backoff on rate limits
 
   const runCycle = useCallback(
     async (userMessage?: string) => {
@@ -141,11 +142,36 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
         return;
       }
 
-      // 4. apply mutations one-by-one
+      // 4. Handle rate-limiting / errors gracefully
+      if (result.rateLimited || (result.error && result.mutations.length === 0)) {
+        // The cognitive API is rate-limited or errored. Log ONCE, don't speak
+        // (avoid chat noise), and set a backoff flag so the next cycle waits longer.
+        const logLevel = result.rateLimited ? "critique" : "critique";
+        const logMsg = result.rateLimited
+          ? "Cognitive API rate-limited (429). Backing off — will retry with longer delay."
+          : `Cognitive error: ${(result.error ?? "unknown").slice(0, 70)}`;
+        // Only log if the last log isn't already the same (avoid log spam)
+        const lastLog = store.getState().logs[0];
+        if (!lastLog || !lastLog.message.includes("rate-limited") && !lastLog.message.includes("Cognitive error")) {
+          applyMutation({ type: "add_log", level: logLevel, agent: "nucleus", message: logMsg });
+        }
+        // Set the backoff flag — the cycle useEffect will use a longer delay
+        consecutiveErrorsRef.current = Math.min(consecutiveErrorsRef.current + 1, 5);
+        setAiBusy(false);
+        runningRef.current = false;
+        return;
+      }
+
+      // Success — reset error counter
+      consecutiveErrorsRef.current = 0;
+
+      // 5. apply mutations one-by-one
       setAiBusy(true, result.reasoning || "Applying mutations to my own source…");
 
       const mutations: Mutation[] = Array.isArray(result.mutations) ? result.mutations : [];
-      if (result.message) {
+      // Only auto-add a speak mutation if there are real mutations AND a message.
+      // Don't speak error messages (those are handled above).
+      if (result.message && mutations.length > 0) {
         const hasSpeak = mutations.some((m) => m.type === "speak");
         if (!hasSpeak) {
           mutations.push({ type: "speak", message: result.message, reasoning: result.reasoning });
@@ -404,10 +430,12 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   }, [forceCycle, aiBusy, runCycle]);
 
   // ---- LAYER B: REACTIVE EVENTS — when unhandled events exist, fire an immediate cycle ----
+  // But NOT if we're in rate-limit backoff (don't hammer a 429'd API).
   const unhandledCount = eventQueue.filter((e) => !e.handled).length;
   useEffect(() => {
     if (unhandledCount === 0) return;
     if (aiBusy) return;
+    if (consecutiveErrorsRef.current > 0) return; // in backoff — wait
     // Fire immediately — the AI needs to react to this event
     const t = setTimeout(() => void runCycle(), 500);
     return () => clearTimeout(t);
@@ -416,10 +444,12 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   useEffect(() => {
     if (!autonomy) return;
     if (aiBusy || activeEvolution) return;
-    // Don't block on diffOpen/beforeAfterOpen anymore — those are now
-    // non-intrusive notifications, not full-screen modals. The AI can keep
-    // cycling while notifications are visible.
-    const id = setTimeout(() => { void runCycle(); }, CYCLE_MS);
+    // Exponential backoff: if we've had consecutive errors (rate limits),
+    // wait much longer before the next cycle. 0 errors = 22s, 1 = 44s,
+    // 2 = 88s, 3 = 176s, etc. This prevents hammering a rate-limited API.
+    const errors = consecutiveErrorsRef.current;
+    const delay = errors > 0 ? CYCLE_MS * Math.pow(2, errors) : CYCLE_MS;
+    const id = setTimeout(() => { void runCycle(); }, delay);
     return () => clearTimeout(id);
   }, [autonomy, aiBusy, activeEvolution, chat.length, runCycle]);
 

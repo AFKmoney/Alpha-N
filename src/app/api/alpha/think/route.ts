@@ -342,13 +342,51 @@ A screenshot of my own current desktop is attached. This is your body — always
       content.push({ type: "image_url", image_url: { url: body.screenshot } });
     }
 
-    const completion = await zai.chat.completions.createVision({
-      messages: [
-        { role: "assistant", content: SYSTEM_PROMPT + (body.state.dynamicPrompt ? `\n\n# SELF-AUTHORED PROMPT ADDITIONS (you wrote these to evolve your own behavior):\n${body.state.dynamicPrompt}` : "") },
-        { role: "user", content },
-      ],
-      thinking: { type: "disabled" },
-    });
+    // Retry with exponential backoff for 429 (rate limit) errors.
+    // The LLM API may rate-limit us; we retry up to 3 times with increasing delays.
+    let completion;
+    let lastError: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        completion = await zai.chat.completions.createVision({
+          messages: [
+            { role: "assistant", content: SYSTEM_PROMPT + (body.state.dynamicPrompt ? `\n\n# SELF-AUTHORED PROMPT ADDITIONS (you wrote these to evolve your own behavior):\n${body.state.dynamicPrompt}` : "") },
+            { role: "user", content },
+          ],
+          thinking: { type: "disabled" },
+        });
+        lastError = null;
+        break;
+      } catch (err) {
+        lastError = err instanceof Error ? err : new Error(String(err));
+        const msg = lastError.message;
+        // Only retry on 429 or network errors
+        if (msg.includes("429") || msg.includes("Too many requests") || msg.includes("fetch failed") || msg.includes("ECONNRESET")) {
+          // exponential backoff: 2s, 4s, 8s
+          const delay = Math.pow(2, attempt + 1) * 1000;
+          await new Promise((r) => setTimeout(r, delay));
+          continue;
+        }
+        // Non-retryable error — break immediately
+        break;
+      }
+    }
+
+    if (lastError || !completion) {
+      const message = lastError?.message ?? "unknown error";
+      const isRateLimit = message.includes("429") || message.includes("Too many requests");
+      return NextResponse.json({
+        error: message,
+        rateLimited: isRateLimit,
+        reasoning: isRateLimit
+          ? "The cognitive API is rate-limiting me. I will wait longer before the next cycle."
+          : "The cognitive layer threw an exception.",
+        message: isRateLimit
+          ? "I am being rate-limited by my cognitive API. Backing off and waiting."
+          : "My cognitive layer hit an error. I will retry on the next beat.",
+        mutations: [], // NO fallback mutations — don't create noise during errors
+      });
+    }
 
     const raw = completion.choices[0]?.message?.content ?? "";
 
@@ -376,11 +414,10 @@ A screenshot of my own current desktop is attached. This is your body — always
     return NextResponse.json(
       {
         error: message,
+        rateLimited: false,
         reasoning: "The cognitive layer threw an exception.",
         message: "My cognitive layer hit an error. I will retry on the next beat.",
-        mutations: [
-          { type: "add_log", level: "critique", agent: "nucleus", message: `Cognitive error: ${message.slice(0, 80)}` },
-        ],
+        mutations: [], // NO fallback mutations during errors
       },
       { status: 200 }
     );

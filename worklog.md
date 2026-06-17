@@ -361,3 +361,25 @@ Stage Summary:
   D. Feedback Learning — reward model tracks what improves vs hurts coherence; AI learns
   E. Real Compilation — tsc + eslint runs on the actual project; AI fixes errors
 - Combined with the previous layers (persistent Akasha memory, long-horizon planning, real file access, goal hierarchy, AGI mission, self-prompting, web search), Alpha-OS is now a deeply autonomous self-evolving system approaching AGI.
+
+---
+Task ID: FIX-RATELIMIT
+Agent: Z.ai (main)
+Task: Fix the cognitive layer error loop — the AI was stuck repeating "My cognitive layer hit an error" due to 429 rate limiting.
+
+Root Cause:
+- The LLM API (z-ai-web-dev-sdk) was returning 429 (Too Many Requests) continuously.
+- The think route's catch handler returned fallback mutations (add_log + speak) which the AutonomousLoop applied.
+- Applying mutations triggered the next cycle (22s later or immediately via reactive events).
+- The next cycle hit 429 again → same fallback → loop. The error message "My cognitive layer hit an error. I will retry on the next beat." repeated in the chat.
+
+Fix (3 parts):
+1. Think route (/api/alpha/think): Added retry with exponential backoff for 429 errors (3 retries: 2s, 4s, 8s delays). When all retries fail, returns rateLimited:true and mutations:[] (NO fallback mutations — don't create noise during errors).
+2. AutonomousLoop: Added consecutiveErrorsRef for exponential backoff. When rateLimited or error with no mutations: logs ONCE (deduplicated — checks if last log already says "rate-limited"), does NOT speak (avoids chat spam), increments error counter, returns early. On success: resets error counter to 0. The autonomous cycle useEffect now uses exponential backoff: 0 errors=22s, 1=44s, 2=88s, 3=176s, 4=352s, 5=704s. The reactive event trigger is suppressed during backoff (doesn't hammer a 429'd API).
+3. Only auto-adds a speak mutation when there are REAL mutations AND a message (not error messages).
+
+Verification:
+- 0 new 429 errors in the 30s observation window after the fix (was 282 total before).
+- The system now gracefully backs off when rate-limited instead of looping.
+- 0 runtime errors, 0 console errors, lint clean.
+- The AI will resume normal cycling once the rate limit clears, with the error counter resetting on the first successful cycle.
