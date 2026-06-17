@@ -46,7 +46,7 @@ export function TopBar() {
     toggleFlow,
     toggleSynapse,
     triggerGenerate,
-    autonomy,
+    autonomyMode,
     toggleAutonomy,
     aiBusy,
     toggleChat,
@@ -134,14 +134,14 @@ export function TopBar() {
           onClick={toggleAutonomy}
           className={cn(
             "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all",
-            autonomy
+            autonomyMode === "active"
               ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 text-[oklch(0.85_0.16_85)]"
               : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70"
           )}
-          title="Toggle autonomous self-improvement"
+          title="Toggle autonomous mode (standby = AI waits for you, active = AI works on tasks)"
         >
-          {autonomy ? <Sparkles className="h-4 w-4" /> : <Play className="h-4 w-4" />}
-          <span className="font-mono-ae">{autonomy ? "autonomous" : "paused"}</span>
+          {autonomyMode === "active" ? <Sparkles className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          <span className="font-mono-ae">{autonomyMode === "active" ? "active" : "standby"}</span>
         </button>
 
         <button

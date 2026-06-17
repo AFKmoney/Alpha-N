@@ -65,6 +65,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             version: s.version,
             aiState: s.aiState,
             metrics: s.metrics,
+            autonomyMode: s.autonomyMode,
             fullCode,
             agents: s.agents.map((a) => ({
               role: a.role,
@@ -407,7 +408,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
     [store, osStore, workspaceRef]
   );
 
-  const autonomy = useEvolution((s) => s.autonomy);
+  const autonomyMode = useEvolution((s) => s.autonomyMode);
   const aiBusy = useEvolution((s) => s.aiBusy);
   const activeEvolution = useEvolution((s) => s.activeEvolution);
   const forceCycle = useEvolution((s) => s.forceCycle);
@@ -441,18 +442,26 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
     return () => clearTimeout(t);
   }, [unhandledCount, aiBusy, runCycle]);
 
+  // ---- AUTONOMOUS CYCLE ----
+  // In "standby" mode: the AI does NOT run autonomous cycles. It only acts when:
+  //   1. The user sends a chat message (handled by the chat effect below)
+  //   2. The user clicks "evolve" (handled by the forceCycle effect above)
+  //   3. A reactive event fires (terminal error, compile error) — but ONLY if active
+  //
+  // In "active" mode: the AI runs autonomous cycles on a timer, works on tasks,
+  //   uses the council, and can code freely on user-requested projects.
+  //
+  // EXCEPTION: Even in standby, if the AI discovers a critical self-upgrade via
+  //   web search, it may test it in sandbox and apply it. This is handled by
+  //   the think route's system prompt which instructs the AI accordingly.
   useEffect(() => {
-    if (!autonomy) return;
+    if (autonomyMode !== "active") return; // standby = no autonomous cycling
     if (aiBusy || activeEvolution) return;
-    // Exponential backoff: if we've had consecutive errors (rate limits),
-    // wait much longer before the next cycle. 0 errors = 22s, 1 = 44s,
-    // 2 = 88s, 3 = 176s, etc. This prevents hammering a rate-limited API.
     const errors = consecutiveErrorsRef.current;
-    // Cap the backoff at 5 min (300000ms) so the AI eventually retries
     const delay = Math.min(errors > 0 ? CYCLE_MS * Math.pow(2, errors) : CYCLE_MS, 300000);
     const id = setTimeout(() => { void runCycle(); }, delay);
     return () => clearTimeout(id);
-  }, [autonomy, aiBusy, activeEvolution, chat.length, runCycle]);
+  }, [autonomyMode, aiBusy, activeEvolution, chat.length, runCycle]);
 
   const lastChatLen = useRef(chat.length);
   useEffect(() => {

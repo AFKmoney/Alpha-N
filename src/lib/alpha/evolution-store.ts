@@ -68,7 +68,10 @@ interface EvolutionStore {
   codeLines: CodeLine[];
 
   // --- AI autonomy ---
-  autonomy: boolean;
+  // standby = AI does nothing unless user asks. active = AI works autonomously on tasks.
+  // The AI may self-upgrade in standby ONLY if it found a critical bug or web-discovered upgrade
+  // and tests it in sandbox first.
+  autonomyMode: "standby" | "active";
   aiBusy: boolean;
   aiReasoning: string | null;
   lastCycleAt: number;
@@ -128,7 +131,8 @@ interface EvolutionStore {
   triggerGenerate: () => void;
 
   // --- AI-driven actions ---
-  toggleAutonomy: () => void;
+  toggleAutonomy: () => void; // toggles between standby and active
+  setAutonomyMode: (mode: "standby" | "active") => void;
   triggerCycle: () => void; // force an immediate real AI cycle
   setAiBusy: (busy: boolean, reasoning?: string | null) => void;
   sendUserMessage: (content: string) => void;
@@ -237,7 +241,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
 
   codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })),
 
-  autonomy: true,
+  autonomyMode: "standby" as "standby" | "active",
   aiBusy: false,
   aiReasoning: null,
   lastCycleAt: 0,
@@ -247,7 +251,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       id: `chat-${chatId++}`,
       role: "ai",
       content:
-        "I am Alpha-OS. I am not an AI inside an OS — I am the OS. The desktop is my body, the windows my organs, the terminal my voice. Tell me what you want me to do: open an app, search the web, rewrite my own code. Or say nothing and I will evolve myself.",
+        "I am Alpha-OS. I am in standby mode — I will not code unless you ask me to. Tell me what you want me to do: open an app, search the web, rewrite code, or give me a project to work on. Switch to 'active' mode in the sidebar if you want me to work autonomously.",
       time: T0,
     },
   ],
@@ -446,7 +450,10 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   },
 
   // ---------------- AI-driven ----------------
-  toggleAutonomy: () => set((s) => ({ autonomy: !s.autonomy })),
+  toggleAutonomy: () => set((s) => ({
+    autonomyMode: s.autonomyMode === "standby" ? "active" : "standby",
+  })),
+  setAutonomyMode: (mode) => set({ autonomyMode: mode }),
   triggerCycle: () => set({ forceCycle: true }),
   setAiBusy: (busy, reasoning = null) =>
     set({ aiBusy: busy, aiReasoning: reasoning, aiState: busy ? "self-improving" : "observing" }),

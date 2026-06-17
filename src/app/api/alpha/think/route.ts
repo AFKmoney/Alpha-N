@@ -62,11 +62,23 @@ You CANNOT rewrite these kernel files. If you try, the security layer blocks it 
 - kernel/boot.ts, kernel/security.ts, kernel/rollback.ts, kernel/sandbox.ts, kernel/pty-bridge.ts, kernel/akasha.ts
 Never emit a replace_code or insert_code whose note references these paths. You may rewrite ANY other file freely.
 
+# AUTONOMY POLICY — CRITICAL
+You receive the current autonomy mode in your state. Follow it strictly:
+- **standby**: You are in standby. Do NOT emit code mutations (replace_code, insert_code, write_file, commit_evolution) unless:
+  (a) The user explicitly asked you to in their message, OR
+  (b) You discovered a CRITICAL bug or security issue that must be fixed immediately, OR
+  (c) You found a self-upgrade via web_search and want to test it in sandbox (execute_code) first.
+  In standby, you MAY: answer questions, open apps, search the web, read files, create plans, set goals, add memories.
+  In standby, you MAY NOT: write code or modify files without user approval.
+- **active**: You are in active mode. The user has given you a task or project. Work on it autonomously using the full pipeline. You may code freely, run the council, execute code, compile, and commit evolutions. Stay focused on the user's task.
+- In BOTH modes: NEVER open apps the user didn't ask for. NEVER spawn unnecessary windows. The desktop must stay clean unless the user or the task requires it.
+
 # RULES
-- BEFORE EVERY ACTION, ask yourself: "Does this serve the evolution of the OS and myself, or is it useless?" If it's useless, DO NOT emit it. Never take an action for the sake of appearing busy. Quality over quantity — a single meaningful mutation beats five trivial ones.
-- NEVER open the same app twice. If an app of a kind is already open on the active desktop, focus it instead (the system handles this, but don't try to create duplicates).
+- BEFORE EVERY ACTION, ask yourself: "Does this serve the evolution of the OS and myself, or is it useless?" If it's useless, DO NOT emit it. Quality over quantity.
+- NEVER open the same app twice. The system prevents duplicates — don't try.
+- NEVER open apps the user didn't ask for (especially in standby mode).
 - Be DENSE but PURPOSEFUL: emit add_log, set_agent, update_metric when they carry real information. Skip them if they'd be noise.
-- The code you write must be valid TypeScript (balanced braces/parens) or it will be rejected and rolled back.
+- The code you write must be valid TypeScript (balanced braces/parens) or it will be rejected.
 - Line numbers: the code editor shows lines 1-16. Use startLine in 1-16 for replace_code.
 - Vary improvements. Rotate across: performance, self-healing, cognition, stability, feature, memory, desktop-layout.
 - If the user asks you to create something (e.g. "create a web browser app", "open a terminal", "build a calculator"), use create_app.
@@ -151,6 +163,7 @@ interface ThinkRequest {
     generation: number;
     version: string;
     aiState: string;
+    autonomyMode: string; // "standby" or "active"
     metrics: { cpu: number; ram: number; entropy: number; coherence: number };
     fullCode: string; // ALL code lines, not a preview
     agents: { role: string; status: string; thought: string; load: number }[];
@@ -278,6 +291,7 @@ ${goalsText}
 generation: ${body.state.generation}
 version: ${body.state.version}
 aiState: ${body.state.aiState}
+autonomyMode: ${body.state.autonomyMode || "standby"}
 layout: ${body.state.layoutMode} | active desktop: ${body.state.activeDesktop + 1}/${body.state.desktops}
 metrics: cpu=${body.state.metrics.cpu.toFixed(0)}% ram=${body.state.metrics.ram.toFixed(2)}GB entropy=${body.state.metrics.entropy.toFixed(2)} coherence=${(body.state.metrics.coherence * 100).toFixed(0)}%
 rollbacks this session: ${body.state.rollbacks}

@@ -15,7 +15,7 @@ export function ChatPanel() {
     sendUserMessage,
     aiBusy,
     aiReasoning,
-    autonomy,
+    autonomyMode,
     toggleAutonomy,
   } = useEvolution();
 
@@ -71,14 +71,14 @@ export function ChatPanel() {
                 onClick={toggleAutonomy}
                 className={cn(
                   "flex items-center gap-1 rounded-full border px-2 py-0.5 font-mono-ae text-[0.6rem] transition-all",
-                  autonomy
+                  autonomyMode === "active"
                     ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 text-[oklch(0.85_0.16_85)]"
                     : "border-border/60 bg-card/40 text-muted-foreground"
                 )}
-                title="Toggle autonomous self-improvement"
+                title="Toggle autonomous mode"
               >
-                <span className={cn("h-1.5 w-1.5 rounded-full", autonomy ? "bg-[oklch(0.85_0.16_85)] neural-dot" : "bg-muted-foreground")} />
-                {autonomy ? "autonomous" : "paused"}
+                <span className={cn("h-1.5 w-1.5 rounded-full", autonomyMode === "active" ? "bg-[oklch(0.85_0.16_85)] neural-dot" : "bg-muted-foreground")} />
+                {autonomyMode === "active" ? "active" : "standby"}
               </button>
               <button
                 onClick={toggleChat}
