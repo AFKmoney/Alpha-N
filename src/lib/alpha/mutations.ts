@@ -84,7 +84,58 @@ export type Mutation =
     }
   | { type: "speak"; message: string; reasoning?: string }
   | { type: "set_generation"; n: number }
-  | { type: "set_version"; v: string };
+  | { type: "set_version"; v: string }
+  // ---- Alpha-OS desktop mutations ----
+  | {
+      type: "create_app";
+      appType:
+        | "terminal"
+        | "editor"
+        | "files"
+        | "browser"
+        | "monitor"
+        | "evolution"
+        | "agents"
+        | "security"
+        | "custom";
+      title?: string;
+      url?: string; // for browser
+      spec?: string; // for custom apps: a description of what the app does
+    }
+  | { type: "close_app"; windowId: string }
+  | { type: "focus_app"; windowId: string }
+  | { type: "move_window"; windowId: string; x: number; y: number }
+  | { type: "run_terminal"; command: string }
+  | { type: "rollback" };
+
+// ---- Code validation: detects obviously broken AI output ----
+export interface ValidationResult {
+  ok: boolean;
+  reason?: string;
+}
+
+export function validateCodeLines(lines: string[]): ValidationResult {
+  // Check brace balance across the lines being inserted/replaced
+  let braces = 0;
+  let parens = 0;
+  let brackets = 0;
+  for (const line of lines) {
+    // skip string contents naively (good enough for safety check)
+    const stripped = line.replace(/\/\/.*$/, "").replace(/'(?:[^'\\]|\\.)*'/g, "''").replace(/"(?:[^"\\]|\\.)*"/g, '""');
+    for (const ch of stripped) {
+      if (ch === "{") braces++;
+      else if (ch === "}") braces--;
+      else if (ch === "(") parens++;
+      else if (ch === ")") parens--;
+      else if (ch === "[") brackets++;
+      else if (ch === "]") brackets--;
+    }
+  }
+  if (Math.abs(braces) > 0) return { ok: false, reason: `unbalanced braces (Δ${braces})` };
+  if (Math.abs(parens) > 0) return { ok: false, reason: `unbalanced parens (Δ${parens})` };
+  if (Math.abs(brackets) > 0) return { ok: false, reason: `unbalanced brackets (Δ${brackets})` };
+  return { ok: true };
+}
 
 // ---- A pragmatic TypeScript-ish tokenizer ----
 // Good enough to give AI-written code the same living glow.
@@ -232,5 +283,17 @@ export function describeMutation(m: Mutation): string {
       return `generation = ${m.n}`;
     case "set_version":
       return `version = ${m.v}`;
+    case "create_app":
+      return `spawned app: ${m.title ?? m.appType}${m.url ? ` → ${m.url}` : ""}`;
+    case "close_app":
+      return `closed window ${m.windowId.slice(0, 8)}`;
+    case "focus_app":
+      return `focused window ${m.windowId.slice(0, 8)}`;
+    case "move_window":
+      return `moved window ${m.windowId.slice(0, 8)} → (${m.x},${m.y})`;
+    case "run_terminal":
+      return `$ ${m.command.slice(0, 64)}`;
+    case "rollback":
+      return `↺ ROLLBACK — restored previous snapshot`;
   }
 }

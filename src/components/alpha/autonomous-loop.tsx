@@ -2,29 +2,17 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
+import { useOS } from "@/lib/alpha/os-store";
 import { captureScreenshot, think } from "@/lib/alpha/ai-client";
 import type { Mutation } from "@/lib/alpha/mutations";
 import type { BeforeAfter } from "@/lib/alpha/mutations";
 
-const CYCLE_MS = 28000; // autonomous cycle cadence
-const MUTATION_STEP_MS = 420; // delay between applied mutations for visibility
+const CYCLE_MS = 32000;
+const MUTATION_STEP_MS = 380;
 
-/**
- * AutonomousLoop — the metacognitive heartbeat.
- *
- * Every cycle:
- *  1. capture a BEFORE screenshot of the workspace
- *  2. send screenshot + state to /api/alpha/think
- *  3. receive reasoning + mutations
- *  4. apply mutations one-by-one (animated, dense, visible)
- *  5. capture an AFTER screenshot
- *  6. open the before/after viewer so the user (and the next cycle's AI) can see the change
- *  7. repeat
- *
- * If the user sends a chat message, an immediate cycle fires with that instruction.
- */
 export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject<HTMLElement | null> }) {
   const store = useEvolution;
+  const osStore = useOS;
   const runningRef = useRef(false);
 
   const runCycle = useCallback(
@@ -32,21 +20,30 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
       if (runningRef.current) return;
       runningRef.current = true;
 
-      // Grab actions once — they are stable references in zustand.
       const st = store.getState();
-      const {
-        setAiBusy,
-        applyMutation,
-        setBeforeAfter,
-      } = st;
+      const os = osStore.getState();
+      const { setAiBusy, applyMutation, setBeforeAfter } = st;
 
-      setAiBusy(true, "Observing my own interface…");
+      setAiBusy(true, "Observing my own desktop…");
+
+      // ---- SNAPSHOT before mutations (for rollback) ----
+      const curState = store.getState();
+      const curOs = osStore.getState();
+      const snapshot = os.takeSnapshot(`pre-cycle gen ${curState.generation}`, {
+        windows: curOs.windows,
+        codeLines: curState.codeLines,
+        agents: curState.agents,
+        metrics: curState.metrics,
+        version: curState.version,
+        generation: curState.generation,
+      });
 
       // 1. BEFORE screenshot
       const before = await captureScreenshot(workspaceRef.current, "before");
 
-      // 2. build state snapshot (re-read fresh state)
+      // 2. state snapshot for the LLM
       const s = store.getState();
+      const osS = osStore.getState();
       const codePreview = s.codeLines
         .slice(0, 18)
         .map((l) => {
@@ -76,41 +73,69 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             })),
             recentLogs: s.logs.slice(0, 6).map((l) => `[${l.level}] ${l.agent}: ${l.message}`),
             recentMutations: s.mutationStream.slice(0, 6).map((m) => m.description),
+            windows: osS.windows.map((w) => ({ id: w.id, kind: w.kind, title: w.title })),
+            violations: osS.violationAttempts.slice(0, 4).map((v) => ({ path: v.path, reason: v.reason })),
+            rollbacks: osS.rollbackEvents.length,
           },
           userMessage: userMessage ?? null,
           history: s.chat.slice(-8).map((m) => ({ role: m.role, content: m.content })),
         });
       } catch (err) {
         const msg = err instanceof Error ? err.message : "unknown";
-        applyMutation({
-          type: "add_log",
-          level: "critique",
-          agent: "nucleus",
-          message: `Cognitive call failed: ${msg.slice(0, 70)}`,
-        });
+        applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Cognitive call failed: ${msg.slice(0, 70)}` });
         setAiBusy(false);
         runningRef.current = false;
         return;
       }
 
-      // 4. apply mutations one-by-one with visible delay
+      // 4. apply mutations one-by-one
       setAiBusy(true, result.reasoning || "Applying mutations to my own source…");
 
       const mutations: Mutation[] = Array.isArray(result.mutations) ? result.mutations : [];
       if (result.message) {
         const hasSpeak = mutations.some((m) => m.type === "speak");
         if (!hasSpeak) {
-          mutations.push({
-            type: "speak",
-            message: result.message,
-            reasoning: result.reasoning,
-          });
+          mutations.push({ type: "speak", message: result.message, reasoning: result.reasoning });
         }
       }
+
+      // Track if any mutation was rejected/blocked
+      let hadError = false;
+      const streamBefore = store.getState().mutationStream.length;
 
       for (const m of mutations) {
         applyMutation(m as Mutation);
         await sleep(MUTATION_STEP_MS);
+        // check if the latest mutation stream entry is a violation
+        const stream = store.getState().mutationStream;
+        if (stream.length > streamBefore) {
+          const latest = stream[0];
+          if (latest.kind === "violation") {
+            hadError = true;
+          }
+        }
+      }
+
+      // ---- AUTO-ROLLBACK if the AI broke something ----
+      const afterState = store.getState();
+      const criticalEntropy = afterState.metrics.entropy > 0.95;
+      if (hadError || criticalEntropy) {
+        const reason = criticalEntropy
+          ? "Entropy exceeded critical threshold (0.95) — system destabilising."
+          : "A mutation was rejected by validation/security.";
+        const restored = osStore.getState().rollback(snapshot, reason);
+        // restore evolution state from snapshot
+        store.setState({
+          codeLines: restored.codeLines,
+          agents: restored.agents,
+          metrics: restored.metrics,
+        });
+        store.getState().applyMutation({
+          type: "add_log",
+          level: "heal",
+          agent: "nucleus",
+          message: `↺ ROLLBACK: ${reason} Restored to ${snapshot.label}.`,
+        });
       }
 
       // 5. AFTER screenshot
@@ -134,10 +159,9 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
       setAiBusy(false);
       runningRef.current = false;
     },
-    [store, workspaceRef]
+    [store, osStore, workspaceRef]
   );
 
-  // Autonomous cadence — only when autonomy is on and not busy.
   const autonomy = useEvolution((s) => s.autonomy);
   const aiBusy = useEvolution((s) => s.aiBusy);
   const activeEvolution = useEvolution((s) => s.activeEvolution);
@@ -148,16 +172,11 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   useEffect(() => {
     if (!autonomy) return;
     if (aiBusy || activeEvolution) return;
-    // don't fire while a modal is blocking the view
     if (diffOpen || beforeAfterOpen) return;
-
-    const id = setTimeout(() => {
-      void runCycle();
-    }, CYCLE_MS);
+    const id = setTimeout(() => { void runCycle(); }, CYCLE_MS);
     return () => clearTimeout(id);
   }, [autonomy, aiBusy, activeEvolution, diffOpen, beforeAfterOpen, chat.length, runCycle]);
 
-  // Fire an immediate cycle when the user sends a new message.
   const lastChatLen = useRef(chat.length);
   useEffect(() => {
     if (chat.length > lastChatLen.current) {

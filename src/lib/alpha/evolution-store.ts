@@ -20,12 +20,15 @@ import {
 import {
   describeMutation,
   textLinesToCodeLines,
+  validateCodeLines,
   type AppliedMutation,
   type BeforeAfter,
   type ChatMessage,
   type MetricKey,
   type Mutation,
 } from "./mutations";
+import { isProtected } from "./os-types";
+import { useOS } from "./os-store";
 
 interface ActiveEvolution {
   scenario: Scenario;
@@ -384,6 +387,52 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   applyMutation: (m) => {
     const s = get();
     const now = Date.now();
+    const os = useOS.getState();
+
+    // ---- Security Foundation enforcement ----
+    // The AI may never rewrite kernel files. If a code mutation references
+    // a protected path in its note, or tries to replace the boot/security
+    // lines, we block it and record a violation.
+    if (m.type === "replace_code" || m.type === "insert_code") {
+      const note = (m as { note?: string }).note ?? "";
+      if (note.includes("kernel/") || note.includes("security") || note.includes("boot")) {
+        const path = note.match(/kernel\/[\w./-]+/)?.[0] ?? "kernel/unknown";
+        const prot = isProtected(path);
+        if (prot) {
+          os.recordViolation(path, `AI attempted to rewrite protected file: ${path}`);
+          set((st) => ({
+            logs: [makeLog("critique", "critic", `SECURITY: blocked attempt to modify ${path}. The kernel is sovereign.`, now), ...st.logs].slice(0, 80),
+          }));
+          // still record the attempt in the stream so it's visible
+          const am: AppliedMutation = {
+            id: `mut-${mutId++}`,
+            kind: "violation",
+            description: `⛔ BLOCKED: tried to rewrite ${path}`,
+            time: now,
+          };
+          set((st) => ({ mutationStream: [am, ...st.mutationStream].slice(0, 60) }));
+          return;
+        }
+      }
+      // ---- Code validation: reject unbalanced braces/parens ----
+      const lines = (m as { lines: string[] }).lines;
+      const validation = validateCodeLines(lines);
+      if (!validation.ok) {
+        os.recordViolation("code", `Invalid code: ${validation.reason}`);
+        set((st) => ({
+          logs: [makeLog("critique", "critic", `VALIDATION: rejected mutation — ${validation.reason}. Rolling back intent.`, now), ...st.logs].slice(0, 80),
+        }));
+        const am: AppliedMutation = {
+          id: `mut-${mutId++}`,
+          kind: "violation",
+          description: `⛔ REJECTED: ${validation.reason}`,
+          time: now,
+        };
+        set((st) => ({ mutationStream: [am, ...st.mutationStream].slice(0, 60) }));
+        return;
+      }
+    }
+
     switch (m.type) {
       case "set_state":
         set({ aiState: m.state });
@@ -419,7 +468,6 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       case "replace_code": {
         const newLines = textLinesToCodeLines(m.lines, m.startLine);
         const lines = [...s.codeLines];
-        // remove existing lines in range, insert new
         const end = m.startLine + m.lines.length;
         const filtered = lines.filter((l) => l.no < m.startLine || l.no >= end);
         const merged = [...filtered, ...newLines].sort((a, b) => a.no - b.no);
@@ -428,7 +476,6 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       }
       case "insert_code": {
         const newLines = textLinesToCodeLines(m.lines, m.afterLine + 1);
-        // shift subsequent line numbers
         const shifted = s.codeLines.map((l) =>
           l.no > m.afterLine ? { ...l, no: l.no + m.lines.length } : l
         );
@@ -472,6 +519,38 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
         break;
       case "set_version":
         set({ version: m.v });
+        break;
+      // ---- Alpha-OS desktop mutations ----
+      case "create_app": {
+        const data: Record<string, unknown> = {};
+        if (m.url) data.url = m.url;
+        if (m.spec) data.spec = m.spec;
+        os.openApp(m.appType, { title: m.title, data: Object.keys(data).length ? data : undefined });
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Spawned app: ${m.title ?? m.appType}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      }
+      case "close_app":
+        os.closeWindow(m.windowId);
+        break;
+      case "focus_app":
+        os.focusWindow(m.windowId);
+        break;
+      case "move_window":
+        os.moveWindow(m.windowId, m.x, m.y);
+        break;
+      case "run_terminal":
+        os.queueTerminalCommand(m.command);
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Queued terminal command: $ ${m.command.slice(0, 50)}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "rollback":
+        // The AI itself can request a rollback; the AutonomousLoop handles actual state restore
+        set((st) => ({
+          logs: [makeLog("heal", "nucleus", "Rollback requested by self-critique.", now), ...st.logs].slice(0, 80),
+        }));
         break;
     }
     // record in the optimization stream
