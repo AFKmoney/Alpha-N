@@ -13,6 +13,7 @@ import { BrowserApp, FilesApp, MonitorApp, SecurityApp, CustomApp, OptionsApp, V
 import { RealCodeEditor } from "./apps/real-code-editor";
 import { MemoryNetworkApp } from "./apps/memory-network";
 import { AppRepositoryApp } from "./apps/app-repository";
+import { WallpaperApp } from "./apps/wallpaper-app";
 import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
 import { EvolutionTree } from "./evolution-tree";
@@ -83,6 +84,8 @@ function renderAppContent(kind: string, windowId: string) {
       return <MemoryNetworkApp />;
     case "repository":
       return <AppRepositoryApp />;
+    case "wallpaper":
+      return <WallpaperApp />;
     case "custom":
       return <CustomApp windowId={windowId} />;
     default:

@@ -106,6 +106,7 @@ function defaultRect(kind: AppKind, index: number): { x: number; y: number; w: n
     realcode: { w: 720, h: 500 },
     memory: { w: 680, h: 500 },
     repository: { w: 560, h: 460 },
+    wallpaper: { w: 600, h: 500 },
     custom: { w: 560, h: 400 },
   };
   const r = base[kind];

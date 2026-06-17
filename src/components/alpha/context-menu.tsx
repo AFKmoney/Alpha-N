@@ -257,6 +257,17 @@ export function buildDesktopActions(
       icon: <span className="font-mono-ae text-sm">⊞</span>,
       onClick: () => os.openApp("repository"),
     },
+    {
+      label: "",
+      icon: null,
+      onClick: () => {},
+      separator: true,
+    },
+    {
+      label: "Change Wallpaper",
+      icon: <span className="font-mono-ae text-sm">◐</span>,
+      onClick: () => os.openApp("wallpaper"),
+    },
   ];
 }
 

@@ -89,3 +89,22 @@ model MutationReward {
   helpful      Boolean
   createdAt    DateTime @default(now())
 }
+
+// User preferences — persisted OS state per user
+model UserPreference {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// Custom wallpapers created by the AI or user
+model Wallpaper {
+  id        String   @id @default(cuid())
+  name      String
+  presetId  String   // the generative art preset identifier
+  config    String   @default("{}") // JSON config (colors, speed, etc.)
+  isCustom  Boolean  @default(false) // true if AI-generated
+  createdAt DateTime @default(now())
+}
