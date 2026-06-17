@@ -57,7 +57,6 @@ export function MemoryNetworkApp() {
   const [health, setHealth] = useState<{ ok: boolean; nodes: number; edges: number; cache_hits: number } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
-  const [dragging, setDragging] = useState<string | null>(null);
 
   const fetchGraph = useCallback(async () => {
     try {

@@ -45,8 +45,6 @@ pub struct HolographicMemoryArena {
     pub dim: usize,
     /// Number of (key, value) pairs folded into the matrix.
     pub pair_count: usize,
-    /// Working buffer for FFT (avoid allocations in the hot path).
-    fft_buffer: Vec<Complex64>,
 }
 
 /// Minimal complex number for FFT operations.
@@ -95,7 +93,6 @@ impl HolographicMemoryArena {
             state: vec![0.0; 2 * dim],
             dim,
             pair_count: 0,
-            fft_buffer: vec![Complex64::default(); dim],
         }
     }
 

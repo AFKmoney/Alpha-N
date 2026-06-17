@@ -18,7 +18,6 @@ use crate::graph::{AddNodeRequest, ScoredNode};
 use crate::tfidf::SparseVec;
 use crate::AppState;
 use axum::extract::State;
-use axum::http::StatusCode;
 use axum::response::IntoResponse;
 use axum::Json;
 use serde::Deserialize;
@@ -346,7 +345,7 @@ pub async fn chat_completions(
 
             // Synthesis: if there's a "synth" question, its answer is the final response
             pipeline.stages_completed.push("synthesize".into());
-            if let Some(synth) = sub_questions.iter().find(|s| s.id == "synth") {
+            if sub_questions.iter().any(|s| s.id == "synth") {
                 answers.get("synth").cloned().unwrap_or_default()
             } else {
                 // No explicit synthesis — combine all answers

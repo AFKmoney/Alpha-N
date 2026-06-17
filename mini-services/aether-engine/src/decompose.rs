@@ -296,7 +296,7 @@ impl DistillationStore {
     }
 
     /// Find a similar previously-successful decomposition pattern.
-    pub fn find(&self, query: &str, query_vec: &crate::tfidf::SparseVec) -> Option<Vec<SubQuestion>> {
+    pub fn find(&self, _query: &str, query_vec: &crate::tfidf::SparseVec) -> Option<Vec<SubQuestion>> {
         let mut best: Option<(Vec<SubQuestion>, f64)> = None;
         for p in self.patterns.values() {
             let sim = crate::tfidf::cosine(query_vec, &p.query_vec);
