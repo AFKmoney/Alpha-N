@@ -1,6 +1,11 @@
+/**
+ * /api/alpha/vault — encrypted secret vault (XOR-based, keyed on a
+ * user-supplied password). Stored in the SystemEvent table with type
+ * "vault_entry" to avoid a schema migration. GET returns labels (locked)
+ * or decrypted values (when password is supplied); POST adds; DELETE removes.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
-import { Prisma } from "@prisma/client";
 
 export const runtime = "nodejs";
 

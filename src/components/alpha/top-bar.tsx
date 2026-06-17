@@ -1,3 +1,8 @@
+/**
+ * top-bar.tsx — the left-edge floating sidebar with brand logo, council
+ * chips, action buttons (evolve, generate, chat, autonomy, synapse, flow),
+ * layout controls, and model settings. Exports TopBar and SideBarHint.
+ */
 "use client";
 
 import { useEffect, useRef, useState } from "react";

@@ -1,3 +1,9 @@
+/**
+ * evolution-store.ts — central Zustand store for AI state, code, memory,
+ * plans, and goals. The brain of Alpha-OS. Synchronized with the Akasha
+ * persistent memory via /api/alpha/akasha and with the Aether Engine
+ * memory graph via /api/alpha/aether.
+ */
 "use client";
 
 import { create } from "zustand";
@@ -84,7 +90,7 @@ interface EvolutionStore {
 
   // --- Akasha: persistent memory the AI never forgets ---
   akashaMemory: AkashaMemory[]; // lessons, facts, architecture notes
-  akashaIntentions: AkashaIntention[]; // TODOs the AI sets for itself
+  akashaIntentions: AkashaIntention[]; // self-assigned tasks the AI sets for itself
   dynamicPrompt: string; // self-authored additions to the system prompt
   plans: AkashaPlan[]; // multi-step long-horizon plans
   goals: AkashaGoal[]; // the AI's persistent desires

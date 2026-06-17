@@ -1,10 +1,17 @@
+/**
+ * autonomous-loop.tsx — the real AI driver. Captures a screenshot of the
+ * desktop, sends it + full OS state to /api/alpha/think, then applies the
+ * returned mutations one-by-one. Handles web_search, read_file, write_file,
+ * debate, execute_code, compile, and rollback tools. Runs on a 22s cadence
+ * in "active" mode and reacts to user chat / unhandled events in both modes.
+ */
 "use client";
 
 import { useCallback, useEffect, useRef } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile } from "@/lib/alpha/ai-client";
-import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type FileReadResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry } from "@/lib/alpha/mutations";
+import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry } from "@/lib/alpha/mutations";
 
 const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
 const MUTATION_STEP_MS = 320;

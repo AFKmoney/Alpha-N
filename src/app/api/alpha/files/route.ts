@@ -1,3 +1,10 @@
+/**
+ * /api/alpha/files — read/write real files inside the project root.
+ * Reads (GET) return file contents or directory listings. Writes (POST)
+ * are blocked for protected paths (kernel/, prisma/schema.prisma, .env,
+ * Caddyfile) and path-traversal attempts. This is how the AI inspects
+ * and modifies its own source.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";

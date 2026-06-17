@@ -1,3 +1,8 @@
+/**
+ * context-menu.tsx — the global right-click menu system for Alpha-OS.
+ * Exposes the ContextMenu overlay component plus builder helpers for the
+ * standard window / desktop / dock action sets.
+ */
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
@@ -16,6 +21,7 @@ import {
 } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
+import type { AppKind } from "@/lib/alpha/os-types";
 import { cn } from "@/lib/utils";
 
 /**
@@ -305,7 +311,7 @@ export function buildDockAppActions(
     actions.push({
       label: `Open ${label}`,
       icon: <Square className="h-3.5 w-3.5" />,
-      onClick: () => os.openApp(kind as any),
+      onClick: () => os.openApp(kind as AppKind),
     });
   }
 

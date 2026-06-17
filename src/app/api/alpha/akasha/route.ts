@@ -1,3 +1,9 @@
+/**
+ * /api/alpha/akasha — persistent cognition CRUD. Stores the AI's immortal
+ * memory (lessons, facts, architecture), intentions, plans, goals, and
+ * reactive events in the DB so they survive reloads. The AI hydrates from
+ * this route on boot and writes to it after every cognitive action.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { db } from "@/lib/db";
 

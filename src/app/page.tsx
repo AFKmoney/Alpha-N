@@ -16,7 +16,7 @@ import { WindowManager } from "@/components/alpha/window-manager";
 import { Dock, DockHint } from "@/components/alpha/dock";
 import { StartMenu } from "@/components/alpha/start-menu";
 import { LiveMutationViewer } from "@/components/alpha/live-mutation-viewer";
-import { ContextMenu, triggerContextMenu, buildDesktopActions, buildDockAppActions } from "@/components/alpha/context-menu";
+import { ContextMenu, triggerContextMenu, buildDesktopActions } from "@/components/alpha/context-menu";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import type { AppKind } from "@/lib/alpha/os-types";

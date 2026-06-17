@@ -1,3 +1,9 @@
+/**
+ * /api/alpha/debate — runs a 4-agent council debate on a proposal.
+ * Each agent (architect, developer, critic, optimizer) is a separate LLM
+ * call with a distinct persona and mandate. Results are tallied into a
+ * consensus verdict: PROCEED / REVISE / REJECT.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { callLLM } from "@/lib/alpha/model-config";
 

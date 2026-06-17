@@ -1,3 +1,9 @@
+/**
+ * os-store.ts — Zustand store for the Alpha-OS window manager.
+ * Tracks windows, layout (tile/float), virtual desktops, snapshots,
+ * rollback events, security violations, and the terminal command queue.
+ * The AI rewrites everything EXCEPT the kernel — this store is sovereign.
+ */
 "use client";
 
 import { create } from "zustand";

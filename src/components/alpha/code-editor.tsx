@@ -1,3 +1,8 @@
+/**
+ * code-editor.tsx — the "Loom" view of the AI's own genome (core/nucleus.ts).
+ * Shows living, syntax-highlighted code with mutating-line markers, a
+ * lifeline compile-pulse, ghost-writing projection, and click-to-explain.
+ */
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
@@ -6,7 +11,6 @@ import { Check, Circle, FileCode2, GitCommitVertical, AlertTriangle } from "luci
 import { useEvolution, useCodeLines } from "@/lib/alpha/evolution-store";
 import { GHOST_CODE, type CodeToken } from "@/lib/alpha/evolution-data";
 import { cn } from "@/lib/utils";
-
 
 const TOKEN_COLORS: Record<CodeToken["kind"], string> = {
   kw: "text-[oklch(0.74_0.22_300)]", // amethyst keywords

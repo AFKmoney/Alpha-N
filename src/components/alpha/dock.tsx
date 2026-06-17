@@ -1,3 +1,9 @@
+/**
+ * dock.tsx — bottom-edge floating launcher that appears on mouse proximity.
+ * Mirrors the macOS dock pattern: hidden by default, slides in when the
+ * cursor approaches the bottom of the screen. Also exposes DockHint
+ * (a small persistent tab inviting the user toward the dock).
+ */
 "use client";
 
 import { useEffect, useRef, useState } from "react";

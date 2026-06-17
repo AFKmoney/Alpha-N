@@ -1,3 +1,8 @@
+/**
+ * window-manager.tsx — renders all visible windows on the active desktop.
+ * Computes the tiled layout (when in tile mode) and dispatches to the
+ * correct app component via renderAppContent.
+ */
 "use client";
 
 import { AnimatePresence } from "framer-motion";
@@ -16,8 +21,6 @@ import { AppRepositoryApp } from "./apps/app-repository";
 import { WallpaperApp } from "./apps/wallpaper-app";
 import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
-import { EvolutionTree } from "./evolution-tree";
-import { CodeEditor } from "./code-editor";
 import { LoomApp } from "./apps/loom-app";
 import { SplitHandleBar } from "./split-handle";
 

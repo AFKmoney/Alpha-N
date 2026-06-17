@@ -2,6 +2,14 @@
 name = "aether-engine"
 version = "1.0.0"
 edition = "2021"
+authors = ["AFKmoney"]
+license = "MIT"
+description = "Aether Engine v3.0 — a Rust inference middleware that multiplies small GGUF model capacity 10x via ten interconnected innovations (HCM, CLT, ATD, cognitive decomposition, knowledge distillation, and more)."
+repository = "https://github.com/AFKmoney/aether-engine"
+homepage = "https://github.com/AFKmoney/aether-engine"
+keywords = ["llm", "inference", "gguf", "rag", "reasoning"]
+categories = ["science", "text-processing"]
+readme = "README.md"
 
 [dependencies]
 axum = "0.7"

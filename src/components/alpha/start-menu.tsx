@@ -1,3 +1,7 @@
+/**
+ * start-menu.tsx — always-visible bottom-left launcher with a searchable
+ * app list. Filters the DOCK_APPS registry by name; click to launch.
+ */
 "use client";
 
 import { useState } from "react";
@@ -5,7 +9,6 @@ import { motion, AnimatePresence } from "framer-motion";
 import { Search, X } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { DOCK_APPS, type AppKind } from "@/lib/alpha/os-types";
-import { cn } from "@/lib/utils";
 
 export function StartMenu() {
   const { openApp, windows } = useOS();

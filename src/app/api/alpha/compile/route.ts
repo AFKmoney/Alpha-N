@@ -1,3 +1,8 @@
+/**
+ * /api/alpha/compile — runs real `tsc --noEmit` and/or `eslint` on the
+ * project (30s timeout per check). Returns stdout/stderr so the AI can
+ * see and fix its own compile errors in the next cycle.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";

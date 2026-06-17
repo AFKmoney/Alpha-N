@@ -1,3 +1,8 @@
+/**
+ * evolution-log.tsx — the streaming EVOLUTION.md view (the AI's stream of
+ * consciousness). Color-coded by log level (observe, critique, hypothesis,
+ * deploy, evolve, heal) and tagged by agent.
+ */
 "use client";
 
 import { useEffect, useRef } from "react";

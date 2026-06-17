@@ -1,16 +1,38 @@
-//! HTTP handlers for the Aether Engine v2.0.
+//! # HTTP Handlers — the 10-stage Cognitive Pipeline (Aether Engine v3.0)
 //!
-//! The chat_completions handler implements the full cognitive pipeline:
-//!   1. Action cache check (instant for repeated queries)
-//!   2. Graph retrieval (TF-IDF semantic search + edge expansion)
-//!   3. Context compression (40K→4K tokens preserving signal)
-//!   4. Complexity analysis (Simple / Moderate / Complex)
-//!   5. Cognitive decomposition (Complex queries are broken into sub-questions)
-//!   6. Sequential sub-question solving (each with fresh context + dependency injection)
-//!   7. Synthesis (combine sub-answers into final response)
-//!   8. Self-verification (check quality; retry once if failed)
-//!   9. Knowledge distillation (store successful decomposition patterns)
-//!  10. Speculative prefetch (warm cache for likely-next queries)
+//! All Axum route handlers live here. The flagship handler,
+//! [`chat_completions`], implements the full cognitive pipeline that gives
+//! Aether Engine its 10x capacity multiplier over a vanilla GGUF backend:
+//!
+//!   1. **Action cache check** — instant for repeated/similar queries
+//!      ([`crate::cache::ActionCache`]).
+//!   2. **Graph retrieval** — TF-IDF semantic search + 1-hop edge expansion
+//!      ([`crate::graph::MemoryGraph::retrieve`]).
+//!   3. **Context compression** — 40K→4K tokens preserving signal
+//!      ([`crate::compress::compress`]).
+//!   4. **Complexity analysis** — Simple / Moderate / Complex
+//!      ([`crate::decompose::analyze_complexity`]).
+//!   5. **Cognitive decomposition** — Complex queries are broken into
+//!      sub-questions ([`crate::decompose::decompose`]).
+//!   6. **Sequential sub-question solving** — each with fresh context +
+//!      dependency injection (driven by this module via [`call_backend`]).
+//!   7. **Synthesis** — combine sub-answers into final response (the
+//!      `"synth"` sub-question, or a plain concatenation fallback).
+//!   8. **ATD verification** — dual-graph likelihood-vs-entropy collision;
+//!      retry once if failed ([`crate::atd::verify`]).
+//!   9. **Knowledge distillation** — store successful decomposition patterns
+//!      ([`crate::decompose::DistillationStore`]).
+//!  10. **Speculative prefetch** — warm the retrieval cache for
+//!      graph-adjacent queries so the next related query is instant
+//!      ([`prefetch`]).
+//!
+//! # OpenAI compatibility
+//!
+//! [`chat_completions`] mirrors the OpenAI `POST /v1/chat/completions`
+//! contract (request body in, chat-completion-shaped JSON out) so the
+//! engine can be dropped in as a drop-in replacement for any OpenAI-compatible
+//! client. The backend it forwards to is *also* OpenAI-compatible (default
+//! `http://localhost:11434/v1`, i.e. Ollama).
 
 use crate::compress;
 use crate::decompose::{self, Complexity, PipelineState, SubQuestion};
@@ -25,12 +47,18 @@ use serde_json::json;
 use std::collections::HashMap;
 use std::time::Instant;
 
+/// Request body for `POST /graph/search`.
 #[derive(Deserialize)]
 pub struct SearchRequest {
+    /// The free-text query to search the semantic memory graph with.
     pub query: String,
+    /// Maximum number of results to return. Defaults to 5 when omitted
+    /// (see [`default_limit`]).
     #[serde(default = "default_limit")]
     pub limit: usize,
 }
+
+/// Serde default for [`SearchRequest::limit`] = `5`.
 fn default_limit() -> usize {
     5
 }
@@ -38,6 +66,13 @@ fn default_limit() -> usize {
 // ---------------------------------------------------------------------------
 // GET /health
 // ---------------------------------------------------------------------------
+
+/// Lightweight liveness + telemetry endpoint.
+///
+/// Returns the engine version, graph/cache/distillation sizes, and the full
+/// counters block from [`Stats`](crate::Stats) (baseline pipeline + HCM +
+/// CLT + ATD). Used by Alpha-OS to render the Memory Network dashboard
+/// and to detect when the engine needs a restart.
 pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
     let (nodes, edges) = {
         let g = state.graph.lock().await;
@@ -81,6 +116,14 @@ pub async fn health(State(state): State<AppState>) -> impl IntoResponse {
 // ---------------------------------------------------------------------------
 // GET /pipeline — pipeline statistics for the Memory Network app
 // ---------------------------------------------------------------------------
+
+/// Per-pipeline-stage statistics for the Memory Network visualizer.
+///
+/// Similar to [`health`] but focused on pipeline behavior: decomposition
+/// counts, verification rates, distillation hit ratios, and CLT/ATD
+/// breakdowns. Returns derived metrics (e.g. `verification_rate`,
+/// `clt_avg_steps`, `atd_validation_rate`) in addition to raw counters so
+/// the UI doesn't have to recompute them.
 pub async fn pipeline_stats(State(state): State<AppState>) -> impl IntoResponse {
     let stats = state.stats.lock().await;
     let distillation_count = state.distillation.lock().await.len();
@@ -120,6 +163,17 @@ pub async fn pipeline_stats(State(state): State<AppState>) -> impl IntoResponse 
 // ---------------------------------------------------------------------------
 // POST /graph/add
 // ---------------------------------------------------------------------------
+
+/// Add (or replace) a node in the semantic memory graph.
+///
+/// Side-effect: the new node is *also* folded into the Holographic Context
+/// Memory arena as `(hash(id), hash(text))` so the HCM has a parallel
+/// associative copy of every graph memory. The fold counter in
+/// [`Stats::hcm_pairs_folded`](crate::Stats) is bumped accordingly.
+///
+/// Returns `{ ok, id, edges_created }` where `edges_created` is the total
+/// number of adjacency entries created across the whole graph by the
+/// recompute (see [`MemoryGraph::add`](crate::graph::MemoryGraph::add)).
 pub async fn graph_add(
     State(state): State<AppState>,
     Json(req): Json<AddNodeRequest>,
@@ -144,6 +198,10 @@ pub async fn graph_add(
 // ---------------------------------------------------------------------------
 // GET /graph
 // ---------------------------------------------------------------------------
+
+/// Return the full graph (nodes + deduplicated edges) for the Memory
+/// Network visualizer. Edges are deduplicated so each undirected edge
+/// appears once (the internal adjacency list stores both directions).
 pub async fn graph_get(State(state): State<AppState>) -> impl IntoResponse {
     let body = {
         let g = state.graph.lock().await;
@@ -155,6 +213,12 @@ pub async fn graph_get(State(state): State<AppState>) -> impl IntoResponse {
 // ---------------------------------------------------------------------------
 // POST /graph/search
 // ---------------------------------------------------------------------------
+
+/// Pure semantic search (no edge expansion). Returns the top-`limit`
+/// nodes by cosine similarity to the query. Differs from the pipeline's
+/// Stage-2 retrieval in that it does *not* do the 1-hop edge expansion —
+/// callers that want raw TF-IDF hits use this; the pipeline uses
+/// [`MemoryGraph::retrieve`](crate::graph::MemoryGraph::retrieve).
 pub async fn graph_search(
     State(state): State<AppState>,
     Json(req): Json<SearchRequest>,
@@ -169,6 +233,11 @@ pub async fn graph_search(
 // ---------------------------------------------------------------------------
 // POST /graph/clear
 // ---------------------------------------------------------------------------
+
+/// Wipe the entire graph (nodes + edges + vectorizer corpus stats).
+/// Returns the number of nodes that were cleared. Does *not* clear the
+/// HCM arena or the caches — those are separate resources with their own
+/// lifecycles.
 pub async fn graph_clear(State(state): State<AppState>) -> impl IntoResponse {
     let cleared = {
         let mut g = state.graph.lock().await;
@@ -189,6 +258,22 @@ pub async fn graph_clear(State(state): State<AppState>) -> impl IntoResponse {
 // When interrupted, the current pipeline's backend call is aborted (if in
 // progress) and the new instruction is queued for the next cycle.
 // ---------------------------------------------------------------------------
+
+/// Interrupt the current inference and inject a new directive.
+///
+/// Accepts a JSON body of the shape `{ "action": "interrupt", "new_instruction": "…" }`.
+/// Two `action` values are supported:
+///
+/// - `"interrupt"` — injects `new_instruction` into the memory graph as
+///   a high-priority `"interrupt"` node so the next retrieval picks it up.
+///   A full implementation would also cancel the in-flight backend request
+///   via an `AbortHandle`; the current implementation queues the directive
+///   for the next cycle (see the inline comment in the handler body).
+/// - `"status"` — returns whether an inference is currently in progress
+///   (always `false` in this version; would be `true` if a pipeline is
+///   running once the abort-handle wiring is added).
+///
+/// Any other `action` value yields `{ ok: false, error: "unknown action" }`.
 pub async fn interrupt(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
@@ -241,6 +326,41 @@ pub async fn interrupt(
 // ---------------------------------------------------------------------------
 // POST /v1/chat/completions — the full cognitive pipeline (OpenAI-compatible)
 // ---------------------------------------------------------------------------
+
+/// OpenAI-compatible chat-completions endpoint that runs the full 10-stage
+/// cognitive pipeline.
+///
+/// This is the heart of Aether Engine. It accepts an OpenAI-shaped
+/// `messages` array, augments it through the pipeline (cache → graph →
+/// compress → complexity → decompose → solve → synthesize → ATD-verify →
+/// distill → cache → prefetch), and returns an OpenAI-shaped
+/// `chat.completion` JSON response.
+///
+/// # Complexity branching
+///
+/// - **Simple** → one backend call.
+/// - **Moderate** → two backend calls: a think step, then an answer step
+///   that consumes the think step's output.
+/// - **Complex** → check the distillation store for a reusable
+///   decomposition pattern; if hit, reuse it; otherwise run [`decompose`].
+///   Solve each sub-question sequentially with dependency injection, then
+///   synthesize.
+///
+/// # ATD retry
+///
+/// Stage 8 runs [`atd::verify`] on the synthesized response. If it fails,
+/// a single retry is attempted with a recommendation-specific prompt
+/// injection (`FallBackToSimpleShot` ⇒ clean simple retry; anything else
+/// ⇒ standard retry prompt). If the retry also fails ATD, the response
+/// with the better `collision_delta` is returned.
+///
+/// # Caching & prefetch
+///
+/// Stage 1 checks the action cache (instant return on hit). The final
+/// response is always written back to the action cache. Stage 10 spawns a
+/// detached [`prefetch`] task that warms the retrieval cache for the
+/// top-3 retrieved nodes' texts so a follow-up question on the same
+/// subgraph is fast.
 pub async fn chat_completions(
     State(state): State<AppState>,
     Json(body): Json<serde_json::Value>,
@@ -258,9 +378,14 @@ pub async fn chat_completions(
     };
 
     // ---- Stage 1: Action cache fast-path (similarity > 0.95) ----
+    // The cache is checked *before* any backend work — a hit short-circuits
+    // the entire pipeline and returns instantly.
     {
         let cache = state.cache.lock().await;
         if let Some((resp, _sim)) = cache.get(&query, &qvec) {
+            // Explicitly drop the cache guard *before* re-locking stats to
+            // avoid holding two mutexes simultaneously (which would be a
+            // deadlock risk if the lock order were ever reversed elsewhere).
             drop(cache);
             state.stats.lock().await.cache_hits += 1;
             return Json(openai_completion(&resp, "aether-cache")).into_response();
@@ -274,6 +399,9 @@ pub async fn chat_completions(
     };
 
     // ---- Stage 3: Context compression (40K→4K preserving signal) ----
+    // Two-tier: hit the retrieval cache first (warmed by the prefetcher);
+    // on miss, run the compressor and write the result back so the next
+    // similar query skips this expensive step.
     let context_block = {
         let mut cache = state.cache.lock().await;
         if let Some(ctx) = cache.get_retrieval(&query, &qvec) {
@@ -333,7 +461,13 @@ pub async fn chat_completions(
             pipeline.sub_questions = sub_questions.clone();
             pipeline.stages_completed.push("solve".into());
 
-            // Solve each sub-question sequentially, injecting dependency answers
+            // Solve each sub-question sequentially, injecting dependency
+            // answers. The decomposer emits sub-questions in dependency
+            // order (topological), so by the time we reach sub-question N
+            // every entry it depends_on is already in the `answers` map.
+            // The backend sees only one sub-question at a time, with a
+            // fresh window — that's the whole point of decomposition:
+            // the model never has to hold more than one step in its head.
             let mut answers: HashMap<String, String> = HashMap::new();
             for sub in &sub_questions {
                 let sub_prompt = decompose::build_sub_prompt(sub, &answers);
@@ -418,6 +552,11 @@ pub async fn chat_completions(
     pipeline.total_latency_ms = start.elapsed().as_millis() as u64;
 
     // ---- Stage 9: Knowledge distillation (store successful patterns) ----
+    // Only Complex queries get a reusable decomposition pattern. Moderate
+    // queries use a fixed two-step template that doesn't benefit from
+    // caching, and Simple queries don't decompose at all. The pattern is
+    // stored only when ATD verification passed — we don't want to
+    // distill a *failed* decomposition (it would poison future lookups).
     if matches!(complexity, Complexity::Complex) && pipeline.verification_passed {
         let mut distill = state.distillation.lock().await;
         distill.store(&query, qvec.clone(), pipeline.sub_questions.clone());
@@ -594,6 +733,11 @@ fn inject_simple_retry(body: &serde_json::Value, context_block: &str, query: &st
     out
 }
 
+/// Build the Aether system-prompt prefix that wraps the retrieved memory
+/// context block. Prepended to (or inserted into) every backend request's
+/// system message by [`augment_messages`]. Frames the model as the
+/// cognitive core of Alpha-OS and instructs it to use the retrieved
+/// memories to inform its response.
 fn aether_prompt(context_block: &str) -> String {
     format!(
         "# AETHER RETRIEVED MEMORY CONTEXT (semantically relevant memories from your graph)\n\
@@ -608,6 +752,11 @@ fn aether_prompt(context_block: &str) -> String {
 // Utility helpers
 // ---------------------------------------------------------------------------
 
+/// Extract the last user-message content from an OpenAI-shaped `messages`
+/// array. Used as the retrieval query for Stage 2 (graph retrieval) and
+/// as the cache key for Stage 1 (action cache). Walks the messages in
+/// reverse so the *most recent* user turn wins (handles multi-turn chats
+/// where the user has refined their question across several messages).
 fn extract_user_query(body: &serde_json::Value) -> String {
     let messages = match body.get("messages").and_then(|m| m.as_array()) {
         Some(m) => m,
@@ -623,6 +772,10 @@ fn extract_user_query(body: &serde_json::Value) -> String {
     String::new()
 }
 
+/// Normalize a `content` field (which the OpenAI spec allows to be either
+/// a plain string or an array of `{type, text}` parts) into a single
+/// space-joined string. Non-text parts (images, tool calls, …) are
+/// dropped because the retrieval pipeline is text-only.
 fn content_to_string(c: &serde_json::Value) -> String {
     match c {
         serde_json::Value::String(s) => s.clone(),
@@ -641,6 +794,10 @@ fn content_to_string(c: &serde_json::Value) -> String {
     }
 }
 
+/// Extract the assistant's text content from an OpenAI-shaped chat
+/// completion response body. Returns `None` if the body isn't valid JSON
+/// or doesn't contain the expected `choices[0].message.content` path —
+/// the caller ([`call_backend`]) turns that into a fallback response.
 fn extract_assistant_content(body: &str) -> Option<String> {
     let v: serde_json::Value = serde_json::from_str(body).ok()?;
     v.get("choices")
@@ -651,6 +808,13 @@ fn extract_assistant_content(body: &str) -> Option<String> {
         .map(|s| s.to_string())
 }
 
+/// Build an OpenAI-shaped `chat.completion` JSON response from a plain
+/// text content string. Used by every code path that returns to the
+/// client (cache hit, pipeline output, fallback). The `model` field is
+/// set to a synthetic name (`"aether-cache"`, `"aether-pipeline"`, …)
+/// so callers can tell at a glance which path produced the response.
+/// Token-usage counters are zeroed because the engine doesn't have access
+/// to the backend's tokenizer.
 fn openai_completion(content: &str, model: &str) -> serde_json::Value {
     json!({
         "id": format!("chatcmpl-aether-{}", randomish_id()),
@@ -666,6 +830,12 @@ fn openai_completion(content: &str, model: &str) -> serde_json::Value {
     })
 }
 
+/// Build a graceful offline-fallback response when the backend is
+/// unreachable, returns an error, or produces an empty body. The fallback
+/// surfaces the retrieved context block verbatim so the user still gets
+/// *some* useful signal (the semantic memories) even when inference is
+/// unavailable. `reason` is interpolated into the message so the UI can
+/// show *why* the fallback fired.
 fn fallback_response(context_block: &str, reason: &str) -> String {
     format!(
         "[Aether Engine — offline fallback]\n\
@@ -676,6 +846,10 @@ fn fallback_response(context_block: &str, reason: &str) -> String {
     )
 }
 
+/// Generate a pseudo-random hex ID from the current nanosecond timestamp.
+/// Used as the `id` field of synthetic `chat.completion` responses. Not
+/// cryptographically unique, but unique enough within a single process's
+/// lifetime to disambiguate concurrent responses.
 fn randomish_id() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let nanos = SystemTime::now()
@@ -685,6 +859,10 @@ fn randomish_id() -> String {
     format!("{:x}", nanos)
 }
 
+/// Current Unix timestamp in seconds. Used as the `created` field of
+/// synthetic `chat.completion` responses. Named `chrono_now` for historical
+/// reasons (a previous version used the `chrono` crate); the implementation
+/// now uses `std::time` directly to keep the dependency tree empty.
 fn chrono_now() -> u64 {
     use std::time::{SystemTime, UNIX_EPOCH};
     SystemTime::now()

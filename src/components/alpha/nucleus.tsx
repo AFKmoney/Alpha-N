@@ -1,3 +1,8 @@
+/**
+ * nucleus.tsx — the 3D energy sphere at the heart of Alpha-N. A cloud of
+ * particles projected onto a fibresphere, rotating, with a luminous core
+ * and reactive halo. Color shifts with the AI state (cyan → gold → amethyst).
+ */
 "use client";
 
 import { useEffect, useRef } from "react";

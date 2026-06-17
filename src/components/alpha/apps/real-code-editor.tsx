@@ -1,7 +1,12 @@
+/**
+ * real-code-editor.tsx — file browser + viewer for the actual project source.
+ * Reads via /api/alpha/files, syntax-highlights TS/TSX/JS, and auto-refreshes
+ * every 3s so the user sees the AI's real-time edits. Read-only — the AI
+ * writes via the write_file mutation through the AutonomousLoop.
+ */
 "use client";
 
 import { useEffect, useState, useCallback, useRef } from "react";
-import { motion, AnimatePresence } from "framer-motion";
 import { FileCode2, Folder, RefreshCw, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
 

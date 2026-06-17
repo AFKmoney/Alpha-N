@@ -1,3 +1,8 @@
+/**
+ * obsidian-background.tsx — the desktop wallpaper renderer. Loads the active
+ * wallpaper from the API on mount (persistent), tracks mouse position, and
+ * listens for `alpha-wallpaper-change` events to switch instantly.
+ */
 "use client";
 
 import { useEffect, useRef, useState } from "react";

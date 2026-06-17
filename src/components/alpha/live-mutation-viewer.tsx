@@ -1,3 +1,8 @@
+/**
+ * live-mutation-viewer.tsx — side panel toggled via an arrow on the right
+ * edge of the screen. Shows every mutation N-Core applies in real time,
+ * with a "thinking" banner when the AI is busy.
+ */
 "use client";
 
 import { useState } from "react";

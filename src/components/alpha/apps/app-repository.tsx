@@ -1,8 +1,13 @@
+/**
+ * app-repository.tsx — grid view of all available Alpha-OS apps.
+ * Users can launch apps (click) or drag them onto the desktop. Shows
+ * which apps are currently open with a checkmark badge.
+ */
 "use client";
 
 import { useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Grid3x3, Search, X, ExternalLink } from "lucide-react";
+import { motion } from "framer-motion";
+import { Grid3x3, Search, X } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { DOCK_APPS, type AppKind } from "@/lib/alpha/os-types";
 import { cn } from "@/lib/utils";

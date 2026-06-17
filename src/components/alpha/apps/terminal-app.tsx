@@ -1,3 +1,9 @@
+/**
+ * terminal-app.tsx — real PTY terminal connected to the machine via
+ * socket.io (bridged by the kernel/pty-bridge mini-service on port 3003).
+ * The AI can queue commands via the os-store; output is parsed for errors
+ * and pushed to the reactive event queue (Layer B) so the AI can react.
+ */
 "use client";
 
 import { useEffect, useRef } from "react";

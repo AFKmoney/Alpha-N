@@ -1,3 +1,8 @@
+/**
+ * neural-diff.tsx — the evolution diff modal. Shows a notification toast
+ * first; clicking it opens the full modal with the AI's insight, before→after
+ * metric cards, and the healing diff patch.
+ */
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";

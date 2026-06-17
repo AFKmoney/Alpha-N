@@ -1,3 +1,8 @@
+/**
+ * /api/alpha/search — web search proxy via the z-ai-web-dev-sdk.
+ * Used when the AI emits a web_search mutation to research self-improvement
+ * techniques. Returns ranked results with title, URL, snippet, host, date.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import ZAI from "z-ai-web-dev-sdk";
 

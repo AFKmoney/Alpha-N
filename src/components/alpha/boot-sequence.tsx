@@ -1,3 +1,9 @@
+/**
+ * boot-sequence.tsx — cinematic init overlay shown on first load.
+ * Cycles through "mounting layers" messages then fades out to reveal the
+ * live OS. The real LLM-driven AutonomousLoop takes over after boot —
+ * nothing here is scripted evolution.
+ */
 "use client";
 
 import { useEffect, useState } from "react";

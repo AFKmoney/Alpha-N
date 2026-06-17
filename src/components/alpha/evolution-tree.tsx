@@ -1,3 +1,7 @@
+/**
+ * evolution-tree.tsx — the Timeline of Speciation. Clickable version nodes
+ * that re-open the NeuralDiff modal for any past evolution.
+ */
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";

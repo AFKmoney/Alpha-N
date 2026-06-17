@@ -1,3 +1,9 @@
+/**
+ * /api/alpha/think — the cognitive endpoint. Receives a screenshot + full
+ * OS state + optional user message, calls the configured LLM (cloud or
+ * Aether), and returns structured mutations for the AutonomousLoop to apply.
+ * Retries with exponential backoff on 429/network errors (capped at 5 min).
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { callLLM } from "@/lib/alpha/model-config";
 

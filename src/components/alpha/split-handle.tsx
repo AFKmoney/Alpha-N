@@ -1,3 +1,8 @@
+/**
+ * split-handle.tsx — the draggable gap between two tiled windows.
+ * Dragging it changes the split ratio, which resizes BOTH neighbors
+ * (one grows, the other shrinks) — the core behavior of a tiling WM.
+ */
 "use client";
 
 import { useEffect, useRef, useState } from "react";

@@ -1,3 +1,7 @@
+/**
+ * agent-panel.tsx — the Cognitive Council view: 4 agents (architect,
+ * developer, auditor, optimizer) with live load rings and streaming thoughts.
+ */
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";

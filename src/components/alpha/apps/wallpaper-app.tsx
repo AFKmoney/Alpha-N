@@ -1,9 +1,16 @@
+/**
+ * wallpaper-app.tsx — select, preview, save, and delete animated wallpapers.
+ * 79 built-in canvas presets + custom AI-created wallpapers. Live preview
+ * thumbnails render the actual animation. Persists selection via
+ * /api/alpha/wallpaper and dispatches `alpha-wallpaper-change` to the
+ * ObsidianBackground so the desktop switches instantly.
+ */
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
-import { motion, AnimatePresence } from "framer-motion";
-import { Trash2, Plus, Check, Search, X } from "lucide-react";
-import { WALLPAPER_PRESETS, type WallpaperPreset, type WallpaperRenderCtx } from "@/lib/alpha/wallpaper-presets";
+import { motion } from "framer-motion";
+import { Trash2, Check, Search, X } from "lucide-react";
+import { WALLPAPER_PRESETS, type WallpaperPreset } from "@/lib/alpha/wallpaper-presets";
 import { cn } from "@/lib/utils";
 
 interface SavedWallpaper {

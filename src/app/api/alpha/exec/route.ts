@@ -1,7 +1,13 @@
+/**
+ * /api/alpha/exec — sandboxed code execution. Writes the AI's code to
+ * /tmp/alpha-sandbox and runs it (bash via `bash`, TypeScript via `bun`,
+ * JavaScript via `node`) with an 8s default timeout. Returns stdout,
+ * stderr, and exit code so the AI can verify its hypotheses.
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
-import { writeFile, readFile, unlink, mkdir } from "fs/promises";
+import { writeFile, unlink, mkdir } from "fs/promises";
 import path from "path";
 
 export const runtime = "nodejs";

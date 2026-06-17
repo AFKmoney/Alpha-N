@@ -1,3 +1,8 @@
+/**
+ * window-frame.tsx — the draggable, resizable chrome around every Alpha-OS app.
+ * Supports float and tile modes, with title-bar buttons (explain-with-AI,
+ * reload, minimize, maximize, close) and 8-way resize handles in float mode.
+ */
 "use client";
 
 import { useEffect, useRef, useState } from "react";

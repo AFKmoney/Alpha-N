@@ -1,3 +1,8 @@
+/**
+ * top-bar-logo.tsx — the Alpha-N brand logo: a breathing "α" glyph with
+ * pulsing glow, a counter-rotating outer ring, and the "self-evolving OS"
+ * tagline. Exports AnimatedLogo.
+ */
 "use client";
 
 import { motion } from "framer-motion";

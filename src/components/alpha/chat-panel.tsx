@@ -1,3 +1,9 @@
+/**
+ * chat-panel.tsx — the floating conversation overlay with N-Core.
+ * Shows the full message history (with collapsible reasoning), a live
+ * "thinking" indicator, and an autonomy-mode toggle. Also exports
+ * ChatToggle — a standalone floating button that opens the panel.
+ */
 "use client";
 
 import { useEffect, useRef, useState } from "react";

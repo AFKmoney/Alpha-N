@@ -1,3 +1,8 @@
+/**
+ * before-after.tsx — the visual-diff overlay that pops up after each AI cycle.
+ * Shows a notification toast first; clicking it expands the full modal with
+ * side-by-side before/after screenshots of the desktop.
+ */
 "use client";
 
 import { useState } from "react";

@@ -1,3 +1,7 @@
+/**
+ * status-bar.tsx — sticky footer showing live telemetry (CPU, RAM, entropy,
+ * coherence), AI state, generation, version, and uptime.
+ */
 "use client";
 
 import { motion } from "framer-motion";

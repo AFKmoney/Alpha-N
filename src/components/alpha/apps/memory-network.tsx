@@ -1,9 +1,14 @@
+/**
+ * memory-network.tsx — interactive visualization of the Aether Engine's
+ * semantic memory graph. Every node is a memory, plan, goal, or fact;
+ * every edge is a semantic similarity link. The user can explore the
+ * AI's mind as a living constellation and run semantic searches.
+ */
 "use client";
 
 import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import { Network, RefreshCw, X, Search, Zap } from "lucide-react";
-import { cn } from "@/lib/utils";
+import { Network, RefreshCw, X, Search } from "lucide-react";
 
 interface GraphNode {
   id: string;

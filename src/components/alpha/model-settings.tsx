@@ -1,3 +1,9 @@
+/**
+ * model-settings.tsx — modal for switching between Cloud (GLM 4.6V via
+ * z-ai SDK) and Aether (Rust + GGUF + memory graph) inference providers.
+ * Includes a GGUF model picker that scans the models/ folder and a
+ * "test connection" button that pings the configured backend.
+ */
 "use client";
 
 import { useEffect, useState } from "react";

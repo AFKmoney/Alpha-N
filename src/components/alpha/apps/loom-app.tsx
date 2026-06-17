@@ -1,6 +1,15 @@
+/**
+ * loom-app.tsx — real-time AI code observation panel. Three tabs:
+ *  - Live Code: the actual code lines the AI is modifying, with changed
+ *    lines highlighted
+ *  - Reasoning: the AI's current reasoning + recent mutation stream
+ *  - Q&A: ask "why did you change line 8?" and get an answer derived
+ *    from the real mutation stream + reasoning
+ * Plus a suggestion-injection bar that interrupts the AI's next cycle.
+ */
 "use client";
 
-import { useEffect, useState, useRef, useCallback } from "react";
+import { useEffect, useState, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Send, Brain, Lightbulb, Eye, MessageSquare, RefreshCw, Sparkles } from "lucide-react";
 import { useEvolution } from "@/lib/alpha/evolution-store";

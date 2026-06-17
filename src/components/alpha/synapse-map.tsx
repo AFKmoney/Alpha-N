@@ -1,3 +1,8 @@
+/**
+ * synapse-map.tsx — full-screen SVG constellation of the OS architecture.
+ * Renders 9 nodes (nucleus, agents, modules, memory, UI) with edges that
+ * ignite when the council deliberates or a node is hovered.
+ */
 "use client";
 
 import { useMemo, useState } from "react";

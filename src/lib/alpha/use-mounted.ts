@@ -1,3 +1,8 @@
+/**
+ * use-mounted.ts — hydration-safe "is this the client?" hook.
+ * Returns false during SSR and true after hydration, so time/locale-
+ * dependent rendering can be guarded without causing hydration mismatches.
+ */
 "use client";
 
 import { useSyncExternalStore } from "react";

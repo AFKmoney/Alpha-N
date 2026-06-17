@@ -1,3 +1,7 @@
+/**
+ * optimization-stream.tsx — the mutation feed panel showing every action
+ * the AI applied in real time, with a live reasoning banner when busy.
+ */
 "use client";
 
 import { motion, AnimatePresence } from "framer-motion";

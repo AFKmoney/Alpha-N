@@ -1,3 +1,13 @@
+/**
+ * os-apps.tsx — collection of smaller Alpha-OS apps:
+ *  - BrowserApp: proxied iframe (strips X-Frame-Options so any site loads)
+ *  - FilesApp: real filesystem browser via /api/alpha/files
+ *  - MonitorApp: live telemetry, council load, snapshots, rollbacks
+ *  - SecurityApp: live kernel protection log + violation attempts
+ *  - VaultApp: XOR-encrypted secret store
+ *  - CustomApp: AI-defined app rendered from a spec
+ *  - OptionsApp: autonomy / theme / reset controls
+ */
 "use client";
 
 import { useState, useEffect } from "react";
@@ -5,10 +15,6 @@ import { motion } from "framer-motion";
 import { Globe, Lock, RotateCw, Shield, ShieldAlert, X } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
-import { AgentPanel } from "../agent-panel";
-import { EvolutionLog } from "../evolution-log";
-import { EvolutionTree } from "../evolution-tree";
-import { CodeEditor } from "../code-editor";
 import { cn } from "@/lib/utils";
 
 // ============ BROWSER APP (with proxy — works on ANY site including google.com) ============

@@ -1,3 +1,8 @@
+/**
+ * evolution-controller.tsx — the organism's heartbeat. Mounts a 1s interval
+ * that ticks telemetry (uptime, metrics, agent load). All self-improvement
+ * is driven by the real LLM via AutonomousLoop — nothing here is scripted.
+ */
 "use client";
 
 import { useEffect } from "react";

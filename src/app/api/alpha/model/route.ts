@@ -1,3 +1,9 @@
+/**
+ * /api/alpha/model — get/set the active model configuration and test the
+ * connection. POST with `{ action: "test" }` pings the configured backend
+ * (cloud SDK init or Aether Engine /health). POST without action updates
+ * the in-memory config (provider, aetherModel, aetherHasVision, cloudModel).
+ */
 import { NextRequest, NextResponse } from "next/server";
 import { getModelConfig, setModelConfig, testModelConnection, type ModelConfig } from "@/lib/alpha/model-config";
 

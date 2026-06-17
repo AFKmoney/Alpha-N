@@ -1,3 +1,9 @@
+/**
+ * ai-client.ts — browser-side helpers for talking to the Alpha-N API routes.
+ * Wraps fetch calls to /api/alpha/* (think, search, files, debate, exec,
+ * compile) and provides the screenshot-capture utility used by the
+ * AutonomousLoop to feed the AI a visual of its own desktop.
+ */
 "use client";
 
 import { toPng } from "html-to-image";
