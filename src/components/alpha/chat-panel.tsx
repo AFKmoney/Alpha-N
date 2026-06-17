@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Bot, Send, Sparkles, User, ChevronDown, X } from "lucide-react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
+import { useMounted } from "@/lib/alpha/use-mounted";
 import { cn } from "@/lib/utils";
 
 export function ChatPanel() {
@@ -20,6 +21,7 @@ export function ChatPanel() {
 
   const [input, setInput] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
+  const mounted = useMounted();
 
   useEffect(() => {
     if (scrollRef.current) {
@@ -130,7 +132,7 @@ export function ChatPanel() {
                     </details>
                   )}
                   <div className="mt-0.5 font-mono-ae text-[0.55rem] text-muted-foreground/40">
-                    {new Date(m.time).toLocaleTimeString("en-US", { hour12: false })}
+                    {mounted ? new Date(m.time).toLocaleTimeString("en-US", { hour12: false }) : "—"}
                   </div>
                 </div>
               </motion.div>
