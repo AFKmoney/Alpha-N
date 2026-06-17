@@ -129,7 +129,7 @@ export function MemoryNetworkApp() {
           <h3 className="font-mono-ae text-sm font-semibold">Memory Network</h3>
           {health && (
             <span className="font-mono-ae text-[0.55rem] text-muted-foreground">
-              {health.nodes} nodes · {health.edges} edges · {health.cache_hits} cache hits
+              {health.nodes} nodes · {health.edges} edges · {health.decompositions || 0} decomps · {health.distillation_patterns || 0} patterns
             </span>
           )}
         </div>
