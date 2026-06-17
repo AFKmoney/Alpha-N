@@ -14,6 +14,7 @@ import {
   Zap,
 } from "lucide-react";
 import { Nucleus } from "./nucleus";
+import { ModelSettings } from "./model-settings";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import { DESKTOPS } from "@/lib/alpha/os-types";
@@ -123,6 +124,7 @@ export function TopBar() {
         </div>
 
         <LayoutControls />
+        <ModelSettings />
 
         <button
           onClick={triggerGenerate}

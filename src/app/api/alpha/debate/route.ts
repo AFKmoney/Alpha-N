@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { callLLM } from "@/lib/alpha/model-config";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -55,26 +55,21 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const zai = await ZAI.create();
     const { proposal, context, recentActions } = body;
 
     // Run all 4 agents in parallel — each is a separate LLM call.
+    // Uses the universal callLLM (cloud or local model).
     const agentRoles = ["architect", "developer", "critic", "optimizer"];
     const opinions: AgentOpinion[] = [];
 
     const results = await Promise.allSettled(
       agentRoles.map(async (role) => {
-        const completion = await zai.chat.completions.create({
-          messages: [
-            { role: "assistant", content: AGENT_PROMPTS[role] },
-            {
-              role: "user",
-              content: `# CONTEXT\n${context}\n\n# RECENT ACTIONS\n${recentActions.slice(-5).join("\n")}\n\n# PROPOSAL\n${proposal}\n\nEvaluate this proposal. Remember: end with VERDICT: PROCEED/REVISE/REJECT.`,
-            },
-          ],
-          thinking: { type: "disabled" },
-        });
-        const text = completion.choices[0]?.message?.content ?? "";
+        const response = await callLLM(
+          AGENT_PROMPTS[role],
+          `# CONTEXT\n${context}\n\n# RECENT ACTIONS\n${recentActions.slice(-5).join("\n")}\n\n# PROPOSAL\n${proposal}\n\nEvaluate this proposal. Remember: end with VERDICT: PROCEED/REVISE/REJECT.`,
+          null // no screenshot for debate — text only
+        );
+        const text = response.content;
         return {
           agent: role,
           opinion: text.slice(0, 500),

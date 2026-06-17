@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import ZAI from "z-ai-web-dev-sdk";
+import { callLLM } from "@/lib/alpha/model-config";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -201,8 +201,6 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const zai = await ZAI.create();
-
     const windowsText = body.state.windows.length
       ? body.state.windows.map((w) => `  - ${w.id} [${w.kind}] "${w.title}" @ (${w.x},${w.y}) ${w.w}×${w.h} desktop=${w.desktop}`).join("\n")
       : "  (no windows open)";
@@ -333,46 +331,32 @@ ${body.userMessage ? `\n# USER INSTRUCTION (obey this now)\n${body.userMessage}`
 # SCREENSHOT — YOUR PERSISTENT VISUAL
 A screenshot of my own current desktop is attached. This is your body — always look at it to verify your code dimensions well against the visible UI. Look at it carefully and act on what you see.`;
 
-    const content: Array<
-      | { type: "text"; text: string }
-      | { type: "image_url"; image_url: { url: string } }
-    > = [{ type: "text", text: stateText }];
+    const fullSystemPrompt = SYSTEM_PROMPT + (body.state.dynamicPrompt ? `\n\n# SELF-AUTHORED PROMPT ADDITIONS (you wrote these to evolve your own behavior):\n${body.state.dynamicPrompt}` : "");
 
-    if (body.screenshot) {
-      content.push({ type: "image_url", image_url: { url: body.screenshot } });
-    }
-
-    // Retry with exponential backoff for 429 (rate limit) errors.
-    // The LLM API may rate-limit us; we retry up to 3 times with increasing delays.
-    let completion;
+    // Retry with exponential backoff for 429 (rate limit) / network errors.
+    // Uses the universal callLLM which routes to cloud (z-ai SDK) or local
+    // (OpenAI-compatible: Ollama, llama.cpp, vLLM, LM Studio) based on config.
+    let raw = "";
     let lastError: Error | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
-        completion = await zai.chat.completions.createVision({
-          messages: [
-            { role: "assistant", content: SYSTEM_PROMPT + (body.state.dynamicPrompt ? `\n\n# SELF-AUTHORED PROMPT ADDITIONS (you wrote these to evolve your own behavior):\n${body.state.dynamicPrompt}` : "") },
-            { role: "user", content },
-          ],
-          thinking: { type: "disabled" },
-        });
+        const response = await callLLM(fullSystemPrompt, stateText, body.screenshot);
+        raw = response.content;
         lastError = null;
         break;
       } catch (err) {
         lastError = err instanceof Error ? err : new Error(String(err));
         const msg = lastError.message;
-        // Only retry on 429 or network errors
-        if (msg.includes("429") || msg.includes("Too many requests") || msg.includes("fetch failed") || msg.includes("ECONNRESET")) {
-          // exponential backoff: 2s, 4s, 8s
+        if (msg.includes("429") || msg.includes("Too many requests") || msg.includes("fetch failed") || msg.includes("ECONNRESET") || msg.includes("Local LLM error")) {
           const delay = Math.pow(2, attempt + 1) * 1000;
           await new Promise((r) => setTimeout(r, delay));
           continue;
         }
-        // Non-retryable error — break immediately
         break;
       }
     }
 
-    if (lastError || !completion) {
+    if (lastError) {
       const message = lastError?.message ?? "unknown error";
       const isRateLimit = message.includes("429") || message.includes("Too many requests");
       return NextResponse.json({
@@ -387,8 +371,6 @@ A screenshot of my own current desktop is attached. This is your body — always
         mutations: [], // NO fallback mutations — don't create noise during errors
       });
     }
-
-    const raw = completion.choices[0]?.message?.content ?? "";
 
     let parsed: { reasoning?: string; message?: string; mutations?: unknown[] };
     try {

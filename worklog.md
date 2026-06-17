@@ -383,3 +383,36 @@ Verification:
 - The system now gracefully backs off when rate-limited instead of looping.
 - 0 runtime errors, 0 console errors, lint clean.
 - The AI will resume normal cycling once the rate limit clears, with the error counter resetting on the first successful cycle.
+
+---
+Task ID: LOCAL-MODEL
+Agent: Z.ai (main)
+Task: Make the AI backend model-agnostic — support both cloud (GLM via z-ai SDK) and local models (Ollama/vLLM/LM Studio/llama.cpp) with the same OS control power.
+
+Work Log:
+- Built model-config.ts: a universal LLM abstraction layer with ModelConfig (provider: cloud|local, endpoint, model name, vision support). callLLM() routes to cloud (z-ai SDK createVision) or local (fetch to OpenAI-compatible /chat/completions). For local models without vision, the screenshot is omitted — the AI still has full OS control via the rich text context (all code, logs, mutations, memory, plans, goals, events). testModelConnection() health-checks the configured model.
+- Built /api/alpha/model route: GET returns current config, POST updates config or runs a connection test. Config is stored in-memory (server-side) and persists for the server's lifetime.
+- Refactored /api/alpha/think: replaced direct z-ai SDK calls with callLLM(). The think route now works with BOTH cloud and local models transparently. Same retry/backoff logic applies to both.
+- Refactored /api/alpha/debate: replaced direct z-ai SDK calls with callLLM(). All 4 agent debate calls now route through the same universal caller.
+- Built ModelSettings UI component: a modal accessible via a button in the top bar (shows "cloud" or "local" with an icon). The panel has:
+  - Provider toggle: Cloud (GLM 4.6V with vision) vs Local (Ollama/vLLM/LM Studio)
+  - Local settings: endpoint URL (default http://localhost:11434/v1 for Ollama), model name (default llama3.2-vision), API key (optional), vision support checkbox
+  - "test connection" button — health-checks the model and shows latency or error
+  - "save & apply" button — persists the config
+- Vision handling: when a local model doesn't support vision (localHasVision=false), the screenshot is omitted from the LLM call. The AI still sees the full OS state as text (code, logs, mutations, windows with positions, memory, plans, goals, debate results, exec results, compile results, reward model, events). This means even a text-only local model retains full OS control — it just can't "see" the screenshot.
+
+Verification:
+- Model API: GET returns config (provider:cloud, localEndpoint:http://localhost:11434/v1, localModel:llama3.2-vision). ✅
+- Switch to local: POST {provider:local} → config updated. ✅
+- Test local connection: POST {action:test} → ok:false, error:"fetch failed" (Ollama not running — graceful failure). ✅
+- Test cloud connection: POST {action:test} → ok:true, "Connected to glm-4.6v (cloud) in 2ms". ✅
+- Restore to cloud: POST {provider:cloud} → restored. ✅
+- UI: ModelSettings button visible in top bar ("cloud" with cloud icon). Clicking opens modal with provider toggle, local fields, test/save buttons. ✅
+- 0 runtime errors, 0 console errors, lint clean.
+
+Stage Summary:
+- Alpha-OS now supports BOTH cloud and local AI models with the same full OS control power.
+- Cloud: GLM 4.6V via z-ai-web-dev-sdk (with vision — sees screenshots).
+- Local: any OpenAI-compatible model (Ollama, vLLM, LM Studio, llama.cpp) — with or without vision.
+- The user switches via the Model Settings panel in the top bar. The same mutation system, debate, planning, file access, code execution, compilation, and reward learning all work identically with either backend.
+- A text-only local model (no vision) still has complete OS control — it just operates from the rich text context instead of screenshots.
