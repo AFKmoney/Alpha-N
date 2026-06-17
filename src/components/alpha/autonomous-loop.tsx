@@ -448,7 +448,8 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
     // wait much longer before the next cycle. 0 errors = 22s, 1 = 44s,
     // 2 = 88s, 3 = 176s, etc. This prevents hammering a rate-limited API.
     const errors = consecutiveErrorsRef.current;
-    const delay = errors > 0 ? CYCLE_MS * Math.pow(2, errors) : CYCLE_MS;
+    // Cap the backoff at 5 min (300000ms) so the AI eventually retries
+    const delay = Math.min(errors > 0 ? CYCLE_MS * Math.pow(2, errors) : CYCLE_MS, 300000);
     const id = setTimeout(() => { void runCycle(); }, delay);
     return () => clearTimeout(id);
   }, [autonomy, aiBusy, activeEvolution, chat.length, runCycle]);

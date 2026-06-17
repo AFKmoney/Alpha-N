@@ -185,7 +185,7 @@ export async function testModelConnection(): Promise<{
       latency: Date.now() - start,
       error: err instanceof Error ? err.message : "unknown",
       provider: config.provider,
-      model: config.provider === "local" ? config.localModel : config.cloudModel,
+      model: config.provider === "aether" ? (config.aetherModel || "aether") : config.cloudModel,
     };
   }
 }
