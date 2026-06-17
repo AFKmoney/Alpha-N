@@ -11,6 +11,7 @@ import { WindowFrame } from "./window-frame";
 import { TerminalApp } from "./apps/terminal-app";
 import { BrowserApp, FilesApp, MonitorApp, SecurityApp, CustomApp, OptionsApp, VaultApp } from "./apps/os-apps";
 import { RealCodeEditor } from "./apps/real-code-editor";
+import { MemoryNetworkApp } from "./apps/memory-network";
 import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
 import { EvolutionTree } from "./evolution-tree";
@@ -76,6 +77,8 @@ function renderAppContent(kind: string, windowId: string) {
       return <VaultApp />;
     case "realcode":
       return <RealCodeEditor />;
+    case "memory":
+      return <MemoryNetworkApp />;
     case "custom":
       return <CustomApp windowId={windowId} />;
     default:

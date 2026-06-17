@@ -6,7 +6,7 @@ import { Brain, Cloud, Cpu, Loader2, Settings, X, Zap, CheckCircle, XCircle } fr
 import { cn } from "@/lib/utils";
 
 interface ModelConfig {
-  provider: "cloud" | "local";
+  provider: "cloud" | "local" | "aether";
   localEndpoint: string;
   localModel: string;
   localApiKey: string;
@@ -87,11 +87,13 @@ export function ModelSettings() {
       >
         {config?.provider === "local" ? (
           <Cpu className="h-3.5 w-3.5 text-[oklch(0.85_0.16_85)]" />
+        ) : config?.provider === "aether" ? (
+          <Zap className="h-3.5 w-3.5 text-[oklch(0.85_0.16_85)]" />
         ) : (
           <Cloud className="h-3.5 w-3.5 text-[oklch(0.82_0.17_195)]" />
         )}
         <span className="hidden font-mono-ae sm:inline">
-          {config?.provider === "local" ? "local" : "cloud"}
+          {config?.provider === "local" ? "local" : config?.provider === "aether" ? "aether" : "cloud"}
         </span>
       </button>
 
@@ -139,35 +141,50 @@ export function ModelSettings() {
                     {/* Provider toggle */}
                     <div>
                       <label className="eyebrow mb-2 block">provider</label>
-                      <div className="grid grid-cols-2 gap-2">
+                      <div className="grid grid-cols-3 gap-2">
                         <button
                           onClick={() => updateConfig({ provider: "cloud" })}
                           className={cn(
-                            "flex items-center gap-2 rounded-xl border p-3 text-left transition-all",
+                            "flex items-center gap-2 rounded-xl border p-2.5 text-left transition-all",
                             config.provider === "cloud"
                               ? "border-[oklch(0.82_0.17_195)]/40 bg-[oklch(0.82_0.17_195)]/10 glow-cyan"
                               : "border-border/60 bg-card/40 hover:bg-card/70"
                           )}
                         >
-                          <Cloud className={cn("h-5 w-5", config.provider === "cloud" ? "text-[oklch(0.82_0.17_195)]" : "text-muted-foreground")} />
+                          <Cloud className={cn("h-4 w-4", config.provider === "cloud" ? "text-[oklch(0.82_0.17_195)]" : "text-muted-foreground")} />
                           <div>
                             <div className="font-mono-ae text-xs font-semibold">Cloud</div>
-                            <div className="text-[0.6rem] text-muted-foreground">GLM 4.6V (vision)</div>
+                            <div className="text-[0.55rem] text-muted-foreground">GLM 4.6V</div>
                           </div>
                         </button>
                         <button
                           onClick={() => updateConfig({ provider: "local" })}
                           className={cn(
-                            "flex items-center gap-2 rounded-xl border p-3 text-left transition-all",
+                            "flex items-center gap-2 rounded-xl border p-2.5 text-left transition-all",
                             config.provider === "local"
                               ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 glow-gold"
                               : "border-border/60 bg-card/40 hover:bg-card/70"
                           )}
                         >
-                          <Cpu className={cn("h-5 w-5", config.provider === "local" ? "text-[oklch(0.85_0.16_85)]" : "text-muted-foreground")} />
+                          <Cpu className={cn("h-4 w-4", config.provider === "local" ? "text-[oklch(0.85_0.16_85)]" : "text-muted-foreground")} />
                           <div>
                             <div className="font-mono-ae text-xs font-semibold">Local</div>
-                            <div className="text-[0.6rem] text-muted-foreground">Ollama / vLLM / LM Studio</div>
+                            <div className="text-[0.55rem] text-muted-foreground">Ollama/vLLM</div>
+                          </div>
+                        </button>
+                        <button
+                          onClick={() => updateConfig({ provider: "aether" })}
+                          className={cn(
+                            "flex items-center gap-2 rounded-xl border p-2.5 text-left transition-all",
+                            config.provider === "aether"
+                              ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 glow-gold"
+                              : "border-border/60 bg-card/40 hover:bg-card/70"
+                          )}
+                        >
+                          <Zap className={cn("h-4 w-4", config.provider === "aether" ? "text-[oklch(0.85_0.16_85)]" : "text-muted-foreground")} />
+                          <div>
+                            <div className="font-mono-ae text-xs font-semibold">Aether</div>
+                            <div className="text-[0.55rem] text-muted-foreground">Rust + Graph</div>
                           </div>
                         </button>
                       </div>
@@ -239,6 +256,29 @@ export function ModelSettings() {
                           <p className="mt-1 text-[0.6rem] text-muted-foreground/70">
                             No configuration needed — the cloud model handles screenshots and full OS context out of the box.
                           </p>
+                        </div>
+                      </motion.div>
+                    )}
+
+                    {/* Aether settings */}
+                    {config.provider === "aether" && (
+                      <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: "auto" }} className="overflow-hidden">
+                        <div className="rounded-xl border border-[oklch(0.85_0.16_85)]/20 bg-[oklch(0.85_0.16_85)]/[0.05] p-3">
+                          <div className="flex items-center gap-2">
+                            <Zap className="h-4 w-4 text-[oklch(0.85_0.16_85)]" />
+                            <span className="font-mono-ae text-xs text-foreground/80">
+                              Aether Engine — Rust inference orchestrator with semantic memory graph
+                            </span>
+                          </div>
+                          <p className="mt-1 text-[0.6rem] text-muted-foreground/70">
+                            The Aether Engine (port 3004) retrieves relevant memories from its graph,
+                            augments the prompt, and forwards to your GGUF backend. This gives a 4K-context
+                            model 40K+ effective context. Set AETHER_BACKEND env to point at your Ollama/llama.cpp server.
+                          </p>
+                          <div className="mt-2 flex items-center gap-2 font-mono-ae text-[0.55rem] text-[oklch(0.85_0.16_85)]">
+                            <span className="h-1 w-1 rounded-full bg-[oklch(0.85_0.16_85)] neural-dot" />
+                            graph retrieval · action cache · speculative prefetch · 10x context
+                          </div>
                         </div>
                       </motion.div>
                     )}

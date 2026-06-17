@@ -15,6 +15,7 @@ export type AppKind =
   | "options"
   | "vault"
   | "realcode"
+  | "memory"
   | "custom";
 
 export interface AppWindow {
@@ -268,5 +269,6 @@ export const DOCK_APPS: DockApp[] = [
   { kind: "evolution", label: "Evo Log", icon: "❖", defaultTitle: "EVOLUTION.md" },
   { kind: "security", label: "Kernel", icon: "⛨", defaultTitle: "Security Foundation" },
   { kind: "vault", label: "Vault", icon: "🔒", defaultTitle: "Secret Vault" },
+  { kind: "memory", label: "Memory", icon: "✦", defaultTitle: "Memory Network" },
   { kind: "options", label: "Options", icon: "⚙", defaultTitle: "Options" },
 ];

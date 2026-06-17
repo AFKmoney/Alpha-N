@@ -4,7 +4,7 @@
 // The user can switch at runtime; the same OS control power applies to both.
 // ============================================================
 
-export type ModelProvider = "cloud" | "local";
+export type ModelProvider = "cloud" | "local" | "aether";
 
 export interface ModelConfig {
   provider: ModelProvider;
@@ -78,6 +78,9 @@ export async function callLLM(
 
   if (config.provider === "local") {
     return callLocalLLM(config, systemPrompt, userText, screenshot, options);
+  }
+  if (config.provider === "aether") {
+    return callAetherLLM(systemPrompt, userText, screenshot);
   }
   return callCloudLLM(systemPrompt, userText, screenshot, options);
 }
@@ -161,6 +164,45 @@ async function callLocalLLM(
   return { content, raw: data };
 }
 
+// ---- Aether Engine (Rust inference orchestrator with memory graph) ----
+// The Aether Engine at localhost:3004 receives the chat request, retrieves
+// relevant memories from its semantic graph, augments the prompt, and
+// forwards to the backend GGUF model. It returns an OpenAI-compatible response.
+async function callAetherLLM(
+  systemPrompt: string,
+  userText: string,
+  screenshot?: string | null
+): Promise<LLMResponse> {
+  // The Aether Engine proxy is at /api/alpha/aether?endpoint=chat
+  const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [{ type: "text", text: userText }];
+  if (screenshot) {
+    content.push({ type: "image_url", image_url: { url: screenshot } });
+  }
+
+  const res = await fetch("/api/alpha/aether?endpoint=chat", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      model: "aether",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content },
+      ],
+      stream: false,
+      temperature: 0.7,
+    }),
+  });
+
+  if (!res.ok) {
+    const errText = await res.text().catch(() => "");
+    throw new Error(`Aether Engine error (${res.status}): ${errText.slice(0, 200)}`);
+  }
+
+  const data = await res.json();
+  const result = data?.choices?.[0]?.message?.content ?? "";
+  return { content: result, raw: data };
+}
+
 /**
  * Quick health check — test if the configured model is reachable.
  * Returns { ok, latency, error }.
@@ -196,6 +238,14 @@ export async function testModelConnection(): Promise<{
         return { ok: false, latency: Date.now() - start, error: `HTTP ${res.status}: ${errText.slice(0, 100)}`, provider: "local", model: config.localModel };
       }
       return { ok: true, latency: Date.now() - start, provider: "local", model: config.localModel };
+    } else if (config.provider === "aether") {
+      // Aether Engine — check health endpoint
+      const res = await fetch("http://localhost:3004/health", { cache: "no-store" });
+      if (res.ok) {
+        const data = await res.json();
+        return { ok: true, latency: Date.now() - start, provider: "aether", model: `aether (${data.nodes} nodes, ${data.edges} edges, ${data.cache_hits} cache hits)` };
+      }
+      return { ok: false, latency: Date.now() - start, error: "Aether Engine not reachable on port 3004", provider: "aether", model: "aether" };
     } else {
       // Cloud — just check the SDK loads
       const ZAI = (await import("z-ai-web-dev-sdk")).default;

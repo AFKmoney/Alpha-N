@@ -762,6 +762,12 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "memory", text, kind }),
     }).catch(() => {});
+    // push to Aether Engine memory graph (fire-and-forget)
+    void fetch("/api/alpha/aether?endpoint=graph/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: `mem-${memId}`, text, kind, metadata: { source: "akasha" } }),
+    }).catch(() => {});
   },
   addIntention: (text, priority) => {
     set((s) => {
@@ -814,6 +820,12 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "plan", goal: plan.goal, rationale: plan.rationale, steps: plan.steps.map((s) => s.text) }),
     }).catch(() => {});
+    // push to Aether graph
+    void fetch("/api/alpha/aether?endpoint=graph/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: plan.id, text: plan.goal, kind: "plan", metadata: { rationale: plan.rationale } }),
+    }).catch(() => {});
   },
   advancePlan: (id, stepIndex) => {
     set((s) => ({
@@ -843,14 +855,21 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     }).catch(() => {});
   },
   addGoal: (text, level) => {
+    const goalId = `goal-${Date.now()}`;
     set((s) => ({
-      goals: [{ id: `goal-${Date.now()}`, text, level, time: Date.now() }, ...s.goals].slice(0, 20),
+      goals: [{ id: goalId, text, level, time: Date.now() }, ...s.goals].slice(0, 20),
       logs: [makeLog("evolve", "nucleus", `New ${level}-term goal: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
     }));
     void fetch("/api/alpha/akasha", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ type: "goal", text, level }),
+    }).catch(() => {});
+    // push to Aether graph
+    void fetch("/api/alpha/aether?endpoint=graph/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: goalId, text, kind: "goal", metadata: { level } }),
     }).catch(() => {});
   },
   addFileRead: (result) =>
