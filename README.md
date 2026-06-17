@@ -4,6 +4,7 @@
 
 Alpha-N is not an IDE with AI bolted on. It is a living, breathing operating system that observes its own desktop, critiques its own code, and rewrites itself in real time. The AI doesn't live inside the OS — the AI **is** the OS.
 
+<img width="1356" height="626" alt="image" src="https://github.com/user-attachments/assets/aeabb062-16d9-4d54-97e2-04e2d5fb0b54" />
 ---
 
 ## What is this?
