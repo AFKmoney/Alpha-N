@@ -5,8 +5,16 @@ import { Cpu, Database, Gauge, Sparkles, Waves } from "lucide-react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { cn } from "@/lib/utils";
 
+function formatUptime(ms: number) {
+  const s = Math.floor(ms / 1000);
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const sec = s % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+}
+
 export function StatusBar() {
-  const { metrics, version, generation, aiState, activeEvolution } = useEvolution();
+  const { metrics, version, generation, aiState, activeEvolution, uptimeMs } = useEvolution();
 
   const stateLabel =
     aiState === "observing"
@@ -53,7 +61,7 @@ export function StatusBar() {
         <div className="hidden items-center gap-1.5 sm:flex">
           <Sparkles className="h-3 w-3 text-[oklch(0.85_0.16_85)]" />
           <span className="font-mono-ae text-[0.62rem] text-muted-foreground">
-            gen {generation} · v{version}
+            gen {generation} · v{version} · up {formatUptime(uptimeMs)}
           </span>
         </div>
         <div className="hidden h-3 w-px bg-border/60 md:block" />

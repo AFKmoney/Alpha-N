@@ -3,7 +3,7 @@
 import { useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { ObsidianBackground } from "@/components/alpha/obsidian-background";
-import { TopBar } from "@/components/alpha/top-bar";
+import { TopBar, SideBarHint } from "@/components/alpha/top-bar";
 import { StatusBar } from "@/components/alpha/status-bar";
 import { BootSequence } from "@/components/alpha/boot-sequence";
 import { EvolutionController } from "@/components/alpha/evolution-controller";
@@ -57,6 +57,8 @@ export default function Page() {
 
       <MutationFilament />
 
+      {/* Left sidebar — appears on mouse hover (like the bottom dock) */}
+      <SideBarHint />
       <TopBar />
 
       {/* The desktop — what N-Core screenshots and rewrites */}

@@ -1,6 +1,7 @@
 "use client";
 
-import { motion } from "framer-motion";
+import { useEffect, useRef, useState } from "react";
+import { motion, AnimatePresence } from "framer-motion";
 import {
   Activity,
   Bot,
@@ -13,7 +14,7 @@ import {
   Target,
   Zap,
 } from "lucide-react";
-import { Nucleus } from "./nucleus";
+import { AnimatedLogo } from "./top-bar-logo";
 import { ModelSettings } from "./model-settings";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
@@ -34,19 +35,8 @@ const HUE_BG: Record<Agent["hue"], string> = {
   rose: "bg-[oklch(0.7_0.22_15)]",
 };
 
-function formatUptime(ms: number) {
-  const s = Math.floor(ms / 1000);
-  const h = Math.floor(s / 3600);
-  const m = Math.floor((s % 3600) / 60);
-  const sec = s % 60;
-  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
-}
-
 export function TopBar() {
   const {
-    version,
-    generation,
-    uptimeMs,
     aiState,
     agents,
     activeAgent,
@@ -66,16 +56,13 @@ export function TopBar() {
   const busy = aiState !== "observing";
 
   return (
-    <header className="relative z-30 flex items-center justify-between gap-4 border-b border-border/60 px-5 py-3 backdrop-blur-xl sm:px-7">
-      {/* Left: animated logo + nucleus */}
-      <div className="flex items-center gap-4">
-        <AnimatedLogo />
-        <Nucleus size={48} showLabel={false} />
-      </div>
+    <SideBar>
+      {/* Logo at top */}
+      <AnimatedLogo />
 
-      {/* Center: council */}
-      <div className="hidden items-center gap-2 lg:flex">
-        <span className="eyebrow mr-1">council</span>
+      {/* Council — compact inline chips */}
+      <div className="flex flex-wrap items-center gap-1.5">
+        <span className="eyebrow w-full mb-1">council</span>
         {agents.map((a) => {
           const isActive = activeAgent === a.role;
           return (
@@ -83,69 +70,62 @@ export function TopBar() {
               key={a.role}
               layout
               className={cn(
-                "group relative flex items-center gap-2 rounded-full border px-2.5 py-1 transition-all",
+                "flex items-center gap-1 rounded-full border px-2 py-0.5 transition-all",
                 isActive
                   ? "border-transparent " + (a.hue === "cyan" ? "glow-cyan" : a.hue === "amethyst" ? "glow-amethyst" : "glow-gold")
-                  : "border-border/60 bg-card/40"
+                  : "border-border/40 bg-card/30"
               )}
             >
-              <span className={cn("text-sm leading-none", HUE_TEXT[a.hue])}>
-                {a.glyph}
-              </span>
-              <span className="font-mono-ae text-[0.65rem] text-muted-foreground">
+              <span className={cn("text-xs leading-none", HUE_TEXT[a.hue])}>{a.glyph}</span>
+              <span className="font-mono-ae text-[0.6rem] text-muted-foreground">
                 {AGENT_META[a.role].name.replace("The ", "")}
               </span>
-              {isActive && (
-                <span className={cn("h-1.5 w-1.5 rounded-full neural-dot", HUE_BG[a.hue])} />
-              )}
+              {isActive && <span className={cn("h-1 w-1 rounded-full", HUE_BG[a.hue])} />}
             </motion.div>
           );
         })}
       </div>
 
-      {/* Right: telemetry + actions */}
-      <div className="flex items-center gap-2 sm:gap-3">
-        <div className="hidden items-center gap-3 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 md:flex">
-          <Telemetry icon={<GitBranch className="h-3 w-3" />} label="gen" value={String(generation)} />
-          <div className="h-3 w-px bg-border/60" />
-          <Telemetry icon={<Sparkles className="h-3 w-3" />} label="ver" value={version} />
-          <div className="h-3 w-px bg-border/60" />
-          <Telemetry icon={<Activity className="h-3 w-3" />} label="up" value={formatUptime(uptimeMs)} />
-        </div>
+      {/* Divider */}
+      <div className="h-px w-full bg-border/40" />
 
-        <LayoutControls />
-        <ModelSettings />
+      {/* Action buttons */}
+      <div className="flex flex-col gap-1.5">
+        <button
+          onClick={() => triggerCycle()}
+          disabled={busy || aiBusy}
+          className="flex items-center gap-2 rounded-lg border border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 px-3 py-2 text-xs text-[oklch(0.85_0.16_85)] transition-all hover:bg-[oklch(0.85_0.16_85)]/20 disabled:opacity-40"
+          title="Force AI self-improvement cycle"
+        >
+          <Sparkles className={cn("h-4 w-4", aiState === "self-improving" && "animate-spin")} />
+          <span className="font-mono-ae">{aiState === "self-improving" ? "mutating…" : "evolve"}</span>
+        </button>
 
         <button
           onClick={triggerGenerate}
           disabled={busy || aiBusy}
-          className={cn(
-            "flex items-center gap-1.5 rounded-full border border-border/60 bg-card/40 px-3 py-1.5 text-xs transition-all hover:border-[oklch(0.74_0.22_300)]/50 hover:bg-card/70 disabled:opacity-40",
-            aiState === "generating" && "glow-amethyst border-transparent"
-          )}
+          className="flex items-center gap-2 rounded-lg border border-border/60 bg-card/40 px-3 py-2 text-xs transition-all hover:bg-card/70 disabled:opacity-40"
           title="Ask the brain to ghost-write"
         >
-          <Zap className={cn("h-3.5 w-3.5", aiState === "generating" && "text-[oklch(0.74_0.22_300)]")} />
-          <span className="hidden font-mono-ae sm:inline">generate</span>
+          <Zap className={cn("h-4 w-4", aiState === "generating" && "text-[oklch(0.74_0.22_300)]")} />
+          <span className="font-mono-ae">generate</span>
         </button>
 
         <button
           onClick={toggleChat}
           className={cn(
-            "relative flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all",
-            chatOpen
-              ? "border-transparent glow-amethyst bg-card/70"
-              : "border-border/60 bg-card/40 hover:bg-card/70"
+            "relative flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all",
+            chatOpen ? "border-transparent glow-amethyst bg-card/70" : "border-border/60 bg-card/40 hover:bg-card/70"
           )}
           title="Talk to N-Core"
         >
-          <Bot className={cn("h-3.5 w-3.5", chatOpen && "text-[oklch(0.74_0.22_300)]")} />
-          <span className="hidden font-mono-ae sm:inline">chat</span>
+          <Bot className={cn("h-4 w-4", chatOpen && "text-[oklch(0.74_0.22_300)]")} />
+          <span className="font-mono-ae">chat</span>
           {aiBusy && (
             <motion.span
               animate={{ scale: [1, 1.8, 1], opacity: [0.7, 0, 0.7] }}
               transition={{ duration: 1.4, repeat: Infinity }}
-              className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[oklch(0.74_0.22_300)]"
+              className="absolute right-2 top-2 h-2 w-2 rounded-full bg-[oklch(0.74_0.22_300)]"
             />
           )}
         </button>
@@ -153,104 +133,135 @@ export function TopBar() {
         <button
           onClick={toggleAutonomy}
           className={cn(
-            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all",
+            "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all",
             autonomy
               ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 text-[oklch(0.85_0.16_85)]"
               : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70"
           )}
           title="Toggle autonomous self-improvement"
         >
-          {autonomy ? <Sparkles className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
-          <span className="hidden font-mono-ae sm:inline">{autonomy ? "autonomous" : "paused"}</span>
+          {autonomy ? <Sparkles className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+          <span className="font-mono-ae">{autonomy ? "autonomous" : "paused"}</span>
         </button>
 
         <button
           onClick={toggleSynapse}
           className={cn(
-            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all",
-            synapseOpen
-              ? "border-transparent glow-cyan bg-card/70"
-              : "border-border/60 bg-card/40 hover:bg-card/70"
+            "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all",
+            synapseOpen ? "border-transparent glow-cyan bg-card/70" : "border-border/60 bg-card/40 hover:bg-card/70"
           )}
-          title="Toggle the Synapse Map"
+          title="Synapse Map"
         >
-          <Network className="h-3.5 w-3.5" />
-          <span className="hidden font-mono-ae sm:inline">synapse</span>
+          <Network className="h-4 w-4" />
+          <span className="font-mono-ae">synapse</span>
         </button>
 
         <button
           onClick={toggleFlow}
           className={cn(
-            "flex items-center gap-1.5 rounded-full border px-3 py-1.5 text-xs transition-all",
-            flowMode
-              ? "border-transparent glow-gold bg-card/70"
-              : "border-border/60 bg-card/40 hover:bg-card/70"
+            "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all",
+            flowMode ? "border-transparent glow-gold bg-card/70" : "border-border/60 bg-card/40 hover:bg-card/70"
           )}
-          title="Enter flow mode — strip everything but the code"
+          title="Flow mode"
         >
-          <Target className="h-3.5 w-3.5" />
-          <span className="hidden font-mono-ae sm:inline">flow</span>
-        </button>
-
-        <button
-          onClick={() => triggerCycle()}
-          disabled={busy || aiBusy}
-          className="flex items-center gap-1.5 rounded-full border border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 px-3 py-1.5 text-xs text-[oklch(0.85_0.16_85)] transition-all hover:bg-[oklch(0.85_0.16_85)]/20 disabled:opacity-40"
-          title="Force a real AI self-improvement cycle"
-        >
-          <Sparkles className={cn("h-3.5 w-3.5", aiState === "self-improving" && "animate-spin")} />
-          <span className="hidden font-mono-ae sm:inline">
-            {aiState === "self-improving" ? "mutating…" : "evolve"}
-          </span>
+          <Target className="h-4 w-4" />
+          <span className="font-mono-ae">flow</span>
         </button>
       </div>
-    </header>
+
+      {/* Divider */}
+      <div className="h-px w-full bg-border/40" />
+
+      {/* Layout + desktops + model settings */}
+      <div className="flex flex-col gap-2">
+        <LayoutControls />
+        <ModelSettings />
+      </div>
+    </SideBar>
   );
 }
 
-function Telemetry({
-  icon,
-  label,
-  value,
-}: {
-  icon: React.ReactNode;
-  label: string;
-  value: string;
-}) {
+/**
+ * SideBar — a left-edge floating panel that appears on mouse proximity.
+ * Same pattern as the bottom Dock: hidden by default, slides in when
+ * the cursor approaches the left edge of the screen.
+ */
+function SideBar({ children }: { children: React.ReactNode }) {
+  const [visible, setVisible] = useState(false);
+  const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (e.clientX < 60) {
+        if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; }
+        setVisible(true);
+      } else if (e.clientX > 320) {
+        if (!hideTimer.current) {
+          hideTimer.current = setTimeout(() => setVisible(false), 400);
+        }
+      }
+    };
+    window.addEventListener("mousemove", onMove);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      if (hideTimer.current) clearTimeout(hideTimer.current);
+    };
+  }, []);
+
   return (
-    <div className="flex items-center gap-1.5">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="eyebrow">{label}</span>
-      <span className="font-mono-ae text-xs text-foreground">{value}</span>
+    <AnimatePresence>
+      {visible && (
+        <motion.div
+          initial={{ opacity: 0, x: -40 }}
+          animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: -40 }}
+          transition={{ type: "spring", stiffness: 400, damping: 28 }}
+          className="glass-strong fixed left-2 top-1/2 z-40 flex max-h-[85vh] w-[280px] -translate-y-1/2 flex-col gap-3 overflow-y-auto rounded-2xl border border-border/60 p-4 scroll-ae"
+          data-ai-skip="true"
+          onMouseEnter={() => { if (hideTimer.current) { clearTimeout(hideTimer.current); hideTimer.current = null; } }}
+          onMouseLeave={() => { hideTimer.current = setTimeout(() => setVisible(false), 400); }}
+        >
+          {children}
+        </motion.div>
+      )}
+    </AnimatePresence>
+  );
+}
+
+/**
+ * SideBarHint — a small tab on the left edge to invite the sidebar.
+ */
+export function SideBarHint() {
+  return (
+    <div className="pointer-events-none fixed left-0 top-1/2 z-30 -translate-y-1/2" data-ai-skip="true">
+      <div className="h-16 w-1 rounded-r-full bg-foreground/15" />
     </div>
   );
 }
 
-/** Tile/float toggle + virtual desktop switcher (the "layers" of the desktop). */
+/** LayoutControls — tile/float toggle + desktop switcher (compact vertical) */
 function LayoutControls() {
   const { layoutMode, setLayoutMode, activeDesktop, setActiveDesktop, windows } = useOS();
   const tiled = layoutMode === "tile";
 
   return (
-    <div className="flex items-center gap-1.5">
-      {/* Tile / Float (overlap) toggle */}
+    <div className="flex flex-col gap-2">
       <button
         onClick={() => setLayoutMode(tiled ? "float" : "tile")}
         className={cn(
-          "flex items-center gap-1.5 rounded-full border px-2.5 py-1.5 text-xs transition-all",
+          "flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-all",
           tiled
             ? "border-transparent glow-cyan bg-[oklch(0.82_0.17_195)]/15 text-[oklch(0.82_0.17_195)]"
-            : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70 hover:text-foreground"
-        )}
-        title={tiled ? "Tiling mode (no overlap) — click for floating" : "Floating mode (overlap) — click for tiling"}
+            : "border-border/60 bg-card/40 text-muted-foreground hover:bg-card/70"
+          )}
+        title={tiled ? "Tiling mode — click for floating" : "Floating mode — click for tiling"}
       >
-        <Columns2 className="h-3.5 w-3.5" />
-        <span className="hidden font-mono-ae sm:inline">{tiled ? "tile" : "float"}</span>
+        <Columns2 className="h-4 w-4" />
+        <span className="font-mono-ae">{tiled ? "tile" : "float"}</span>
       </button>
 
-      {/* Virtual desktops / layers */}
-      <div className="flex items-center gap-0.5 rounded-full border border-border/60 bg-card/40 px-1 py-1">
-        <Layers className="mr-0.5 hidden h-3 w-3 text-muted-foreground sm:block" />
+      <div className="flex items-center gap-1">
+        <Layers className="h-3 w-3 text-muted-foreground" />
         {DESKTOPS.map((d) => {
           const isActive = d.id === activeDesktop;
           const count = windows.filter((w) => w.desktop === d.id && !w.minimized).length;
@@ -259,88 +270,17 @@ function LayoutControls() {
               key={d.id}
               onClick={() => setActiveDesktop(d.id)}
               className={cn(
-                "relative flex h-5 w-5 items-center justify-center rounded-full font-mono-ae text-[0.6rem] transition-all",
+                "flex h-6 w-6 items-center justify-center rounded-full font-mono-ae text-[0.6rem] transition-all",
                 isActive
                   ? "bg-[oklch(0.82_0.17_195)]/20 text-[oklch(0.82_0.17_195)] glow-cyan"
-                  : "text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+                  : "text-muted-foreground hover:bg-foreground/10"
               )}
-              title={`Desktop ${d.name} (${count} windows)`}
             >
               {d.name}
-              {count > 0 && !isActive && (
-                <span className="absolute -bottom-0.5 -right-0.5 h-1 w-1 rounded-full bg-muted-foreground/60" />
-              )}
+              {count > 0 && !isActive && <span className="absolute -bottom-0.5 -right-0.5 h-1 w-1 rounded-full bg-muted-foreground/60" />}
             </button>
           );
         })}
-      </div>
-    </div>
-  );
-}
-
-/**
- * AnimatedLogo — the Alpha-N brand logo with a breathing energy sphere.
- * The "α" glyph pulses with a cyan glow, and a rotating ring orbits it.
- */
-function AnimatedLogo() {
-  return (
-    <div className="relative flex items-center gap-2.5">
-      {/* Energy sphere with rotating ring */}
-      <div className="relative flex h-10 w-10 items-center justify-center">
-        {/* Pulsing glow */}
-        <motion.div
-          animate={{
-            scale: [1, 1.15, 1],
-            opacity: [0.4, 0.7, 0.4],
-          }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          className="absolute inset-0 rounded-full bg-[oklch(0.82_0.17_195)]/20 blur-md"
-        />
-        {/* Rotating outer ring */}
-        <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
-          className="absolute inset-0 rounded-full border border-[oklch(0.82_0.17_195)]/30"
-          style={{
-            borderTopColor: "oklch(0.82 0.17 195 / 0.8)",
-            borderRightColor: "transparent",
-            borderBottomColor: "transparent",
-            borderLeftColor: "oklch(0.74 0.22 300 / 0.4)",
-          }}
-        />
-        {/* Counter-rotating inner ring */}
-        <motion.div
-          animate={{ rotate: -360 }}
-          transition={{ duration: 6, repeat: Infinity, ease: "linear" }}
-          className="absolute inset-1.5 rounded-full border border-[oklch(0.74_0.22_300)]/20"
-          style={{
-            borderTopColor: "transparent",
-            borderRightColor: "oklch(0.74 0.22 300 / 0.5)",
-            borderBottomColor: "oklch(0.85 0.16 85 / 0.3)",
-            borderLeftColor: "transparent",
-          }}
-        />
-        {/* The α glyph */}
-        <motion.span
-          animate={{
-            textShadow: [
-              "0 0 8px oklch(0.82 0.17 195 / 0.4)",
-              "0 0 16px oklch(0.82 0.17 195 / 0.7)",
-              "0 0 8px oklch(0.82 0.17 195 / 0.4)",
-            ],
-          }}
-          transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-          className="relative font-mono-ae text-xl font-bold text-[oklch(0.82_0.17_195)]"
-        >
-          α
-        </motion.span>
-      </div>
-      {/* Brand text */}
-      <div className="flex flex-col leading-none">
-        <span className="font-mono-ae text-xl font-bold tracking-tight text-foreground">
-          Alpha<span className="text-glow-cyan text-[oklch(0.82_0.17_195)]">-N</span>
-        </span>
-        <span className="eyebrow mt-0.5">self-evolving OS</span>
       </div>
     </div>
   );
