@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { motion } from "framer-motion";
-import { Globe, Lock, RotateCw, Shield, ShieldAlert } from "lucide-react";
+import { Globe, Lock, RotateCw, Shield, ShieldAlert, X } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { AgentPanel } from "../agent-panel";
@@ -85,50 +85,96 @@ export function BrowserApp({ windowId }: { windowId: string }) {
   );
 }
 
-// ============ FILES APP ============
-const DEMO_FILES = [
-  { name: "core/", type: "dir", children: ["nucleus.ts", "perception.ts", "forge.ts", "akashic.ts"] },
-  { name: "kernel/", type: "dir", locked: true, children: ["boot.ts", "security.ts", "rollback.ts", "sandbox.ts"] },
-  { name: "agents/", type: "dir", children: ["architect.ts", "developer.ts", "critic.ts", "optimizer.ts"] },
-  { name: "plugins/", type: "dir", children: ["python-df/", "zig/", "rust/"] },
-  { name: "EVOLUTION.md", type: "file" },
-  { name: "package.json", type: "file" },
-];
-
+// ============ FILES APP (real — reads from the actual filesystem API) ============
 export function FilesApp() {
-  const [expanded, setExpanded] = useState<string | null>("core/");
+  const [currentPath, setCurrentPath] = useState("");
+  const [entries, setEntries] = useState<{ name: string; isDir: boolean }[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fileContent, setFileContent] = useState<string | null>(null);
+  const [viewingFile, setViewingFile] = useState<string | null>(null);
+
+  // Load directory listing
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    setLoading(true);
+    setFileContent(null);
+    setViewingFile(null);
+    void fetch(`/api/alpha/files?path=${encodeURIComponent(currentPath)}`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.type === "dir") {
+          setEntries(data.entries || []);
+        } else if (data.type === "file") {
+          setFileContent(data.content || "");
+          setViewingFile(currentPath);
+        }
+        setLoading(false);
+      })
+      .catch(() => setLoading(false));
+  }, [currentPath]);
+
+  const protectedPaths = ["kernel/", "prisma/schema.prisma", ".env", "Caddyfile"];
+  const isProtected = (name: string) => protectedPaths.some((p) => name.startsWith(p) || name === p);
+
   return (
     <div className="flex h-full flex-col bg-background">
-      <div className="border-b border-border/50 px-3 py-1.5 font-mono-ae text-xs text-muted-foreground">
-        /home/z/my-project
+      {/* Breadcrumb */}
+      <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
+        <button
+          onClick={() => currentPath && setCurrentPath(currentPath.split("/").slice(0, -1).join("/"))}
+          className="rounded p-1 text-muted-foreground hover:bg-foreground/10 disabled:opacity-30"
+          disabled={!currentPath}
+        >
+          <RotateCw className="h-3 w-3" style={{ transform: "rotate(-45deg)" }} />
+        </button>
+        <span className="font-mono-ae text-xs text-muted-foreground">
+          /home/z/my-project/{currentPath}
+        </span>
       </div>
-      <div className="scroll-ae min-h-0 flex-1 overflow-y-auto p-2 font-mono-ae text-xs">
-        {DEMO_FILES.map((f) => (
-          <div key={f.name}>
+
+      {/* File content view */}
+      {viewingFile && fileContent !== null ? (
+        <div className="scroll-ae min-h-0 flex-1 overflow-auto p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="font-mono-ae text-xs text-[oklch(0.82_0.17_195)]">{viewingFile}</span>
             <button
-              onClick={() => f.type === "dir" && setExpanded(expanded === f.name ? null : f.name)}
-              className={cn(
-                "flex w-full items-center gap-1.5 rounded px-2 py-1 text-left hover:bg-foreground/[0.06]",
-                f.locked && "text-[oklch(0.85_0.16_85)]"
-              )}
+              onClick={() => { setViewingFile(null); setFileContent(null); }}
+              className="rounded p-1 text-muted-foreground hover:bg-foreground/10"
             >
-              <span>{f.type === "dir" ? (expanded === f.name ? "▾" : "▸") : "·"}</span>
-              <span className={f.type === "dir" ? "text-[oklch(0.82_0.17_195)]" : "text-foreground/80"}>{f.name}</span>
-              {f.locked && <Lock className="ml-auto h-2.5 w-2.5 text-[oklch(0.85_0.16_85)]" />}
+              <X className="h-3 w-3" />
             </button>
-            {expanded === f.name && f.children && (
-              <div className="ml-4 border-l border-border/30 pl-2">
-                {f.children.map((c) => (
-                  <div key={c} className="flex items-center gap-1.5 rounded px-2 py-0.5 text-muted-foreground hover:bg-foreground/[0.04]">
-                    <span>·</span>
-                    <span>{c}</span>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
-        ))}
-      </div>
+          <pre className="font-mono-ae text-[0.72rem] leading-relaxed text-foreground/80 whitespace-pre-wrap break-all">
+            {fileContent.slice(0, 10000)}
+          </pre>
+        </div>
+      ) : (
+        <div className="scroll-ae min-h-0 flex-1 overflow-y-auto p-2 font-mono-ae text-xs">
+          {loading ? (
+            <div className="flex h-full items-center justify-center">
+              <RotateCw className="h-4 w-4 animate-spin text-muted-foreground" />
+            </div>
+          ) : entries.length === 0 ? (
+            <p className="py-4 text-center text-muted-foreground/60">Empty directory</p>
+          ) : (
+            entries.map((entry) => (
+              <button
+                key={entry.name}
+                onClick={() => setCurrentPath(currentPath ? `${currentPath}/${entry.name}` : entry.name)}
+                className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-foreground/[0.06]"
+              >
+                <span className={entry.isDir ? "text-[oklch(0.82_0.17_195)]" : "text-muted-foreground"}>
+                  {entry.isDir ? "▸" : "·"}
+                </span>
+                <span className={entry.isDir ? "text-[oklch(0.82_0.17_195)]" : "text-foreground/80"}>
+                  {entry.name}
+                </span>
+                {isProtected(entry.name) && <Lock className="ml-auto h-3 w-3 text-[oklch(0.85_0.16_85)]" />}
+              </button>
+            ))
+          )}
+        </div>
+      )}
     </div>
   );
 }

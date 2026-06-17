@@ -291,7 +291,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   flowMode: false,
   synapseOpen: false,
   diffOpen: false,
-  chatOpen: true,
+  chatOpen: false,
   selectedHistoryId: null,
   hoveredLink: null,
   ghostVisible: true,
