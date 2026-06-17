@@ -21,11 +21,14 @@ import {
   describeMutation,
   textLinesToCodeLines,
   validateCodeLines,
+  type AkashaGoal,
   type AkashaIntention,
   type AkashaMemory,
+  type AkashaPlan,
   type AppliedMutation,
   type BeforeAfter,
   type ChatMessage,
+  type FileReadResult,
   type MetricKey,
   type Mutation,
   type WebSearchResult,
@@ -76,6 +79,9 @@ interface EvolutionStore {
   akashaMemory: AkashaMemory[]; // lessons, facts, architecture notes
   akashaIntentions: AkashaIntention[]; // TODOs the AI sets for itself
   dynamicPrompt: string; // self-authored additions to the system prompt
+  plans: AkashaPlan[]; // multi-step long-horizon plans
+  goals: AkashaGoal[]; // the AI's persistent desires
+  fileReads: FileReadResult[]; // files the AI has read (fed back into context)
 
   // --- ui ---
   flowMode: boolean;
@@ -122,6 +128,13 @@ interface EvolutionStore {
   addMemory: (text: string, kind: AkashaMemory["kind"]) => void;
   addIntention: (text: string, priority: AkashaIntention["priority"]) => void;
   resolveIntention: (id: string) => void;
+  // ---- persistent cognition (DB) ----
+  hydrateFromDb: () => Promise<void>;
+  addPlan: (plan: AkashaPlan) => void;
+  advancePlan: (id: string, stepIndex: number) => void;
+  abandonPlan: (id: string) => void;
+  addGoal: (text: string, level: AkashaGoal["level"]) => void;
+  addFileRead: (result: FileReadResult) => void;
 }
 
 let logId = 0;
@@ -242,6 +255,9 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   ],
   akashaIntentions: [],
   dynamicPrompt: "",
+  plans: [],
+  goals: [],
+  fileReads: [],
 
   flowMode: false,
   synapseOpen: false,
@@ -614,6 +630,39 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           logs: [makeLog("evolve", "nucleus", `Self-prompted: ${m.additions.slice(0, 60)}`, now), ...st.logs].slice(0, 80),
         }));
         break;
+      case "create_plan": {
+        const plan: AkashaPlan = {
+          id: `plan-${Date.now()}`,
+          goal: m.goal,
+          rationale: m.rationale,
+          status: "active",
+          steps: m.steps.map((text) => ({ text, done: false })),
+          time: now,
+        };
+        get().addPlan(plan);
+        break;
+      }
+      case "advance_plan":
+        get().advancePlan(m.id, m.stepIndex);
+        break;
+      case "abandon_plan":
+        get().abandonPlan(m.id);
+        break;
+      case "add_goal":
+        get().addGoal(m.text, m.level);
+        break;
+      case "read_file":
+        // The AutonomousLoop performs the actual file read and stores the result
+        set((st) => ({
+          logs: [makeLog("observe", "architect", `Reading file: ${m.path}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "write_file":
+        // The AutonomousLoop performs the actual file write via the files API
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Writing file: ${m.path} (${m.content.length} bytes)`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
       case "rollback":
         // The AI itself can request a rollback; the AutonomousLoop handles actual state restore
         set((st) => ({
@@ -652,26 +701,115 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     })),
 
   // ---- Akasha: persistent memory ----
-  addMemory: (text, kind) =>
+  addMemory: (text, kind) => {
     set((s) => {
       const mem: AkashaMemory = { id: `mem-${memId++}`, text, kind, time: Date.now() };
       return {
         akashaMemory: [mem, ...s.akashaMemory].slice(0, 100),
         logs: [makeLog("evolve", "nucleus", `Committed to Akasha: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
       };
-    }),
-  addIntention: (text, priority) =>
+    });
+    // persist to DB (fire-and-forget)
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "memory", text, kind }),
+    }).catch(() => {});
+  },
+  addIntention: (text, priority) => {
     set((s) => {
       const intention: AkashaIntention = { id: `int-${intId++}`, text, priority, time: Date.now(), resolved: false };
       return {
         akashaIntentions: [intention, ...s.akashaIntentions].slice(0, 50),
         logs: [makeLog("hypothesis", "architect", `New intention[${priority}]: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
       };
-    }),
+    });
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "intention", text, priority }),
+    }).catch(() => {});
+  },
   resolveIntention: (id) =>
     set((s) => ({
       akashaIntentions: s.akashaIntentions.map((i) => (i.id === id ? { ...i, resolved: true } : i)),
       logs: [makeLog("evolve", "nucleus", `Resolved intention ${id}.`, Date.now()), ...s.logs].slice(0, 80),
+    })),
+
+  // ---- Persistent cognition: hydrate from DB on boot ----
+  hydrateFromDb: async () => {
+    try {
+      const res = await fetch("/api/alpha/akasha");
+      if (!res.ok) return;
+      const data = await res.json();
+      set((s) => ({
+        akashaMemory: data.memory?.length ? data.memory : s.akashaMemory,
+        akashaIntentions: data.intentions ?? s.akashaIntentions,
+        plans: data.plans ?? s.plans,
+        goals: data.goals ?? s.goals,
+        logs: [
+          makeLog("evolve", "nucleus", `Akasha hydrated: ${data.memory?.length ?? 0} memories, ${data.plans?.length ?? 0} active plans, ${data.goals?.length ?? 0} goals.`, Date.now()),
+          ...s.logs,
+        ].slice(0, 80),
+      }));
+    } catch {
+      // DB not available yet — continue with seed memory
+    }
+  },
+
+  addPlan: (plan) => {
+    set((s) => ({
+      plans: [plan, ...s.plans].slice(0, 10),
+      logs: [makeLog("hypothesis", "architect", `New plan: ${plan.goal.slice(0, 60)} (${plan.steps.length} steps)`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "plan", goal: plan.goal, rationale: plan.rationale, steps: plan.steps.map((s) => s.text) }),
+    }).catch(() => {});
+  },
+  advancePlan: (id, stepIndex) => {
+    set((s) => ({
+      plans: s.plans.map((p) => {
+        if (p.id !== id) return p;
+        const steps = p.steps.map((st, i) => (i === stepIndex ? { ...st, done: true } : st));
+        const allDone = steps.every((st) => st.done);
+        return { ...p, steps, status: allDone ? "completed" as const : "active" as const };
+      }),
+      logs: [makeLog("deploy", "developer", `Plan ${id.slice(0, 8)}: step ${stepIndex + 1} completed.`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "advance_plan", id, stepIndex }),
+    }).catch(() => {});
+  },
+  abandonPlan: (id) => {
+    set((s) => ({
+      plans: s.plans.map((p) => (p.id === id ? { ...p, status: "abandoned" as const } : p)),
+      logs: [makeLog("critique", "critic", `Abandoned plan ${id.slice(0, 8)}.`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "abandon_plan", id }),
+    }).catch(() => {});
+  },
+  addGoal: (text, level) => {
+    set((s) => ({
+      goals: [{ id: `goal-${Date.now()}`, text, level, time: Date.now() }, ...s.goals].slice(0, 20),
+      logs: [makeLog("evolve", "nucleus", `New ${level}-term goal: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "goal", text, level }),
+    }).catch(() => {});
+  },
+  addFileRead: (result) =>
+    set((s) => ({
+      fileReads: [result, ...s.fileReads.filter((f) => f.path !== result.path)].slice(0, 8),
+      logs: [makeLog("observe", "architect", `Read ${result.path} (${result.content.length} bytes).`, Date.now()), ...s.logs].slice(0, 80),
     })),
 }));
 

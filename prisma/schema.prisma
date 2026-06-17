@@ -1,9 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -29,4 +26,54 @@ model Post {
   authorId  String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+// ============================================================
+// Alpha-OS — Persistent Cognition Layer (Akasha)
+// The AI's immortal memory. Survives reloads. Never forgets.
+// ============================================================
+
+// Permanent memories — lessons, facts, architecture notes
+model AkashaMemory {
+  id        String   @id @default(cuid())
+  text      String
+  kind      String   @default("lesson") // lesson | fact | architecture
+  createdAt DateTime @default(now())
+}
+
+// TODOs the AI sets for itself
+model AkashaIntention {
+  id        String   @id @default(cuid())
+  text      String
+  priority  String   @default("normal") // low | normal | high
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+// Multi-step plans for long-horizon reasoning
+model Plan {
+  id          String   @id @default(cuid())
+  goal        String
+  rationale   String
+  status      String   @default("active") // active | completed | abandoned
+  stepsJson   String   @default("[]") // JSON array of {text, done}
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
+
+// Long-term goals — the AI's persistent desires
+model Goal {
+  id          String   @id @default(cuid())
+  text        String
+  level       String   @default("long") // long | medium | short
+  active      Boolean  @default(true)
+  createdAt   DateTime @default(now())
+}
+
+// Event log — reactive events the AI should know about
+model SystemEvent {
+  id        String   @id @default(cuid())
+  type      String // terminal_output | error | file_change | user_message | mutation
+  content   String
+  createdAt DateTime @default(now())
 }

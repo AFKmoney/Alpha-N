@@ -66,6 +66,22 @@ export async function webSearch(query: string, signal?: AbortSignal): Promise<We
   return res.json();
 }
 
+/** Read a real file from the project filesystem. */
+export async function readFile(path: string): Promise<{ type: string; path: string; content?: string; entries?: { name: string; isDir: boolean }[]; error?: string }> {
+  const res = await fetch(`/api/alpha/files?path=${encodeURIComponent(path)}`);
+  return res.json();
+}
+
+/** Write a real file to the project filesystem (security-checked server-side). */
+export async function writeFile(path: string, content: string): Promise<{ ok?: boolean; error?: string }> {
+  const res = await fetch("/api/alpha/files", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path, content }),
+  });
+  return res.json();
+}
+
 /**
  * Ask N-Core to think. Sends the current screenshot + state + optional
  * user instruction, receives structured mutations to apply to the UI.

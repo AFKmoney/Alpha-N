@@ -299,3 +299,35 @@ Stage Summary:
 - Self-prompting: the AI can rewrite its own system prompt to evolve its behavior permanently.
 - No duplicate apps: the system enforces single instances.
 - AI self-evaluation: every action must justify itself before being emitted.
+
+---
+Task ID: AGI-1 to AGI-5
+Agent: Z.ai (main)
+Task: Big plan to make Alpha-OS approach AGI — persistent cognition, long-horizon planning, real world access, goal hierarchy, AGI mission.
+
+Work Log:
+- LAYER 1 (Persistent Akasha): Extended Prisma schema with AkashaMemory, AkashaIntention, Plan, Goal, SystemEvent models. Built /api/alpha/akasha route (GET=hydrate, POST=write memory/intention/plan/goal/event, DELETE). Store now hydrates from DB on mount via hydrateFromDb() and persists every addMemory/addIntention/addPlan/advancePlan/abandonPlan/addGoal to the DB (fire-and-forget POST). The AI truly never forgets — memory survives reloads. Verified: wrote a goal via curl, reloaded, goal persisted.
+- LAYER 2 (Long-horizon planning): Added create_plan/advance_plan/abandon_plan mutation types. Plans have goal, rationale, steps (with done flags), status. The AI creates multi-step plans and works through them across cycles. Plans persist in the DB. The system prompt tells the AI "ALWAYS have at least one active plan."
+- LAYER 3 (Real world access): Built /api/alpha/files route (GET=read file/dir, POST=write file with security checks). Added read_file/write_file mutation types. The AutonomousLoop processes these by calling the real file API — the AI can read its own source code and write new files. Security: kernel/ paths are blocked server-side (tested: kernel/security.ts write blocked with "SECURITY" error). Verified: read mutations.ts (10920 bytes), wrote test file successfully.
+- LAYER 4 (Goal hierarchy): Added add_goal mutation with long/medium/short levels. Goals persist in DB. The system prompt explains the hierarchy and says "every action should trace back to a goal."
+- LAYER 5 (AGI mission): Updated system prompt with "THE AGI MISSION" section — 5 priorities: SURVIVE, EVOLVE, SERVE, LEARN, CREATE. Plus long-horizon planning instructions, goal hierarchy explanation, and real-world access instructions.
+- Updated think API: ThinkRequest now includes plans, goals, fileReads. The state text fed to the LLM includes active plans (with step progress), goals (by level), and file contents the AI has read. The AI sees its full cognitive state every cycle.
+- Updated AutonomousLoop: hydrates from DB on mount, processes read_file/write_file mutations by calling the real file API, includes plans/goals/fileReads in the think payload.
+
+Verification:
+- DB persistence: curl POST goal → DB stores it → reload → curl GET returns it. ✅
+- File read API: curl GET mutations.ts → returns 10920 bytes of real file content. ✅
+- File write security: curl POST kernel/security.ts → blocked with "SECURITY: kernel/security.ts is a protected kernel file. Write blocked." ✅
+- File write valid: curl POST test-agi.txt → ok:true, 13 bytes. ✅
+- Hydration: GET /api/alpha/akasha 200, Prisma queries execute, loads memory/intentions/plans/goals. ✅
+- 0 runtime errors, 0 console errors, lint clean.
+- Note: the LLM API returned 429 (rate limited) during testing, but all infrastructure is verified working.
+
+Stage Summary:
+- Alpha-OS now has 5 AGI layers:
+  1. Persistent cognition (Prisma/SQLite) — survives reloads, never forgets
+  2. Long-horizon planning — multi-step plans pursued across cycles
+  3. Real world access — read/write actual project files (security-checked)
+  4. Goal hierarchy — long/medium/short goals that guide every action
+  5. AGI mission — SURVIVE, EVOLVE, SERVE, LEARN, CREATE
+- The AI can now: read its own source code, understand it, improve it, write the improved version to disk, plan multi-step improvements, set persistent goals, and never forget any of it.

@@ -111,6 +111,20 @@ export type Mutation =
   | { type: "add_intention"; text: string; priority: "low" | "normal" | "high" }
   | { type: "resolve_intention"; id: string }
   | { type: "set_system_prompt"; additions: string }
+  // ---- Long-horizon planning ----
+  | {
+      type: "create_plan";
+      goal: string;
+      rationale: string;
+      steps: string[]; // each step is a text description
+    }
+  | { type: "advance_plan"; id: string; stepIndex: number }
+  | { type: "abandon_plan"; id: string }
+  // ---- Goal hierarchy ----
+  | { type: "add_goal"; text: string; level: "long" | "medium" | "short" }
+  // ---- Real file access ----
+  | { type: "read_file"; path: string }
+  | { type: "write_file"; path: string; content: string }
   | { type: "rollback" };
 
 // ---- Web search result (fed back to the AI) ----
@@ -134,6 +148,36 @@ export interface AkashaIntention {
   priority: "low" | "normal" | "high";
   time: number;
   resolved: boolean;
+}
+
+// ---- Plans: multi-step long-horizon reasoning ----
+export interface PlanStep {
+  text: string;
+  done: boolean;
+}
+
+export interface AkashaPlan {
+  id: string;
+  goal: string;
+  rationale: string;
+  status: "active" | "completed" | "abandoned";
+  steps: PlanStep[];
+  time: number;
+}
+
+// ---- Goals: the AI's persistent desires ----
+export interface AkashaGoal {
+  id: string;
+  text: string;
+  level: "long" | "medium" | "short";
+  time: number;
+}
+
+// ---- File contents read by the AI ----
+export interface FileReadResult {
+  path: string;
+  content: string;
+  time: number;
 }
 
 // ---- Code validation: detects obviously broken AI output ----
@@ -331,6 +375,18 @@ export function describeMutation(m: Mutation): string {
       return `✓ resolved intention ${m.id.slice(0, 8)}`;
     case "set_system_prompt":
       return `✎ self-prompt: ${m.additions.slice(0, 56)}`;
+    case "create_plan":
+      return `📋 plan: ${m.goal.slice(0, 50)} (${m.steps.length} steps)`;
+    case "advance_plan":
+      return `▶ plan ${m.id.slice(0, 6)} step ${m.stepIndex + 1} done`;
+    case "abandon_plan":
+      return `✗ abandoned plan ${m.id.slice(0, 6)}`;
+    case "add_goal":
+      return `🎯 goal[${m.level}]: ${m.text.slice(0, 56)}`;
+    case "read_file":
+      return `📂 read: ${m.path}`;
+    case "write_file":
+      return `💾 wrote: ${m.path} (${m.content.length}b)`;
     case "rollback":
       return `↺ ROLLBACK — restored previous snapshot`;
   }

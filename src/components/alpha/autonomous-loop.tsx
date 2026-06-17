@@ -3,8 +3,8 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
-import { captureScreenshot, think, webSearch } from "@/lib/alpha/ai-client";
-import type { Mutation, BeforeAfter, WebSearchResult } from "@/lib/alpha/mutations";
+import { captureScreenshot, think, webSearch, readFile, writeFile } from "@/lib/alpha/ai-client";
+import type { Mutation, BeforeAfter, WebSearchResult, FileReadResult } from "@/lib/alpha/mutations";
 
 const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
 const MUTATION_STEP_MS = 320;
@@ -92,6 +92,16 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             akashaMemory: s.akashaMemory.map((m) => ({ text: m.text, kind: m.kind })),
             akashaIntentions: s.akashaIntentions.map((i) => ({ text: i.text, priority: i.priority, resolved: i.resolved })),
             dynamicPrompt: s.dynamicPrompt,
+            plans: s.plans.map((p) => ({
+              id: p.id,
+              goal: p.goal,
+              rationale: p.rationale,
+              status: p.status,
+              steps: p.steps,
+              progress: `${p.steps.filter((st) => st.done).length}/${p.steps.length}`,
+            })),
+            goals: s.goals.map((g) => ({ text: g.text, level: g.level })),
+            fileReads: s.fileReads.slice(0, 4).map((f) => ({ path: f.path, content: f.content.slice(0, 2000) })),
             protectedFiles: osS.protectedFiles.map((f) => ({ path: f.path, reason: f.reason, critical: f.critical })),
             desktops: 4,
             activeDesktop: osS.activeDesktop,
@@ -160,6 +170,47 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Web search failed: ${msg.slice(0, 60)}` });
           }
         }
+        // ---- FILE READ tool: when the AI emits read_file, read the real file ----
+        if (m.type === "read_file" && m.path) {
+          setAiBusy(true, `Reading file: ${m.path}…`);
+          try {
+            const res = await readFile(m.path);
+            if (res.type === "file" && res.content !== undefined) {
+              store.getState().addFileRead({
+                path: m.path,
+                content: res.content,
+                time: Date.now(),
+              });
+            } else if (res.type === "dir" && res.entries) {
+              store.getState().addFileRead({
+                path: m.path,
+                content: `Directory listing:\n${res.entries.map((e) => `${e.isDir ? "[DIR] " : "      "}${e.name}`).join("\n")}`,
+                time: Date.now(),
+              });
+            } else if (res.error) {
+              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File read error: ${res.error.slice(0, 60)}` });
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "read failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File read failed: ${msg.slice(0, 60)}` });
+          }
+        }
+        // ---- FILE WRITE tool: when the AI emits write_file, write the real file ----
+        if (m.type === "write_file" && m.path) {
+          setAiBusy(true, `Writing file: ${m.path}…`);
+          try {
+            const res = await writeFile(m.path, m.content);
+            if (res.error) {
+              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File write BLOCKED: ${res.error.slice(0, 60)}` });
+              osStore.getState().recordViolation(m.path, `AI tried to write protected file: ${m.path}`);
+            } else {
+              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Wrote ${m.content.length} bytes to ${m.path}`, });
+            }
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "write failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File write failed: ${msg.slice(0, 60)}` });
+          }
+        }
       }
 
       // ---- AUTO-ROLLBACK if the AI broke something ----
@@ -213,6 +264,13 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   const activeEvolution = useEvolution((s) => s.activeEvolution);
   const forceCycle = useEvolution((s) => s.forceCycle);
   const chat = useEvolution((s) => s.chat);
+  const hydrateFromDb = useEvolution((s) => s.hydrateFromDb);
+
+  // Hydrate persistent cognition (Akasha, plans, goals) from the DB on mount.
+  // This is what makes the AI never forget — even across reloads.
+  useEffect(() => {
+    void hydrateFromDb();
+  }, [hydrateFromDb]);
 
   // Manual "evolve" button forces an immediate real AI cycle.
   useEffect(() => {
