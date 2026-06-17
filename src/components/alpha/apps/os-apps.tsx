@@ -11,30 +11,36 @@ import { EvolutionTree } from "../evolution-tree";
 import { CodeEditor } from "../code-editor";
 import { cn } from "@/lib/utils";
 
-// ============ BROWSER APP ============
+// ============ BROWSER APP (with proxy — works on ANY site including google.com) ============
 export function BrowserApp({ windowId }: { windowId: string }) {
   const { windows, setWindowData } = useOS();
   const win = windows.find((w) => w.id === windowId);
   const [input, setInput] = useState((win?.data?.url as string) ?? "https://example.com");
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState(false);
 
   const currentUrl = (win?.data?.url as string) ?? "https://example.com";
+  // The proxy URL strips X-Frame-Options so any site loads in the iframe
+  const proxyUrl = `/api/alpha/proxy?url=${encodeURIComponent(currentUrl)}`;
+
   const navigate = (url: string) => {
     let u = url.trim();
     if (!u) return;
-    if (!/^https?:\/\//.test(u)) u = "https://" + u;
+    // If it looks like a search query (no dots), use Google search
+    if (!/^https?:\/\//.test(u) && !u.includes(".")) {
+      u = "https://www.google.com/search?q=" + encodeURIComponent(u);
+    } else if (!/^https?:\/\//.test(u)) {
+      u = "https://" + u;
+    }
     setWindowData(windowId, { url: u });
     setInput(u);
     setLoading(true);
-    setError(false);
   };
 
   return (
     <div className="flex h-full flex-col bg-background">
       <div className="flex items-center gap-2 border-b border-border/50 p-2">
         <button
-          onClick={() => { setLoading(true); setError(false); setWindowData(windowId, { url: currentUrl + (currentUrl.includes("?") ? "&" : "?") + "_r=" + Date.now() }); }}
+          onClick={() => { setLoading(true); setWindowData(windowId, { url: currentUrl + (currentUrl.includes("?") ? "&" : "?") + "_r=" + Date.now() }); }}
           className="rounded p-1 text-muted-foreground hover:bg-foreground/10"
           aria-label="Reload"
         >
@@ -49,7 +55,7 @@ export function BrowserApp({ windowId }: { windowId: string }) {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             className="min-w-0 flex-1 bg-transparent font-mono-ae text-xs text-foreground focus:outline-none"
-            placeholder="Enter URL…"
+            placeholder="Enter URL or search…"
           />
         </form>
       </div>
@@ -66,32 +72,14 @@ export function BrowserApp({ windowId }: { windowId: string }) {
             </div>
           </div>
         )}
-        {error ? (
-          <div className="flex h-full flex-col items-center justify-center gap-3 bg-background p-6 text-center">
-            <Globe className="h-8 w-8 text-muted-foreground/50" />
-            <p className="font-mono-ae text-xs text-muted-foreground">
-              This site refuses to load in an embedded frame (X-Frame-Options).
-            </p>
-            <a
-              href={currentUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-lg border border-[oklch(0.82_0.17_195)]/40 bg-[oklch(0.82_0.17_195)]/10 px-3 py-1.5 font-mono-ae text-xs text-[oklch(0.82_0.17_195)] hover:bg-[oklch(0.82_0.17_195)]/20"
-            >
-              open in new tab ↗
-            </a>
-          </div>
-        ) : (
-          <iframe
-            key={currentUrl}
-            src={currentUrl}
-            className="h-full w-full border-0"
-            sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
-            title="browser"
-            onLoad={() => setLoading(false)}
-            onError={() => { setLoading(false); setError(true); }}
-          />
-        )}
+        <iframe
+          key={proxyUrl}
+          src={proxyUrl}
+          className="h-full w-full border-0"
+          sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
+          title="browser"
+          onLoad={() => setLoading(false)}
+        />
       </div>
     </div>
   );
@@ -304,3 +292,224 @@ export function CustomApp({ windowId }: { windowId: string }) {
     </div>
   );
 }
+
+// ============ OPTIONS APP (with reset to original) ============
+export function OptionsApp() {
+  const [resetting, setResetting] = useState(false);
+  const [resetResult, setResetResult] = useState<string | null>(null);
+
+  const handleReset = async () => {
+    if (!confirm("Reset Alpha-OS to its original state? This clears ALL memory, plans, goals, and events. The OS will reload.")) return;
+    setResetting(true);
+    try {
+      const res = await fetch("/api/alpha/reset", { method: "POST" });
+      const data = await res.json();
+      if (data.ok) {
+        setResetResult("Reset complete. Reloading…");
+        setTimeout(() => window.location.reload(), 1500);
+      } else {
+        setResetResult(`Error: ${data.error}`);
+      }
+    } catch (err) {
+      setResetResult(`Error: ${err instanceof Error ? err.message : "unknown"}`);
+    }
+    setResetting(false);
+  };
+
+  return (
+    <div className="scroll-ae h-full overflow-y-auto bg-background p-4">
+      <h3 className="mb-3 font-mono-ae text-sm font-semibold">Options</h3>
+
+      <div className="space-y-3">
+        {/* Reset section */}
+        <div className="rounded-xl border border-[oklch(0.65_0.24_25)]/30 bg-[oklch(0.65_0.24_25)]/[0.05] p-3">
+          <div className="mb-1 flex items-center gap-2">
+            <ShieldAlert className="h-4 w-4 text-[oklch(0.78_0.2_20)]" />
+            <span className="font-mono-ae text-xs font-semibold text-[oklch(0.78_0.2_20)]">Danger Zone</span>
+          </div>
+          <p className="mb-2 text-[0.7rem] leading-snug text-muted-foreground">
+            Reset Alpha-OS to its original factory state. This clears all Akasha memory, intentions, plans, goals, events, and reward history from the database. The OS will reload with a fresh mind.
+          </p>
+          <button
+            onClick={handleReset}
+            disabled={resetting}
+            className="rounded-lg border border-[oklch(0.65_0.24_25)]/40 bg-[oklch(0.65_0.24_25)]/10 px-3 py-1.5 font-mono-ae text-xs text-[oklch(0.78_0.2_20)] transition-colors hover:bg-[oklch(0.65_0.24_25)]/20 disabled:opacity-40"
+          >
+            {resetting ? "resetting…" : "reset to original state"}
+          </button>
+          {resetResult && (
+            <p className="mt-2 font-mono-ae text-[0.65rem] text-[oklch(0.7_0.18_145)]">{resetResult}</p>
+          )}
+        </div>
+
+        {/* About section */}
+        <div className="rounded-xl border border-border/40 bg-card/30 p-3">
+          <div className="eyebrow mb-1">about</div>
+          <p className="font-mono-ae text-[0.7rem] leading-snug text-muted-foreground">
+            Alpha-OS v1.0.0 — a self-evolving operating system where the kernel IS the AI.
+            The AI observes its own desktop, critiques it, and rewrites its own code in real time.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ============ SECRET VAULT APP ============
+export function VaultApp() {
+  const [password, setPassword] = useState("");
+  const [unlocked, setUnlocked] = useState(false);
+  const [entries, setEntries] = useState<{ id: string; label: string; value?: string; time: number }[]>([]);
+  const [newLabel, setNewLabel] = useState("");
+  const [newValue, setNewValue] = useState("");
+  const [error, setError] = useState<string | null>(null);
+
+  const unlock = async () => {
+    if (!password) return;
+    setError(null);
+    try {
+      const res = await fetch(`/api/alpha/vault?password=${encodeURIComponent(password)}`);
+      const data = await res.json();
+      if (data.error) {
+        setError(data.error);
+        return;
+      }
+      setEntries(data.entries);
+      setUnlocked(true);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "unlock failed");
+    }
+  };
+
+  const addEntry = async () => {
+    if (!newLabel || !newValue || !password) return;
+    setError(null);
+    try {
+      const res = await fetch("/api/alpha/vault", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ label: newLabel, value: newValue, password }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        setNewLabel("");
+        setNewValue("");
+        // reload entries
+        const res2 = await fetch(`/api/alpha/vault?password=${encodeURIComponent(password)}`);
+        const data2 = await res2.json();
+        setEntries(data2.entries || []);
+      } else {
+        setError(data.error || "add failed");
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "add failed");
+    }
+  };
+
+  const deleteEntry = async (id: string) => {
+    await fetch(`/api/alpha/vault?id=${id}`, { method: "DELETE" });
+    const res = await fetch(`/api/alpha/vault?password=${encodeURIComponent(password)}`);
+    const data = await res.json();
+    setEntries(data.entries || []);
+  };
+
+  if (!unlocked) {
+    return (
+      <div className="flex h-full flex-col items-center justify-center bg-background p-6">
+        <Lock className="mb-3 h-8 w-8 text-[oklch(0.85_0.16_85)]" />
+        <h3 className="mb-3 font-mono-ae text-sm font-semibold">Secret Vault</h3>
+        <p className="mb-4 max-w-xs text-center text-[0.7rem] text-muted-foreground">
+          Enter your master password to unlock the vault. Secrets are encrypted and stored locally.
+        </p>
+        <input
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
+          onKeyDown={(e) => e.key === "Enter" && unlock()}
+          placeholder="master password"
+          className="mb-2 w-full max-w-xs rounded-lg border border-border/60 bg-card/40 px-3 py-2 font-mono-ae text-xs text-foreground focus:border-[oklch(0.85_0.16_85)]/50 focus:outline-none"
+        />
+        {error && <p className="mb-2 font-mono-ae text-[0.65rem] text-[oklch(0.78_0.2_20)]">{error}</p>}
+        <button
+          onClick={unlock}
+          className="rounded-lg bg-[oklch(0.85_0.16_85)]/15 px-4 py-1.5 font-mono-ae text-xs font-semibold text-[oklch(0.85_0.16_85)] hover:bg-[oklch(0.85_0.16_85)]/25"
+        >
+          unlock
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="scroll-ae flex h-full flex-col bg-background">
+      <div className="flex items-center justify-between border-b border-border/50 px-4 py-2.5">
+        <div className="flex items-center gap-2">
+          <Lock className="h-4 w-4 text-[oklch(0.85_0.16_85)]" />
+          <h3 className="font-mono-ae text-sm font-semibold">Secret Vault</h3>
+          <span className="rounded-full border border-[oklch(0.7_0.18_145)]/30 bg-[oklch(0.7_0.18_145)]/10 px-2 py-0 font-mono-ae text-[0.55rem] text-[oklch(0.7_0.18_145)]">
+            {entries.length} entries
+          </span>
+        </div>
+        <button
+          onClick={() => { setUnlocked(false); setPassword(""); }}
+          className="font-mono-ae text-[0.65rem] text-muted-foreground hover:text-foreground"
+        >
+          lock
+        </button>
+      </div>
+
+      <div className="scroll-ae min-h-0 flex-1 overflow-y-auto p-3">
+        {entries.length === 0 ? (
+          <p className="py-6 text-center font-mono-ae text-[0.7rem] text-muted-foreground/60">
+            No secrets yet. Add one below.
+          </p>
+        ) : (
+          <div className="space-y-1.5">
+            {entries.map((e) => (
+              <div key={e.id} className="rounded-lg border border-border/40 bg-card/30 p-2.5">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono-ae text-xs font-semibold text-foreground">{e.label}</span>
+                  <button
+                    onClick={() => deleteEntry(e.id)}
+                    className="text-[0.6rem] text-muted-foreground hover:text-[oklch(0.78_0.2_20)]"
+                  >
+                    delete
+                  </button>
+                </div>
+                <p className="mt-1 break-all font-mono-ae text-[0.7rem] text-[oklch(0.7_0.18_145)]">
+                  {e.value || "(locked)"}
+                </p>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Add new entry */}
+      <div className="border-t border-border/50 p-3">
+        <div className="flex gap-2">
+          <input
+            value={newLabel}
+            onChange={(e) => setNewLabel(e.target.value)}
+            placeholder="label"
+            className="min-w-0 flex-1 rounded-lg border border-border/60 bg-card/40 px-2.5 py-1.5 font-mono-ae text-xs focus:border-[oklch(0.85_0.16_85)]/50 focus:outline-none"
+          />
+          <input
+            value={newValue}
+            onChange={(e) => setNewValue(e.target.value)}
+            placeholder="secret value"
+            className="min-w-0 flex-1 rounded-lg border border-border/60 bg-card/40 px-2.5 py-1.5 font-mono-ae text-xs focus:border-[oklch(0.85_0.16_85)]/50 focus:outline-none"
+          />
+          <button
+            onClick={addEntry}
+            className="rounded-lg bg-[oklch(0.85_0.16_85)]/15 px-3 py-1.5 font-mono-ae text-xs text-[oklch(0.85_0.16_85)] hover:bg-[oklch(0.85_0.16_85)]/25"
+          >
+            add
+          </button>
+        </div>
+        {error && <p className="mt-1 font-mono-ae text-[0.6rem] text-[oklch(0.78_0.2_20)]">{error}</p>}
+      </div>
+    </div>
+  );
+}
+

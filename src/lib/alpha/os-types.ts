@@ -12,6 +12,9 @@ export type AppKind =
   | "evolution"
   | "agents"
   | "security"
+  | "options"
+  | "vault"
+  | "realcode"
   | "custom";
 
 export interface AppWindow {
@@ -256,11 +259,14 @@ export interface DockApp {
 
 export const DOCK_APPS: DockApp[] = [
   { kind: "terminal", label: "Terminal", icon: "▸_", defaultTitle: "bash — alpha-os" },
-  { kind: "editor", label: "Loom", icon: "❰ }", defaultTitle: "core/nucleus.ts" },
+  { kind: "realcode", label: "Code", icon: "{}", defaultTitle: "Real Code Editor" },
+  { kind: "editor", label: "Loom", icon: "❰}", defaultTitle: "core/nucleus.ts" },
   { kind: "files", label: "Files", icon: "▣", defaultTitle: "Filesystem" },
   { kind: "browser", label: "Browser", icon: "◉", defaultTitle: "Neural Browser" },
   { kind: "monitor", label: "Monitor", icon: "▤", defaultTitle: "System Monitor" },
   { kind: "agents", label: "Council", icon: "◈", defaultTitle: "Cognitive Council" },
   { kind: "evolution", label: "Evo Log", icon: "❖", defaultTitle: "EVOLUTION.md" },
   { kind: "security", label: "Kernel", icon: "⛨", defaultTitle: "Security Foundation" },
+  { kind: "vault", label: "Vault", icon: "🔒", defaultTitle: "Secret Vault" },
+  { kind: "options", label: "Options", icon: "⚙", defaultTitle: "Options" },
 ];

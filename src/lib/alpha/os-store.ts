@@ -101,6 +101,9 @@ function defaultRect(kind: AppKind, index: number): { x: number; y: number; w: n
     evolution: { w: 400, h: 420 },
     agents: { w: 320, h: 460 },
     security: { w: 460, h: 380 },
+    options: { w: 420, h: 400 },
+    vault: { w: 420, h: 460 },
+    realcode: { w: 720, h: 500 },
     custom: { w: 560, h: 400 },
   };
   const r = base[kind];

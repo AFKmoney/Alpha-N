@@ -9,7 +9,8 @@ import {
 } from "@/lib/alpha/os-types";
 import { WindowFrame } from "./window-frame";
 import { TerminalApp } from "./apps/terminal-app";
-import { BrowserApp, FilesApp, MonitorApp, SecurityApp, CustomApp } from "./apps/os-apps";
+import { BrowserApp, FilesApp, MonitorApp, SecurityApp, CustomApp, OptionsApp, VaultApp } from "./apps/os-apps";
+import { RealCodeEditor } from "./apps/real-code-editor";
 import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
 import { EvolutionTree } from "./evolution-tree";
@@ -69,6 +70,12 @@ function renderAppContent(kind: string, windowId: string) {
       return <AgentPanel />;
     case "security":
       return <SecurityApp />;
+    case "options":
+      return <OptionsApp />;
+    case "vault":
+      return <VaultApp />;
+    case "realcode":
+      return <RealCodeEditor />;
     case "custom":
       return <CustomApp windowId={windowId} />;
     default:

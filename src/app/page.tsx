@@ -14,6 +14,7 @@ import { NeuralDiff } from "@/components/alpha/neural-diff";
 import { SynapseMap } from "@/components/alpha/synapse-map";
 import { WindowManager } from "@/components/alpha/window-manager";
 import { Dock, DockHint } from "@/components/alpha/dock";
+import { StartMenu } from "@/components/alpha/start-menu";
 import { LiveMutationViewer } from "@/components/alpha/live-mutation-viewer";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
@@ -65,6 +66,8 @@ export default function Page() {
       {/* Floating dock — appears on mouse proximity near bottom */}
       <DockHint />
       <Dock />
+      {/* Start menu — always-visible button bottom-left */}
+      <StartMenu />
       <StatusBar />
 
       {/* Live mutation viewer — toggle via side arrow */}
