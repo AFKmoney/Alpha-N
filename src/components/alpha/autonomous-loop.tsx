@@ -431,16 +431,17 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   }, [forceCycle, aiBusy, runCycle]);
 
   // ---- LAYER B: REACTIVE EVENTS — when unhandled events exist, fire an immediate cycle ----
-  // But NOT if we're in rate-limit backoff (don't hammer a 429'd API).
+  // Only in active mode — in standby, events are queued but don't trigger cycles.
+  // The AI will process them when the user next asks it to do something.
   const unhandledCount = eventQueue.filter((e) => !e.handled).length;
   useEffect(() => {
     if (unhandledCount === 0) return;
     if (aiBusy) return;
-    if (consecutiveErrorsRef.current > 0) return; // in backoff — wait
-    // Fire immediately — the AI needs to react to this event
+    if (consecutiveErrorsRef.current > 0) return;
+    if (autonomyMode !== "active") return; // standby = no reactive cycles
     const t = setTimeout(() => void runCycle(), 500);
     return () => clearTimeout(t);
-  }, [unhandledCount, aiBusy, runCycle]);
+  }, [unhandledCount, aiBusy, autonomyMode, runCycle]);
 
   // ---- AUTONOMOUS CYCLE ----
   // In "standby" mode: the AI does NOT run autonomous cycles. It only acts when:

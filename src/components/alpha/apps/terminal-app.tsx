@@ -80,18 +80,23 @@ export function TerminalApp({ windowId }: TerminalAppProps) {
       term.writeln("\x1b[32m  shell ready\x1b[0m");
     });
 
+    // Throttle for terminal events — only push one error event per 5 seconds
+    // to avoid flooding the event queue with hundreds of entries.
+    let lastEventTime = 0;
+
     socket.on("terminal:output", (payload: { data: string }) => {
       term.write(payload.data);
       // ---- LAYER B: Reactive event detection ----
-      // Detect errors in terminal output and push events for the AI to react to
+      // Only push ERROR events (not normal output) and throttle to 1 per 5s
       const text = payload.data.replace(/\x1b\[[0-9;]*m/g, ""); // strip ANSI
-      if (text.length > 5) {
+      if (text.length > 10) {
         const lowerText = text.toLowerCase();
-        if (lowerText.includes("error") || lowerText.includes("not found") || lowerText.includes("cannot") || lowerText.includes("denied") || lowerText.includes("exception")) {
+        const isError = lowerText.includes("error") || lowerText.includes("not found") ||
+                        lowerText.includes("cannot") || lowerText.includes("denied") ||
+                        lowerText.includes("exception") || lowerText.includes("fatal");
+        if (isError && Date.now() - lastEventTime > 5000) {
+          lastEventTime = Date.now();
           useEvolution.getState().pushEvent("terminal_error", text.slice(0, 300));
-        } else if (text.trim().length > 20 && !text.includes("\x1b[")) {
-          // significant output (not just prompts) — push as a terminal_output event
-          useEvolution.getState().pushEvent("terminal_output", text.slice(0, 300));
         }
       }
     });

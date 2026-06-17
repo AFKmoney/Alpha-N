@@ -421,32 +421,8 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   setHoveredLink: (id) => set({ hoveredLink: id }),
   toggleGhost: () => set((s) => ({ ghostVisible: !s.ghostVisible })),
   triggerGenerate: () => {
-    const s = get();
-    if (s.activeEvolution) return;
-    set({
-      aiState: "generating",
-      activeAgent: "developer",
-      agents: s.agents.map((a) =>
-        a.role === "developer"
-          ? { ...a, status: "writing", thought: "Projecting the probable continuation of your thought…", load: 0.7 }
-          : a
-      ),
-      logs: [
-        makeLog("deploy", "developer", "Ghost-writing the next 3 lines from your intent.", Date.now()),
-        ...s.logs,
-      ].slice(0, 80),
-    });
-    setTimeout(() => {
-      set((st) => ({
-        aiState: st.activeEvolution ? "self-improving" : "observing",
-        activeAgent: st.activeEvolution ? st.activeAgent : null,
-        agents: st.activeEvolution
-          ? st.agents
-          : st.agents.map((a) =>
-              a.role === "developer" ? { ...a, status: "idle", load: 0.1 } : a
-            ),
-      }));
-    }, 2600);
+    // "Generate" button = force a real AI cycle (same as "evolve")
+    get().triggerCycle();
   },
 
   // ---------------- AI-driven ----------------
