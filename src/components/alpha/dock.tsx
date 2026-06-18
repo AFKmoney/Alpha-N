@@ -19,7 +19,8 @@ import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { Sun, Moon } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
-import { DOCK_APPS } from "@/lib/alpha/os-types";
+import { DOCK_APPS, getDockApp } from "@/lib/alpha/os-types";
+import { triggerContextMenu, buildDockAppActions } from "@/components/alpha/context-menu";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { cn } from "@/lib/utils";
 
@@ -66,6 +67,7 @@ export function Dock() {
     theme,
     toggleTheme,
     activeDesktop,
+    taskbarPinned,
   } = useOS();
   const { toggleChat, chatOpen, toggleSynapse, synapseOpen } = useEvolution();
   const [visible, setVisible] = useState(false);
@@ -222,7 +224,9 @@ export function Dock() {
           }}
         >
           <div className="glass-strong flex max-w-[96vw] items-end gap-1.5 overflow-x-auto rounded-2xl border border-border/60 px-2.5 py-1.5 shadow-2xl scroll-ae">
-            {DOCK_APPS.map((app) => {
+            {taskbarPinned.map((kind) => {
+              const app = getDockApp(kind);
+              if (!app) return null;
               const open = windows.filter((w) => w.kind === app.kind && !w.minimized);
               return (
                 <motion.button
@@ -235,6 +239,9 @@ export function Dock() {
                     } else {
                       openApp(app.kind);
                     }
+                  }}
+                  onContextMenu={(e) => {
+                    triggerContextMenu(e, buildDockAppActions(app.kind, app.label, useOS.getState()));
                   }}
                   className="group relative flex h-10 w-10 shrink-0 flex-col items-center justify-center rounded-xl border border-transparent transition-colors hover:border-[oklch(0.82_0.17_195)]/30 hover:bg-foreground/[0.06]"
                   title={app.label}

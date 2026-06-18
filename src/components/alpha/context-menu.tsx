@@ -43,6 +43,7 @@ import {
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import type { AppKind } from "@/lib/alpha/os-types";
+import { DOCK_APPS } from "@/lib/alpha/os-types";
 import { WALLPAPER_PRESETS } from "@/lib/alpha/wallpaper-presets";
 import { cn } from "@/lib/utils";
 
@@ -486,6 +487,26 @@ export function buildDesktopActions(
     },
   });
 
+  // ---- Pin app to Desktop submenu (shows all apps not yet on desktop) ----
+  const pinToDesktopSubmenu: ContextMenuAction[] = DOCK_APPS.filter(
+    (app) => !os.desktopShortcuts.some((s) => s.kind === app.kind)
+  ).slice(0, 12).map((app) => ({
+    label: app.label,
+    icon: <span className="font-mono-ae text-xs">{app.icon}</span>,
+    onClick: () => {
+      os.pinToDesktop(app.kind);
+      toast("success", "Pinned to desktop", app.label);
+    },
+  }));
+  if (pinToDesktopSubmenu.length > 0) {
+    actions.push({
+      label: "Pin App to Desktop",
+      icon: <Monitor className="h-3.5 w-3.5" />,
+      onClick: () => {},
+      submenu: pinToDesktopSubmenu,
+    });
+  }
+
   actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
 
   // ---- Open apps ----
@@ -566,6 +587,8 @@ export function buildDockAppActions(
 ): ContextMenuAction[] {
   const isOpen = os.windows.some((w) => w.kind === kind && !w.minimized);
   const openWin = os.windows.find((w) => w.kind === kind);
+  const isPinned = os.taskbarPinned.includes(kind as AppKind);
+  const onDesktop = os.desktopShortcuts.some((s) => s.kind === kind);
 
   const actions: ContextMenuAction[] = [];
 
@@ -599,7 +622,86 @@ export function buildDockAppActions(
     });
   }
 
+  actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
+
+  // ---- Pin / Unpin to taskbar ----
+  actions.push({
+    label: isPinned ? "Unpin from Taskbar" : "Pin to Taskbar",
+    icon: <Pin className="h-3.5 w-3.5" />,
+    onClick: () => {
+      if (isPinned) {
+        os.unpinFromTaskbar(kind as AppKind);
+        toast("info", "Unpinned from taskbar", label);
+      } else {
+        os.pinToTaskbar(kind as AppKind);
+        toast("success", "Pinned to taskbar", label);
+      }
+    },
+  });
+
+  // ---- Pin / Unpin to desktop ----
+  actions.push({
+    label: onDesktop ? "Unpin from Desktop" : "Pin to Desktop",
+    icon: <Monitor className="h-3.5 w-3.5" />,
+    onClick: () => {
+      if (onDesktop) {
+        const sc = os.desktopShortcuts.find((s) => s.kind === kind);
+        if (sc) {
+          os.unpinFromDesktop(sc.id);
+          toast("info", "Removed from desktop", label);
+        }
+      } else {
+        os.pinToDesktop(kind as AppKind);
+        toast("success", "Pinned to desktop", label);
+      }
+    },
+  });
+
   return actions;
+}
+
+/**
+ * Build the desktop shortcut context menu (right-click on a desktop icon).
+ * Provides open, pin/unpin to taskbar, and remove from desktop.
+ */
+export function buildDesktopShortcutActions(
+  shortcutId: string,
+  kind: AppKind,
+  label: string,
+  os: ReturnType<typeof useOS.getState>
+): ContextMenuAction[] {
+  const isPinned = os.taskbarPinned.includes(kind);
+
+  return [
+    {
+      label: `Open ${label}`,
+      icon: <Square className="h-3.5 w-3.5" />,
+      onClick: () => os.openApp(kind),
+    },
+    { label: "", icon: null, onClick: () => {}, separator: true },
+    {
+      label: isPinned ? "Unpin from Taskbar" : "Pin to Taskbar",
+      icon: <Pin className="h-3.5 w-3.5" />,
+      onClick: () => {
+        if (isPinned) {
+          os.unpinFromTaskbar(kind);
+          toast("info", "Unpinned from taskbar", label);
+        } else {
+          os.pinToTaskbar(kind);
+          toast("success", "Pinned to taskbar", label);
+        }
+      },
+    },
+    {
+      label: "Remove from Desktop",
+      icon: <X className="h-3.5 w-3.5" />,
+      onClick: () => {
+        os.unpinFromDesktop(shortcutId);
+        toast("info", "Removed from desktop", label);
+      },
+      danger: true,
+    },
+  ];
 }
 
 /**

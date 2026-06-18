@@ -9,6 +9,8 @@
 import { create } from "zustand";
 import {
   DOCK_APPS,
+  MINIMAL_TASKBAR,
+  getDockApp,
   WORKSPACE_TOP,
   WORKSPACE_BOTTOM_MARGIN,
   MIN_WINDOW_W,
@@ -17,6 +19,7 @@ import {
   defaultSplits,
   type AppKind,
   type AppWindow,
+  type DesktopShortcut,
   type LayoutMode,
   type ProtectedFile,
   type Viewport,
@@ -77,6 +80,12 @@ interface OSStore {
    */
   snapPreview: Rect | null;
 
+  // ---- Taskbar pin + desktop shortcuts ----
+  /** Apps pinned to the taskbar (dock). Starts with MINIMAL_TASKBAR. */
+  taskbarPinned: AppKind[];
+  /** App icons pinned to the desktop (like Windows desktop shortcuts). */
+  desktopShortcuts: DesktopShortcut[];
+
   // actions
   openApp: (kind: AppKind, opts?: Partial<AppWindow>) => string;
   closeWindow: (id: string) => void;
@@ -119,6 +128,18 @@ interface OSStore {
   minimizeAll: () => void;
   /** Toggle or set the always-on-top flag for a window. */
   setAlwaysOnTop: (id: string, onTop: boolean) => void;
+
+  // ---- Taskbar pin + desktop shortcut actions ----
+  /** Pin an app kind to the taskbar (dock). */
+  pinToTaskbar: (kind: AppKind) => void;
+  /** Unpin an app kind from the taskbar. */
+  unpinFromTaskbar: (kind: AppKind) => void;
+  /** Pin an app to the desktop as a shortcut icon at the given position. */
+  pinToDesktop: (kind: AppKind, opts?: { label?: string; icon?: string; x?: number; y?: number; data?: Record<string, unknown> }) => void;
+  /** Remove a desktop shortcut by id. */
+  unpinFromDesktop: (id: string) => void;
+  /** Move a desktop shortcut to a new position (drag). */
+  moveDesktopShortcut: (id: string, x: number, y: number) => void;
 }
 
 let winId = 0;
@@ -153,6 +174,8 @@ function defaultRect(kind: AppKind, index: number): { x: number; y: number; w: n
     clock: { w: 560, h: 460 },
     weather: { w: 480, h: 540 },
     music: { w: 520, h: 480 },
+    // ---- AI App Store (AI-APP-STORE) ----
+    appstore: { w: 880, h: 600 },
   };
   const r = base[kind];
   // cascade position
@@ -209,6 +232,19 @@ export const useOS = create<OSStore>((set, get) => ({
   // ---- SA3-WINDOW-OS: default state ----
   theme: "dark",
   snapPreview: null,
+
+  // ---- Taskbar pin + desktop shortcuts: default state ----
+  taskbarPinned: [...MINIMAL_TASKBAR],
+  // Default desktop shortcuts — a few common apps pinned to the desktop
+  // so the OS feels alive on first boot (like a real OS desktop).
+  desktopShortcuts: [
+    { id: "ds-default-monitor", kind: "monitor", label: "Monitor", icon: "▤", x: 24, y: 24 },
+    { id: "ds-default-council", kind: "agents", label: "Council", icon: "◈", x: 24, y: 112 },
+    { id: "ds-default-vault", kind: "vault", label: "Vault", icon: "🔒", x: 24, y: 200 },
+    { id: "ds-default-calc", kind: "calculator", label: "Calc", icon: "∑", x: 24, y: 288 },
+    { id: "ds-default-notes", kind: "notes", label: "Notes", icon: "✎", x: 24, y: 376 },
+    { id: "ds-default-clock", kind: "clock", label: "Clock", icon: "○", x: 24, y: 464 },
+  ],
 
   openApp: (kind, opts) => {
     // PREVENT DUPLICATE APPS: if an app of this kind is already open on the
@@ -558,6 +594,52 @@ export const useOS = create<OSStore>((set, get) => ({
         w.id === id
           ? { ...w, alwaysOnTop: onTop, z: onTop ? 99999 : s.zTop }
           : w
+      ),
+    }));
+  },
+
+  // ---- Taskbar pin / desktop shortcut implementations ----
+  pinToTaskbar: (kind) => {
+    set((s) => ({
+      taskbarPinned: s.taskbarPinned.includes(kind)
+        ? s.taskbarPinned
+        : [...s.taskbarPinned, kind],
+    }));
+  },
+
+  unpinFromTaskbar: (kind) => {
+    set((s) => ({
+      taskbarPinned: s.taskbarPinned.filter((k) => k !== kind),
+    }));
+  },
+
+  pinToDesktop: (kind, opts) => {
+    const app = getDockApp(kind);
+    const id = `ds-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    // Auto-position: stack shortcuts vertically on the left side if no position given.
+    const count = get().desktopShortcuts.length;
+    const shortcut: DesktopShortcut = {
+      id,
+      kind,
+      label: opts?.label ?? app?.label ?? kind,
+      icon: opts?.icon ?? app?.icon ?? "▣",
+      x: opts?.x ?? 24,
+      y: opts?.y ?? 24 + count * 88,
+      data: opts?.data,
+    };
+    set((s) => ({ desktopShortcuts: [...s.desktopShortcuts, shortcut] }));
+  },
+
+  unpinFromDesktop: (id) => {
+    set((s) => ({
+      desktopShortcuts: s.desktopShortcuts.filter((sc) => sc.id !== id),
+    }));
+  },
+
+  moveDesktopShortcut: (id, x, y) => {
+    set((s) => ({
+      desktopShortcuts: s.desktopShortcuts.map((sc) =>
+        sc.id === id ? { ...sc, x, y } : sc
       ),
     }));
   },

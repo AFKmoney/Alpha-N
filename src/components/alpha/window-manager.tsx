@@ -30,6 +30,7 @@ import { StatsApp } from "./apps/stats-app";
 import { ClockApp } from "./apps/clock-app";
 import { WeatherApp } from "./apps/weather-app";
 import { MusicApp } from "./apps/music-app";
+import { AIAppStore } from "./apps/ai-app-store";
 import { SplitHandleBar } from "./split-handle";
 
 export function WindowManager() {
@@ -115,6 +116,8 @@ function renderAppContent(kind: string, windowId: string) {
       return <WeatherApp windowId={windowId} />;
     case "music":
       return <MusicApp windowId={windowId} />;
+    case "appstore":
+      return <AIAppStore windowId={windowId} />;
     default:
       return <div className="p-4 text-muted-foreground">Unknown app</div>;
   }

@@ -13,6 +13,7 @@ import { BeforeAfter } from "@/components/alpha/before-after";
 import { NeuralDiff } from "@/components/alpha/neural-diff";
 import { SynapseMap } from "@/components/alpha/synapse-map";
 import { WindowManager } from "@/components/alpha/window-manager";
+import { DesktopShortcuts } from "@/components/alpha/desktop-shortcuts";
 import { Dock, DockHint } from "@/components/alpha/dock";
 import { StartMenu } from "@/components/alpha/start-menu";
 import { LiveMutationViewer } from "@/components/alpha/live-mutation-viewer";
@@ -96,6 +97,8 @@ export default function Page() {
           }
         }}
       >
+        {/* Desktop shortcuts — pinnable app icons on the desktop */}
+        <DesktopShortcuts />
         <WindowManager />
       </main>
 

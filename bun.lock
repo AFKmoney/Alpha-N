@@ -5,6 +5,7 @@
     "": {
       "name": "nextjs_tailwind_shadcn_ts",
       "dependencies": {
+        "@babel/standalone": "^8.0.1",
         "@dnd-kit/core": "^6.3.1",
         "@dnd-kit/sortable": "^10.0.0",
         "@dnd-kit/utilities": "^3.2.2",
@@ -119,6 +120,8 @@
     "@babel/parser": ["@babel/parser@7.28.6", "https://registry.npmjs.com/@babel/parser/-/parser-7.28.6.tgz", { "dependencies": { "@babel/types": "^7.28.6" }, "bin": "./bin/babel-parser.js" }, "sha512-TeR9zWR18BvbfPmGbLampPMW+uW1NZnJlRuuHso8i87QZNq2JRF9i6RgxRqtEq+wQGsS19NNTWr2duhnE49mfQ=="],
 
     "@babel/runtime": ["@babel/runtime@7.28.6", "https://registry.npmjs.com/@babel/runtime/-/runtime-7.28.6.tgz", {}, "sha512-05WQkdpL9COIMz4LjTxGpPNCdlpyimKppYNoJ5Di5EUObifl8t4tuLuUBBZEpoLYOmfvIWrsp9fCl0HoPRVTdA=="],
+
+    "@babel/standalone": ["@babel/standalone@8.0.1", "", {}, "sha512-DQ0xgEgD2AVEmAzuO+0Pr2VJHDL23ibW5tiIcBIaa+gOjDLqje/Nz/Y5zXnoyPjVsIZJxSb6U+yFde7ofyaoDw=="],
 
     "@babel/template": ["@babel/template@7.28.6", "https://registry.npmjs.com/@babel/template/-/template-7.28.6.tgz", { "dependencies": { "@babel/code-frame": "^7.28.6", "@babel/parser": "^7.28.6", "@babel/types": "^7.28.6" } }, "sha512-YA6Ma2KsCdGb+WC6UpBVFJGXL58MDA6oyONbjyF/+5sBgxY/dwkhLogbMT2GXXyU84/IhRw/2D1Os1B/giz+BQ=="],
 

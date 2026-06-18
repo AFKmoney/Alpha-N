@@ -30,7 +30,10 @@ export type AppKind =
   | "stats"
   | "clock"
   | "weather"
-  | "music";
+  | "music"
+  // ---- AI App Store (AI-APP-STORE) ----
+  // AI-suggested + AI-generated apps installed on demand.
+  | "appstore";
 
 /**
  * SnapState — the dock-edge snap zone a floating window is currently
@@ -286,6 +289,18 @@ export interface DockApp {
   defaultRect?: Partial<Pick<AppWindow, "w" | "h">>;
 }
 
+/**
+ * The MINIMAL taskbar set — only these apps appear on the dock by default.
+ * Everything else lives on the desktop as a shortcut icon or in the Start Menu.
+ * Users can pin/unpin apps to customise this via right-click.
+ */
+export const MINIMAL_TASKBAR: AppKind[] = [
+  "terminal",
+  "files",
+  "browser",
+  "appstore",
+];
+
 export const DOCK_APPS: DockApp[] = [
   { kind: "terminal", label: "Terminal", icon: "▸_", defaultTitle: "bash — alpha-os" },
   { kind: "realcode", label: "Code", icon: "{}", defaultTitle: "Real Code Editor" },
@@ -310,4 +325,29 @@ export const DOCK_APPS: DockApp[] = [
   { kind: "clock", label: "Clock", icon: "○", defaultTitle: "World Clock" },
   { kind: "weather", label: "Weather", icon: "☀", defaultTitle: "Weather" },
   { kind: "music", label: "Music", icon: "♫", defaultTitle: "Music Player" },
+  // ---- AI App Store (AI-APP-STORE) ----
+  {
+    kind: "appstore",
+    label: "AI Store",
+    icon: "✦",
+    defaultTitle: "AI App Store",
+    defaultRect: { w: 880, h: 600 },
+  },
 ];
+
+// ---- Desktop shortcuts (pinnable app icons on the desktop) ----
+export interface DesktopShortcut {
+  id: string;
+  kind: AppKind;
+  label: string;
+  icon: string;
+  x: number;
+  y: number;
+  /** Optional data payload (e.g. for custom/generated apps). */
+  data?: Record<string, unknown>;
+}
+
+/** Look up a DockApp by kind (returns undefined for unknown kinds). */
+export function getDockApp(kind: AppKind): DockApp | undefined {
+  return DOCK_APPS.find((a) => a.kind === kind);
+}

@@ -11,11 +11,13 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import type { ComponentType } from "react";
 import { motion } from "framer-motion";
 import { Globe, Lock, RotateCw, Shield, ShieldAlert, X, FolderPlus, FilePlus } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { triggerContextMenu, buildFileActions } from "@/components/alpha/context-menu";
+import { GeneratedAppRenderer } from "@/components/alpha/apps/generated-app-renderer";
 import { cn } from "@/lib/utils";
 
 // ============ BROWSER APP (with proxy — works on ANY site including google.com) ============
@@ -714,6 +716,12 @@ export function CustomApp({ windowId }: { windowId: string }) {
   const { windows } = useOS();
   const win = windows.find((w) => w.id === windowId);
   const spec = (win?.data?.spec as string) ?? "A custom app spawned by N-Core.";
+  // If the window carries a generatedAppId, delegate to the runtime renderer
+  // which fetches the LLM-generated source and executes it sandboxed.
+  if (win?.data?.generatedAppId) {
+    const Renderer = GeneratedAppRenderer as ComponentType<{ windowId: string }>;
+    return <Renderer windowId={windowId} />;
+  }
   return (
     <div className="flex h-full flex-col items-center justify-center bg-background p-6 text-center">
       <motion.div
