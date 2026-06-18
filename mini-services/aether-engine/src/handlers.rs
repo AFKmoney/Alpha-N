@@ -1290,3 +1290,141 @@ pub async fn graph_stats(State(state): State<AppState>) -> impl IntoResponse {
         "top_connected_nodes": top_connected,
     }))
 }
+
+// ===========================================================================
+// AGENTIC LAYER (v3.2) — autonomous OS agent endpoints
+//
+// Two additive routes registered in main.rs that expose the agentic loop
+// (src/agent.rs) and the tool registry (src/tools.rs) to the Next.js
+// layer. Neither touches the existing 10-stage cognitive pipeline.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// POST /v1/agent/run — run the autonomous agent loop
+// ---------------------------------------------------------------------------
+
+/// Run the autonomous agent loop for a single goal.
+///
+/// Accepts a JSON body of the shape:
+///
+/// ```json
+/// {
+///   "goal": "set up a Python dev environment and write a hello-world script",
+///   "context": { "windows": [...], "memory": [...], "plan": {...} },
+///   "max_iterations": 20
+/// }
+/// ```
+///
+/// - `goal` (required) — natural-language goal the agent should achieve.
+/// - `context` (optional, default `{}`) — current OS state, pretty-printed
+///   into the system prompt so the LLM perceives open windows, memory,
+///   active plan, etc.
+/// - `max_iterations` (optional, default `20`, clamped to `[1, 50]`) —
+///   hard cap on think iterations.
+///
+/// Returns:
+///
+/// ```json
+/// {
+///   "ok": true,
+///   "result": "<final assistant text>",
+///   "iterations": 3,
+///   "completed": true,
+///   "tool_calls": [
+///     { "name": "file_read", "params": { "path": "/etc/hostname" } },
+///     ...
+///   ]
+/// }
+/// ```
+///
+/// The `tool_calls` array is the full transcript of every tool call the
+/// LLM made across all iterations, in execution order. The Next.js layer
+/// uses this transcript to perform the real OS side-effects (file IO,
+/// PTY exec, window manager mutations, …) — the Aether Engine's tool
+/// executors return placeholders by design (see [`crate::tools`]).
+///
+/// On a missing `goal` field the handler returns
+/// `{ ok: false, error: "missing 'goal' field" }` without starting the
+/// loop.
+pub async fn agent_run(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let goal = body
+        .get("goal")
+        .and_then(|g| g.as_str())
+        .unwrap_or("")
+        .to_string();
+    let context = body.get("context").cloned().unwrap_or(json!({}));
+    let max_iterations = body
+        .get("max_iterations")
+        .and_then(|m| m.as_u64())
+        .map(|n| n as usize)
+        .unwrap_or(crate::agent::DEFAULT_MAX_ITERATIONS);
+
+    if goal.is_empty() {
+        return Json(json!({
+            "ok": false,
+            "error": "missing 'goal' field",
+        }))
+        .into_response();
+    }
+
+    let result = crate::agent::run_agent_loop(state, &goal, &context, max_iterations).await;
+
+    Json(json!({
+        "ok": true,
+        "result": result.result,
+        "iterations": result.iterations,
+        "completed": result.completed,
+        "tool_calls": result.tool_calls.iter().map(|c| json!({
+            "name": c.name,
+            "params": c.params,
+        })).collect::<Vec<_>>(),
+    }))
+    .into_response()
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/tools — list available agent tools (introspection)
+// ---------------------------------------------------------------------------
+
+/// List every tool available to the autonomous agent, with its name,
+/// description, and JSON-Schema parameters.
+///
+/// Used by the Next.js layer (and by `curl`) to introspect the tool
+/// surface without reading the Rust source. Returns:
+///
+/// ```json
+/// {
+///   "ok": true,
+///   "tools": [
+///     {
+///       "name": "file_read",
+///       "description": "Read the full contents of a file from disk.",
+///       "parameters": {
+///         "type": "object",
+///         "properties": { "path": { "type": "string", "..." } },
+///         "required": ["path"]
+///       }
+///     },
+///     ...
+///   ]
+/// }
+/// ```
+///
+/// The order of tools in the response is stable across calls (matches the
+/// order in [`ToolRegistry::catalog`](crate::tools::ToolRegistry::catalog))
+/// so callers can cache or render the list without re-sorting.
+pub async fn list_tools(State(_state): State<AppState>) -> impl IntoResponse {
+    let registry = crate::tools::ToolRegistry::new();
+    let catalog = registry.catalog();
+    Json(json!({
+        "ok": true,
+        "tools": catalog.iter().map(|t| json!({
+            "name": t.name,
+            "description": t.description,
+            "parameters": t.parameters,
+        })).collect::<Vec<_>>(),
+    }))
+}

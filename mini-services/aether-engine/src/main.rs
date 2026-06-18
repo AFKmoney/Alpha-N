@@ -41,6 +41,14 @@
 //! `AETHER_BACKEND` environment variable) after augmenting them through
 //! the cognitive pipeline defined in [`crate::handlers`].
 
+// --- Agentic layer (v3.2) ---
+//
+// `agent` implements the perceive → think → act → observe loop that turns
+// a small GGUF model into an autonomous OS-managing agent. `tools` defines
+// the tool surface (file IO, shell, windows, memory, planning) the agent
+// dispatches through. Neither module touches the existing 10-stage
+// cognitive pipeline.
+mod agent;
 mod atd;
 mod cache;
 mod clt;
@@ -51,6 +59,7 @@ mod graph;
 mod handlers;
 mod hcm;
 mod tfidf;
+mod tools;
 
 use axum::routing::{get, post};
 use axum::Router;
@@ -155,6 +164,8 @@ const PORT: u16 = 3004;
 /// | GET    | `/dashboard`           | [`handlers::dashboard`]              |
 /// | GET    | `/metrics`             | [`handlers::prometheus_metrics`]     |
 /// | GET    | `/config`              | [`handlers::get_config`]             |
+/// | POST   | `/v1/agent/run`        | [`handlers::agent_run`]              |
+/// | GET    | `/v1/tools`            | [`handlers::list_tools`]             |
 ///
 /// # Panics
 ///
@@ -214,6 +225,9 @@ async fn main() {
         .route("/dashboard", get(handlers::dashboard))
         .route("/metrics", get(handlers::prometheus_metrics))
         .route("/config", get(handlers::get_config))
+        // --- Agentic layer (v3.2) ---
+        .route("/v1/agent/run", post(handlers::agent_run))
+        .route("/v1/tools", get(handlers::list_tools))
         .layer(CorsLayer::very_permissive())
         .with_state(state);
 

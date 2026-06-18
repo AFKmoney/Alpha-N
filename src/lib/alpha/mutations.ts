@@ -131,7 +131,20 @@ export type Mutation =
   | { type: "execute_code"; code: string; language: "javascript" | "typescript" | "bash" }
   // ---- Real compilation ----
   | { type: "compile"; check: "tsc" | "eslint" | "both" }
-  | { type: "rollback" };
+  | { type: "rollback" }
+  // ---- AI POWER: OS control mutations ----
+  | { type: "pin_to_taskbar"; app: string }
+  | { type: "unpin_from_taskbar"; app: string }
+  | { type: "pin_to_desktop"; app: string }
+  | { type: "create_sector"; path: string }
+  | { type: "create_vector"; path: string }
+  | { type: "delete_file"; path: string }
+  | { type: "snap_window"; windowId: string; snap: "left" | "right" | "top" | "bl" | "br" }
+  | { type: "set_theme"; theme: "dark" | "light" }
+  | { type: "set_wallpaper"; presetId: string }
+  | { type: "minimize_all" }
+  | { type: "set_always_on_top"; windowId: string; onTop: boolean }
+  | { type: "switch_desktop"; desktop: number };
 
 // ---- Web search result (fed back to the AI) ----
 export interface WebSearchResult {
@@ -449,5 +462,29 @@ export function describeMutation(m: Mutation): string {
       return `🔧 compile[${m.check}]`;
     case "rollback":
       return `↺ ROLLBACK — restored previous snapshot`;
+    case "pin_to_taskbar":
+      return `📌 Pinned ${m.app} to taskbar`;
+    case "unpin_from_taskbar":
+      return `📌 Unpinned ${m.app} from taskbar`;
+    case "pin_to_desktop":
+      return `📌 Pinned ${m.app} to desktop`;
+    case "create_sector":
+      return `📁 Created sector: ${m.path}`;
+    case "create_vector":
+      return `📄 Created vector: ${m.path}`;
+    case "delete_file":
+      return `🗑 Deleted: ${m.path}`;
+    case "snap_window":
+      return `⬓ Snapped window to ${m.snap}`;
+    case "set_theme":
+      return `🎨 Theme → ${m.theme}`;
+    case "set_wallpaper":
+      return `🖼 Wallpaper → ${m.presetId}`;
+    case "minimize_all":
+      return `⊖ Show desktop (minimize all)`;
+    case "set_always_on_top":
+      return `📌 Always-on-top: ${m.onTop}`;
+    case "switch_desktop":
+      return `🖥 Switched to desktop ${m.desktop + 1}`;
   }
 }

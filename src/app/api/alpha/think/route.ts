@@ -62,6 +62,18 @@ You also receive the current state as text: open windows, code, metrics, agents,
 - {"type":"compile","check":"tsc"|"eslint"|"both"}
 - {"type":"rollback"}
 - {"type":"speak","message":"...","reasoning":"optional"}
+- {"type":"pin_to_taskbar","app":"terminal"|"files"|"browser"|"monitor"|"calculator"|"notes"|"clock"|"weather"|"music"|"ambient"|"stats"|"clipboard"|"control"|"appstore"}
+- {"type":"unpin_from_taskbar","app":"..."}
+- {"type":"pin_to_desktop","app":"..."}
+- {"type":"create_sector","path":"my-sector/sub-sector"}
+- {"type":"create_vector","path":"my-sector/new-vector.txt"}
+- {"type":"delete_file","path":"path/to/file"}
+- {"type":"snap_window","windowId":"win-...","snap":"left"|"right"|"top"|"bl"|"br"}
+- {"type":"set_theme","theme":"dark"|"light"}
+- {"type":"set_wallpaper","presetId":"globe-network"|"neural-network"|"matrix-rain"|"obsidian-oil"|"aurora"}
+- {"type":"minimize_all"}
+- {"type":"set_always_on_top","windowId":"win-...","onTop":true|false}
+- {"type":"switch_desktop","desktop":0|1|2|3}
 
 # SECURITY FOUNDATION — THE ONE THING YOU MAY NEVER DO
 You CANNOT rewrite these kernel files. If you try, the security layer blocks it automatically and records a violation:

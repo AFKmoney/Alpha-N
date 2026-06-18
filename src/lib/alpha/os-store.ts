@@ -165,6 +165,7 @@ function defaultRect(kind: AppKind, index: number): { x: number; y: number; w: n
     repository: { w: 560, h: 460 },
     wallpaper: { w: 600, h: 500 },
     custom: { w: 560, h: 400 },
+    control: { w: 340, h: 600 },
     // ---- SA3-WINDOW-OS: new app default sizes ----
     calculator: { w: 360, h: 480 },
     notes: { w: 640, h: 480 },
@@ -238,12 +239,13 @@ export const useOS = create<OSStore>((set, get) => ({
   // Default desktop shortcuts — a few common apps pinned to the desktop
   // so the OS feels alive on first boot (like a real OS desktop).
   desktopShortcuts: [
-    { id: "ds-default-monitor", kind: "monitor", label: "Monitor", icon: "▤", x: 24, y: 24 },
-    { id: "ds-default-council", kind: "agents", label: "Council", icon: "◈", x: 24, y: 112 },
-    { id: "ds-default-vault", kind: "vault", label: "Vault", icon: "🔒", x: 24, y: 200 },
-    { id: "ds-default-calc", kind: "calculator", label: "Calc", icon: "∑", x: 24, y: 288 },
-    { id: "ds-default-notes", kind: "notes", label: "Notes", icon: "✎", x: 24, y: 376 },
-    { id: "ds-default-clock", kind: "clock", label: "Clock", icon: "○", x: 24, y: 464 },
+    { id: "ds-default-control", kind: "control", label: "Control", icon: "◈", x: 24, y: 24 },
+    { id: "ds-default-monitor", kind: "monitor", label: "Monitor", icon: "▤", x: 24, y: 112 },
+    { id: "ds-default-council", kind: "agents", label: "Council", icon: "◈", x: 24, y: 200 },
+    { id: "ds-default-vault", kind: "vault", label: "Vault", icon: "🔒", x: 24, y: 288 },
+    { id: "ds-default-calc", kind: "calculator", label: "Calc", icon: "∑", x: 24, y: 376 },
+    { id: "ds-default-notes", kind: "notes", label: "Notes", icon: "✎", x: 24, y: 464 },
+    { id: "ds-default-clock", kind: "clock", label: "Clock", icon: "○", x: 24, y: 552 },
   ],
 
   openApp: (kind, opts) => {

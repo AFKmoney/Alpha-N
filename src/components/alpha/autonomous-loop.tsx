@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useRef } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
+import type { AppKind } from "@/lib/alpha/os-types";
 import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile } from "@/lib/alpha/ai-client";
 import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry } from "@/lib/alpha/mutations";
 
@@ -341,6 +342,89 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             const msg = err instanceof Error ? err.message : "compile failed";
             applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Compile failed: ${msg.slice(0, 60)}` });
           }
+        }
+        // ---- AI POWER: OS control mutations ----
+        // The AI can now pin/unpin apps, create sectors/vectors, snap windows,
+        // change theme/wallpaper, and manage desktops directly.
+        if (m.type === "pin_to_taskbar" && m.app) {
+          osStore.getState().pinToTaskbar(m.app as AppKind);
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Pinned ${m.app} to taskbar` });
+        }
+        if (m.type === "unpin_from_taskbar" && m.app) {
+          osStore.getState().unpinFromTaskbar(m.app as AppKind);
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Unpinned ${m.app} from taskbar` });
+        }
+        if (m.type === "pin_to_desktop" && m.app) {
+          osStore.getState().pinToDesktop(m.app as AppKind);
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Pinned ${m.app} to desktop` });
+        }
+        if (m.type === "create_sector" && m.path) {
+          setAiBusy(true, `Creating sector: ${m.path}…`);
+          try {
+            const res = await fetch("/api/alpha/files", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ path: m.path, action: "mkdir" }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created sector: ${m.path}` });
+            } else {
+              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Sector creation failed: ${data.error?.slice(0, 60)}` });
+            }
+          } catch { /* ignore */ }
+        }
+        if (m.type === "create_vector" && m.path) {
+          setAiBusy(true, `Creating vector: ${m.path}…`);
+          try {
+            const res = await fetch("/api/alpha/files", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ path: m.path, action: "touch" }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created vector: ${m.path}` });
+            } else {
+              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Vector creation failed: ${data.error?.slice(0, 60)}` });
+            }
+          } catch { /* ignore */ }
+        }
+        if (m.type === "delete_file" && m.path) {
+          setAiBusy(true, `Deleting: ${m.path}…`);
+          try {
+            const res = await fetch(`/api/alpha/files?path=${encodeURIComponent(m.path)}`, { method: "DELETE" });
+            const data = await res.json();
+            if (data.ok) {
+              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Deleted: ${m.path}` });
+            } else {
+              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Delete failed: ${data.error?.slice(0, 60)}` });
+            }
+          } catch { /* ignore */ }
+        }
+        if (m.type === "snap_window" && m.windowId) {
+          osStore.getState().snapWindow(m.windowId, m.snap);
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Snapped window ${m.windowId} to ${m.snap}` });
+        }
+        if (m.type === "set_theme") {
+          osStore.getState().setTheme(m.theme);
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Theme set to ${m.theme}` });
+        }
+        if (m.type === "set_wallpaper" && m.presetId) {
+          window.dispatchEvent(new CustomEvent("alpha-wallpaper-change", { detail: { presetId: m.presetId } }));
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Wallpaper set to ${m.presetId}` });
+        }
+        if (m.type === "minimize_all") {
+          osStore.getState().minimizeAll();
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Minimized all windows (show desktop)` });
+        }
+        if (m.type === "set_always_on_top" && m.windowId) {
+          osStore.getState().setAlwaysOnTop(m.windowId, m.onTop);
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Window ${m.windowId} always-on-top: ${m.onTop}` });
+        }
+        if (m.type === "switch_desktop") {
+          osStore.getState().setActiveDesktop(m.desktop);
+          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Switched to desktop ${m.desktop + 1}` });
         }
       }
 

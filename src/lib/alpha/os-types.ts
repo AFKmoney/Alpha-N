@@ -19,6 +19,7 @@ export type AppKind =
   | "repository"
   | "wallpaper"
   | "custom"
+  | "control"
   // ---- Window/OS expansion (SA3-WINDOW-OS) ----
   // Standalone app kinds registered for the dock. The window-manager switch
   // is wired separately; the AppKind + dock entry alone is enough for the
@@ -295,6 +296,7 @@ export interface DockApp {
  * Users can pin/unpin apps to customise this via right-click.
  */
 export const MINIMAL_TASKBAR: AppKind[] = [
+  "control",
   "terminal",
   "files",
   "browser",
@@ -302,6 +304,7 @@ export const MINIMAL_TASKBAR: AppKind[] = [
 ];
 
 export const DOCK_APPS: DockApp[] = [
+  { kind: "control", label: "Control", icon: "◈", defaultTitle: "Control Center", defaultRect: { w: 340, h: 600 } },
   { kind: "terminal", label: "Terminal", icon: "▸_", defaultTitle: "bash — alpha-os" },
   { kind: "realcode", label: "Code", icon: "{}", defaultTitle: "Real Code Editor" },
   { kind: "editor", label: "Loom", icon: "❰}", defaultTitle: "core/nucleus.ts" },
