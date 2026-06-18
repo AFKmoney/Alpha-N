@@ -22,6 +22,14 @@ import { WallpaperApp } from "./apps/wallpaper-app";
 import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
 import { LoomApp } from "./apps/loom-app";
+import { CalculatorApp } from "./apps/calculator-app";
+import { NotesApp } from "./apps/notes-app";
+import { ClipboardApp } from "./apps/clipboard-app";
+import { AmbientApp } from "./apps/ambient-app";
+import { StatsApp } from "./apps/stats-app";
+import { ClockApp } from "./apps/clock-app";
+import { WeatherApp } from "./apps/weather-app";
+import { MusicApp } from "./apps/music-app";
 import { SplitHandleBar } from "./split-handle";
 
 export function WindowManager() {
@@ -91,6 +99,22 @@ function renderAppContent(kind: string, windowId: string) {
       return <WallpaperApp />;
     case "custom":
       return <CustomApp windowId={windowId} />;
+    case "calculator":
+      return <CalculatorApp windowId={windowId} />;
+    case "notes":
+      return <NotesApp windowId={windowId} />;
+    case "clipboard":
+      return <ClipboardApp windowId={windowId} />;
+    case "ambient":
+      return <AmbientApp windowId={windowId} />;
+    case "stats":
+      return <StatsApp windowId={windowId} />;
+    case "clock":
+      return <ClockApp windowId={windowId} />;
+    case "weather":
+      return <WeatherApp windowId={windowId} />;
+    case "music":
+      return <MusicApp windowId={windowId} />;
     default:
       return <div className="p-4 text-muted-foreground">Unknown app</div>;
   }

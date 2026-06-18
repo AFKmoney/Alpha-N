@@ -3,6 +3,11 @@
  * socket.io (bridged by the kernel/pty-bridge mini-service on port 3003).
  * The AI can queue commands via the os-store; output is parsed for errors
  * and pushed to the reactive event queue (Layer B) so the AI can react.
+ *
+ * SA3-WINDOW-OS addition: client-side command history (bash-like up/down
+ * cycling). ArrowUp replaces the current line with the previous command;
+ * ArrowDown cycles forward. History persists to localStorage under
+ * "alpha-terminal-history" (max 100 entries).
  */
 "use client";
 
@@ -18,6 +23,11 @@ interface TerminalAppProps {
   windowId: string;
 }
 
+/** localStorage key for the persisted command history. */
+const HISTORY_KEY = "alpha-terminal-history";
+/** Maximum number of commands to keep in history (and in localStorage). */
+const HISTORY_MAX = 100;
+
 export function TerminalApp({ windowId }: TerminalAppProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const termRef = useRef<XTerm | null>(null);
@@ -28,6 +38,27 @@ export function TerminalApp({ windowId }: TerminalAppProps) {
 
   useEffect(() => {
     if (!containerRef.current) return;
+
+    // ---- SA3-WINDOW-OS: load persisted command history from localStorage ----
+    // Stored as a JSON-encoded string[]. Guarded for SSR / disabled storage.
+    const history: string[] = [];
+    try {
+      const raw = localStorage.getItem(HISTORY_KEY);
+      if (raw) {
+        const parsed: unknown = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          for (const item of parsed) {
+            if (typeof item === "string") history.push(item);
+          }
+        }
+      }
+    } catch {
+      // Storage disabled or corrupt — start with empty history.
+    }
+    /** Cursor into `history` while browsing with ArrowUp/Down. -1 = not browsing. */
+    let historyIndex = -1;
+    /** Live snapshot of the line the user is currently typing. */
+    let currentLine = "";
 
     const term = new XTerm({
       fontFamily: "var(--font-geist-mono), ui-monospace, monospace",
@@ -115,7 +146,81 @@ export function TerminalApp({ windowId }: TerminalAppProps) {
       term.writeln(`\r\n\x1b[31m[error: ${payload.message}]\x1b[0m`);
     });
 
+    /**
+     * Replace the current shell input line with `text`. Sends Ctrl-U (kill
+     * line in bash/readline) followed by the replacement text. Does NOT
+     * forward the original keystroke that triggered the replacement.
+     */
+    const replaceLine = (text: string) => {
+      socket.emit("terminal:input", { data: "\x15" + text });
+      currentLine = text;
+    };
+
     term.onData((data) => {
+      // ---- SA3-WINDOW-OS: client-side command history (bash-like) ----
+      // ArrowUp: walk backward through history.
+      if (data === "\x1b[A") {
+        if (history.length === 0) return;
+        if (historyIndex === -1) {
+          historyIndex = history.length - 1;
+        } else if (historyIndex > 0) {
+          historyIndex--;
+        }
+        const cmd = history[historyIndex] ?? "";
+        replaceLine(cmd);
+        return;
+      }
+      // ArrowDown: walk forward through history; past the end restores empty.
+      if (data === "\x1b[B") {
+        if (historyIndex === -1) return;
+        if (historyIndex < history.length - 1) {
+          historyIndex++;
+          const cmd = history[historyIndex] ?? "";
+          replaceLine(cmd);
+        } else {
+          historyIndex = -1;
+          replaceLine("");
+        }
+        return;
+      }
+
+      // Track the live line locally so Enter can capture the full command.
+      if (data === "\r") {
+        // Enter: commit current line to history (if non-empty + not a dup of the last entry).
+        const trimmed = currentLine.trim();
+        if (trimmed) {
+          if (history.length === 0 || history[history.length - 1] !== trimmed) {
+            history.push(trimmed);
+            if (history.length > HISTORY_MAX) history.shift();
+            try {
+              localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
+            } catch {
+              // Storage full or disabled — history still works in-memory for this session.
+            }
+          }
+        }
+        currentLine = "";
+        historyIndex = -1;
+      } else if (data === "\x7f" || data === "\b") {
+        // Backspace: drop last char of the tracked line.
+        currentLine = currentLine.slice(0, -1);
+      } else if (data === "\x15") {
+        // Ctrl-U: readline kill-line.
+        currentLine = "";
+      } else if (data === "\x1b" || data.startsWith("\x1b")) {
+        // Other escape sequences (arrows already handled above, Home/End,
+        // Delete, F-keys, etc.) — don't add to the tracked line. The shell
+        // still receives them and may move the cursor / edit the line, but
+        // our local snapshot is approximate anyway.
+      } else if (data.length === 1 && data >= " ") {
+        // Printable single char.
+        currentLine += data;
+      } else if (data.length > 1 && !data.startsWith("\x1b")) {
+        // Pasted text (no escape prefix). Treat as a literal string append.
+        currentLine += data;
+      }
+
+      // Forward every keystroke to the shell PTY as usual.
       socket.emit("terminal:input", { data });
     });
 

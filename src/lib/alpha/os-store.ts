@@ -20,6 +20,8 @@ import {
   type LayoutMode,
   type ProtectedFile,
   type Viewport,
+  type Rect,
+  type SnapState,
   SECURITY_FOUNDATION,
 } from "./os-types";
 import type { CodeLine, Agent, MetricDelta } from "./evolution-data";
@@ -66,6 +68,15 @@ interface OSStore {
   // terminal command queue (AI can queue commands)
   terminalCommands: { id: string; command: string; time: number }[];
 
+  // ---- SA3-WINDOW-OS extensions ----
+  /** Active UI theme ("dark" by default; "light" injects overrides via dock). */
+  theme: "dark" | "light";
+  /**
+   * Live snap-preview rect shown during window drag-near-edge.
+   * Null when no snap zone is currently hovered. Set by window-frame.
+   */
+  snapPreview: Rect | null;
+
   // actions
   openApp: (kind: AppKind, opts?: Partial<AppWindow>) => string;
   closeWindow: (id: string) => void;
@@ -89,6 +100,23 @@ interface OSStore {
   recordViolation: (path: string, reason: string) => void;
   queueTerminalCommand: (command: string) => void;
   clearTerminalCommand: (id: string) => void;
+
+  // ---- SA3-WINDOW-OS: new actions ----
+  /** Toggle between dark and light theme. */
+  toggleTheme: () => void;
+  /** Set theme explicitly. */
+  setTheme: (theme: "dark" | "light") => void;
+  /** Update the snap-preview rect during a drag (null clears it). */
+  setSnapPreview: (rect: Rect | null) => void;
+  /**
+   * Snap a window to one of the five dock-edge zones (left/right/top/bl/br).
+   * Stores prevRect so the window can be restored later. Float mode only.
+   */
+  snapWindow: (id: string, snap: SnapState) => void;
+  /** Set per-window opacity (clamped 0.3..1.0). */
+  setWindowOpacity: (id: string, opacity: number) => void;
+  /** Minimize every window on the active desktop ("show desktop"). */
+  minimizeAll: () => void;
 }
 
 let winId = 0;
@@ -114,6 +142,15 @@ function defaultRect(kind: AppKind, index: number): { x: number; y: number; w: n
     repository: { w: 560, h: 460 },
     wallpaper: { w: 600, h: 500 },
     custom: { w: 560, h: 400 },
+    // ---- SA3-WINDOW-OS: new app default sizes ----
+    calculator: { w: 360, h: 480 },
+    notes: { w: 640, h: 480 },
+    clipboard: { w: 460, h: 420 },
+    ambient: { w: 520, h: 460 },
+    stats: { w: 560, h: 460 },
+    clock: { w: 560, h: 460 },
+    weather: { w: 480, h: 540 },
+    music: { w: 520, h: 480 },
   };
   const r = base[kind];
   // cascade position
@@ -124,6 +161,29 @@ function defaultRect(kind: AppKind, index: number): { x: number; y: number; w: n
     w: r.w,
     h: r.h,
   };
+}
+
+/**
+ * Compute the target rect for a snap zone, given the workspace viewport.
+ * Used by both snapWindow (apply) and window-frame (preview).
+ */
+export function snapRect(snap: SnapState, vp: Viewport): Rect {
+  switch (snap) {
+    case "left":
+      return { x: vp.x, y: vp.y, w: Math.floor(vp.w / 2), h: vp.h };
+    case "right":
+      return { x: vp.x + Math.ceil(vp.w / 2), y: vp.y, w: Math.floor(vp.w / 2), h: vp.h };
+    case "top":
+      // "top" snap = maximize
+      return { x: vp.x, y: vp.y, w: vp.w, h: vp.h };
+    case "bl":
+      return { x: vp.x, y: vp.y + Math.ceil(vp.h / 2), w: Math.floor(vp.w / 2), h: Math.floor(vp.h / 2) };
+    case "br":
+      return { x: vp.x + Math.ceil(vp.w / 2), y: vp.y + Math.ceil(vp.h / 2), w: Math.floor(vp.w / 2), h: Math.floor(vp.h / 2) };
+    case "none":
+    default:
+      return { x: vp.x, y: vp.y, w: vp.w, h: vp.h };
+  }
 }
 
 export const useOS = create<OSStore>((set, get) => ({
@@ -143,6 +203,10 @@ export const useOS = create<OSStore>((set, get) => ({
   rollbackEvents: [],
 
   terminalCommands: [],
+
+  // ---- SA3-WINDOW-OS: default state ----
+  theme: "dark",
+  snapPreview: null,
 
   openApp: (kind, opts) => {
     // PREVENT DUPLICATE APPS: if an app of this kind is already open on the
@@ -197,6 +261,9 @@ export const useOS = create<OSStore>((set, get) => ({
       maximized: false,
       desktop,
       data: opts?.data,
+      // SA3-WINDOW-OS: default opacity + snap state
+      opacity: opts?.opacity ?? 1,
+      snapState: "none",
     };
     // when opening in tile mode, reset splits for that desktop to even
     const newWindows = [...get().windows, win];
@@ -290,7 +357,8 @@ export const useOS = create<OSStore>((set, get) => ({
     const clamped = clampRect({ x, y, w: win.w, h: win.h }, vp);
     set((s) => ({
       windows: s.windows.map((w) =>
-        w.id === id ? { ...w, x: clamped.x, y: clamped.y } : w
+        // Clear snapState when the user starts dragging a snapped window free.
+        w.id === id ? { ...w, x: clamped.x, y: clamped.y, snapState: "none" } : w
       ),
     }));
   },
@@ -422,6 +490,64 @@ export const useOS = create<OSStore>((set, get) => ({
 
   clearTerminalCommand: (id) =>
     set((s) => ({ terminalCommands: s.terminalCommands.filter((c) => c.id !== id) })),
+
+  // ---------------- SA3-WINDOW-OS: new actions ----------------
+
+  toggleTheme: () => {
+    const next = get().theme === "dark" ? "light" : "dark";
+    set({ theme: next });
+  },
+
+  setTheme: (theme) => set({ theme }),
+
+  setSnapPreview: (rect) => set({ snapPreview: rect }),
+
+  snapWindow: (id, snap) => {
+    // Snapping only applies in float mode (tile mode owns window geometry).
+    if (get().layoutMode === "tile") return;
+    if (snap === "none") return;
+    const vp = get().viewport;
+    const target = snapRect(snap, vp);
+    set((s) => ({
+      windows: s.windows.map((w) => {
+        if (w.id !== id) return w;
+        // Capture prevRect on first snap so the window can be restored later.
+        const shouldStorePrev = !w.snapState || w.snapState === "none";
+        return {
+          ...w,
+          x: target.x,
+          y: target.y,
+          w: target.w,
+          h: target.h,
+          snapState: snap,
+          maximized: false,
+          prevRect: shouldStorePrev && !w.maximized
+            ? { x: w.x, y: w.y, w: w.w, h: w.h }
+            : w.prevRect,
+        };
+      }),
+    }));
+  },
+
+  setWindowOpacity: (id, opacity) => {
+    // Clamp to a sensible range — anything below 0.3 makes a window unusable.
+    const clamped = Math.max(0.3, Math.min(1, opacity));
+    set((s) => ({
+      windows: s.windows.map((w) =>
+        w.id === id ? { ...w, opacity: clamped } : w
+      ),
+    }));
+  },
+
+  minimizeAll: () => {
+    const desktop = get().activeDesktop;
+    set((s) => ({
+      windows: s.windows.map((w) =>
+        w.desktop === desktop && !w.minimized ? { ...w, minimized: true } : w
+      ),
+      activeWindowId: null,
+    }));
+  },
 }));
 
 export type { AppWindow, ProtectedFile, OSSnapshot, RollbackEvent };

@@ -18,7 +18,26 @@ export type AppKind =
   | "memory"
   | "repository"
   | "wallpaper"
-  | "custom";
+  | "custom"
+  // ---- Window/OS expansion (SA3-WINDOW-OS) ----
+  // Standalone app kinds registered for the dock. The window-manager switch
+  // is wired separately; the AppKind + dock entry alone is enough for the
+  // launcher to surface them.
+  | "calculator"
+  | "notes"
+  | "clipboard"
+  | "ambient"
+  | "stats"
+  | "clock"
+  | "weather"
+  | "music";
+
+/**
+ * SnapState — the dock-edge snap zone a floating window is currently
+ * locked into (set by drag-to-edge snapping, see window-frame.tsx).
+ * "none" = free-floating.
+ */
+export type SnapState = "none" | "left" | "right" | "top" | "bl" | "br";
 
 export interface AppWindow {
   id: string;
@@ -35,6 +54,11 @@ export interface AppWindow {
   desktop: number; // which virtual desktop (layer) this window lives on
   prevRect?: { x: number; y: number; w: number; h: number };
   data?: Record<string, unknown>; // app-specific (e.g. browser URL, custom app spec)
+  // ---- SA3-WINDOW-OS extensions ----
+  /** Window opacity (0.3..1.0). Default 1.0. */
+  opacity?: number;
+  /** Current snap zone (set by drag-to-edge). "none" = free-floating. */
+  snapState?: SnapState;
 }
 
 // ---- Layout / tiling ----
@@ -275,4 +299,13 @@ export const DOCK_APPS: DockApp[] = [
   { kind: "repository", label: "Apps", icon: "⊞", defaultTitle: "App Repository" },
   { kind: "wallpaper", label: "Wallpaper", icon: "◐", defaultTitle: "Wallpaper Selector" },
   { kind: "options", label: "Options", icon: "⚙", defaultTitle: "Options" },
+  // ---- SA3-WINDOW-OS: 8 new standalone apps ----
+  { kind: "calculator", label: "Calc", icon: "∑", defaultTitle: "Calculator" },
+  { kind: "notes", label: "Notes", icon: "✎", defaultTitle: "Notes" },
+  { kind: "clipboard", label: "Clip", icon: "⎘", defaultTitle: "Clipboard" },
+  { kind: "ambient", label: "Ambient", icon: "❅", defaultTitle: "Ambient Sound" },
+  { kind: "stats", label: "Stats", icon: "▣", defaultTitle: "System Stats" },
+  { kind: "clock", label: "Clock", icon: "○", defaultTitle: "World Clock" },
+  { kind: "weather", label: "Weather", icon: "☀", defaultTitle: "Weather" },
+  { kind: "music", label: "Music", icon: "♫", defaultTitle: "Music Player" },
 ];

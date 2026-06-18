@@ -893,3 +893,400 @@ async fn prefetch(state: AppState, retrieved: &[ScoredNode]) {
         }
     });
 }
+
+// ===========================================================================
+// NEW ENDPOINTS (v3.1) — 8 additional handlers
+//
+// These are additive routes registered in main.rs. None of them touch the
+// existing pipeline; they expose engine state (dashboard, metrics, models,
+// config, graph stats/export/import) and an SSE-formatted chat stream.
+// ===========================================================================
+
+// ---------------------------------------------------------------------------
+// POST /v1/chat/stream — Server-Sent Events chat stream
+// ---------------------------------------------------------------------------
+
+/// OpenAI-compatible chat-completions **streaming** endpoint.
+///
+/// Accepts the same body shape as [`chat_completions`] (`{ messages: [...] }`)
+/// and returns a `text/event-stream` response. Each token of the final
+/// assistant message is emitted as an SSE event of the form:
+///
+/// ```text
+/// event: token
+/// data: {"token": "hello"}
+///
+/// ```
+///
+/// A terminal `event: done` event signals end-of-stream.
+///
+/// # Implementation note
+///
+/// Aether Engine's backend HTTP client is not natively streaming (it would
+/// require a chunked-transfer-aware `reqwest::Body` adapter), so this handler
+/// runs the simplified pipeline (graph retrieval → compression → one
+/// `call_backend` round-trip) and then **emits the final response token by
+/// token** as SSE events. The browser's `EventSource` parser sees one event
+/// per token; the only difference from a true token-stream is that all events
+/// arrive in a single HTTP body rather than being interleaved with backend
+/// generation. This is the fallback shape explicitly allowed by the spec
+/// ("simple chunked HTTP response with `text/event-stream` content type").
+pub async fn chat_completions_stream(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    state.stats.lock().await.requests += 1;
+    let query = extract_user_query(&body);
+
+    // Stage 2: graph retrieval (TF-IDF + edge expansion).
+    let retrieved: Vec<ScoredNode> = {
+        let g = state.graph.lock().await;
+        g.retrieve(&query, 8)
+    };
+    // Stage 3: context compression.
+    let context_block = compress::compress(&retrieved, &query, 6000);
+
+    // Simplified pipeline: one backend call. The full chat_completions
+    // pipeline (decomposition / ATD / distillation) is intentionally not
+    // duplicated here — the streaming endpoint is for live UX, the regular
+    // endpoint is for highest-quality responses.
+    let response = call_backend(&state, &body, &context_block).await;
+
+    // Build the SSE body: one `event: token` per whitespace-split token of
+    // the final response, terminated by `event: done`.
+    let mut sse = String::with_capacity(response.len().saturating_mul(2));
+    for token in response.split_whitespace() {
+        // JSON-encode the token (handles embedded quotes / backslashes) and
+        // interpolate it into the `data:` line. The leading space after
+        // `data:` is required by the SSE spec.
+        let token_json = serde_json::to_string(token).unwrap_or_else(|_| "\"\"".to_string());
+        sse.push_str(&format!(
+            "event: token\ndata: {{\"token\": {}}}\n\n",
+            token_json
+        ));
+    }
+    sse.push_str("event: done\ndata: {\"done\": true}\n\n");
+
+    (
+        axum::http::StatusCode::OK,
+        [("content-type", "text/event-stream")],
+        sse,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// GET /dashboard — HTML status page (see src/dashboard.rs)
+// ---------------------------------------------------------------------------
+
+/// Render a self-contained HTML dashboard summarizing live engine state.
+///
+/// Gathers a [`dashboard::DashboardData`] snapshot by briefly locking each
+/// `Arc<Mutex<…>>` in [`AppState`], then hands it to
+/// [`dashboard::render_dashboard`] which produces a dark-themed, monospace
+/// HTML page with zero external resources.
+pub async fn dashboard(State(state): State<AppState>) -> impl IntoResponse {
+    let (nodes, edges) = {
+        let g = state.graph.lock().await;
+        (g.len(), g.edge_count())
+    };
+    let cache_size = state.cache.lock().await.len();
+    let (decompositions, atd_verdicts, requests, cache_hits) = {
+        let s = state.stats.lock().await;
+        (s.decompositions, s.atd_verifications, s.requests, s.cache_hits)
+    };
+    let (hcm_pairs, hcm_capacity, hcm_memory) = {
+        let h = state.hcm.lock().await;
+        (h.pair_count, h.capacity(), h.memory_bytes())
+    };
+
+    let data = crate::dashboard::DashboardData {
+        engine_name: "Aether Engine",
+        version: "3.0",
+        uptime_seconds: crate::dashboard::uptime_seconds(),
+        node_count: nodes,
+        edge_count: edges,
+        cache_size,
+        decompositions,
+        atd_verdicts,
+        hcm_state_bytes: hcm_memory,
+        hcm_pairs,
+        hcm_capacity,
+        requests,
+        cache_hits,
+    };
+
+    axum::response::Html(crate::dashboard::render_dashboard(&data))
+}
+
+// ---------------------------------------------------------------------------
+// GET /metrics — Prometheus exposition format
+// ---------------------------------------------------------------------------
+
+/// Prometheus-format metrics endpoint.
+///
+/// Returns a `text/plain; version=0.0.4` body in Prometheus exposition
+/// format. Five series are exposed:
+///
+/// - `aether_graph_nodes` (gauge) — nodes in the semantic memory graph.
+/// - `aether_graph_edges` (gauge) — directed edges in the adjacency list.
+/// - `aether_cache_size` (gauge) — action-cache entries.
+/// - `aether_decompositions_total` (counter) — cognitive decompositions.
+/// - `aether_atd_verdicts_total` (counter) — ATD verifications performed.
+///
+/// Designed to be scraped by a Prometheus / Grafana agent with no extra
+/// configuration.
+pub async fn prometheus_metrics(State(state): State<AppState>) -> impl IntoResponse {
+    let (nodes, edges) = {
+        let g = state.graph.lock().await;
+        (g.len(), g.edge_count())
+    };
+    let cache_size = state.cache.lock().await.len();
+    let (decompositions, atd_verifications) = {
+        let s = state.stats.lock().await;
+        (s.decompositions, s.atd_verifications)
+    };
+
+    // Build the Prometheus exposition body line-by-line. Each line MUST NOT
+    // have leading whitespace (the exposition format is line-oriented and
+    // strict about data lines starting with the metric name), so we use
+    // `push_str` rather than a multi-line `format!` with `\` continuations
+    // (which would embed the source-file indentation into the string).
+    let mut body = String::with_capacity(1024);
+    body.push_str("# HELP aether_graph_nodes Total nodes in memory graph\n");
+    body.push_str("# TYPE aether_graph_nodes gauge\n");
+    body.push_str(&format!("aether_graph_nodes {}\n", nodes));
+    body.push_str("# HELP aether_graph_edges Total edges in memory graph\n");
+    body.push_str("# TYPE aether_graph_edges gauge\n");
+    body.push_str(&format!("aether_graph_edges {}\n", edges));
+    body.push_str("# HELP aether_cache_size Action cache entries\n");
+    body.push_str("# TYPE aether_cache_size gauge\n");
+    body.push_str(&format!("aether_cache_size {}\n", cache_size));
+    body.push_str("# HELP aether_decompositions_total Total cognitive decompositions\n");
+    body.push_str("# TYPE aether_decompositions_total counter\n");
+    body.push_str(&format!("aether_decompositions_total {}\n", decompositions));
+    body.push_str("# HELP aether_atd_verdicts_total Total ATD verdicts\n");
+    body.push_str("# TYPE aether_atd_verdicts_total counter\n");
+    body.push_str(&format!("aether_atd_verdicts_total {}\n", atd_verifications));
+
+    (
+        axum::http::StatusCode::OK,
+        [("content-type", "text/plain; version=0.0.4")],
+        body,
+    )
+}
+
+// ---------------------------------------------------------------------------
+// GET /graph/export — full graph as downloadable JSON
+// ---------------------------------------------------------------------------
+
+/// Export the entire semantic memory graph (nodes + edges + stats) as a
+/// downloadable JSON attachment.
+///
+/// Same payload shape as `GET /graph` but wrapped with a `stats` block and
+/// served with `Content-Disposition: attachment; filename="aether-graph.json"`
+/// so the browser downloads it as a file instead of rendering it inline.
+pub async fn graph_export(State(state): State<AppState>) -> impl IntoResponse {
+    let (nodes_json, edges_json, node_count, edge_count) = {
+        let g = state.graph.lock().await;
+        let resp = g.to_response();
+        let n = g.len();
+        let e = g.edge_count();
+        (
+            resp.get("nodes").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+            resp.get("edges").cloned().unwrap_or(serde_json::Value::Array(vec![])),
+            n,
+            e,
+        )
+    };
+
+    let body = json!({
+        "nodes": nodes_json,
+        "edges": edges_json,
+        "stats": {
+            "node_count": node_count,
+            "edge_count": edge_count,
+        },
+    });
+
+    (
+        axum::http::StatusCode::OK,
+        [("content-disposition", "attachment; filename=\"aether-graph.json\"")],
+        Json(body),
+    )
+}
+
+// ---------------------------------------------------------------------------
+// POST /graph/import — bulk-add nodes from a JSON array
+// ---------------------------------------------------------------------------
+
+/// Bulk-import nodes into the semantic memory graph.
+///
+/// Accepts a JSON body of the shape `{ "nodes": [ { "id": "...", "text": "..." }, ... ] }`.
+/// Each entry is fed through [`MemoryGraph::add`](crate::graph::MemoryGraph::add)
+/// (the same path used by `POST /graph/add`), with `kind` and `metadata`
+/// defaulting to `"fact"` and `{}` respectively when absent.
+///
+/// Returns `{ "imported": <count> }` where `count` is the number of nodes
+/// successfully added. Entries missing `id` or `text` are skipped.
+pub async fn graph_import(
+    State(state): State<AppState>,
+    Json(body): Json<serde_json::Value>,
+) -> impl IntoResponse {
+    let mut imported: usize = 0;
+    if let Some(nodes) = body.get("nodes").and_then(|n| n.as_array()) {
+        let mut g = state.graph.lock().await;
+        for node in nodes {
+            let id = node.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            let text = node.get("text").and_then(|v| v.as_str()).unwrap_or("").to_string();
+            if id.is_empty() || text.is_empty() {
+                continue;
+            }
+            let kind = node
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .unwrap_or("fact")
+                .to_string();
+            let metadata = node.get("metadata").cloned().unwrap_or(json!({}));
+            g.add(AddNodeRequest {
+                id,
+                text,
+                kind,
+                metadata,
+            });
+            imported = imported.saturating_add(1);
+        }
+    }
+    Json(json!({ "imported": imported }))
+}
+
+// ---------------------------------------------------------------------------
+// GET /config — runtime configuration
+// ---------------------------------------------------------------------------
+
+/// Return the engine's runtime configuration as JSON.
+///
+/// All values are read from the environment (with sensible defaults) at
+/// request time so changes to `AETHER_BACKEND` are reflected without a
+/// restart. The numeric thresholds (`hcm_dim`, `clt_*`, `atd_*`,
+/// `cache_threshold`, `retrieval_threshold`) are the same constants the
+/// engine was compiled with — they're surfaced here so an operator can verify
+/// the live values via curl.
+pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
+    // `AETHER_BACKEND` is the only env var the engine actually reads today;
+    // the rest are surfaced as the compiled-in defaults. The port value
+    // mirrors `const PORT: u16 = 3004` in `main.rs` (hardcoded here to avoid
+    // needing to bump PORT's visibility to `pub(crate)`).
+    let backend = state.backend.clone();
+    Json(json!({
+        "backend": backend,
+        "port": 3004_u16,
+        "hcm_dim": 1024,
+        "clt_max_steps": 10,
+        "clt_convergence": 0.92,
+        "atd_max_entropy": 0.65,
+        "atd_max_repetition": 0.30,
+        "cache_threshold": 0.95,
+        "retrieval_threshold": 0.92,
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// GET /v1/models — OpenAI-compatible model list
+// ---------------------------------------------------------------------------
+
+/// OpenAI-compatible `GET /v1/models` endpoint.
+///
+/// Returns a synthetic list of three "models" corresponding to the three
+/// paths through the Aether pipeline:
+///
+/// - `aether-cache` — served instantly from the action cache (Stage 1).
+/// - `aether-pipeline` — the full 10-stage cognitive pipeline.
+/// - `aether-fallback` — the offline-fallback response when the backend is
+///   unreachable.
+///
+/// This lets OpenAI-compatible clients (e.g. `openai` Python SDK, Continue,
+/// LangChain) enumerate the engine's "models" without configuration.
+pub async fn list_models(State(_state): State<AppState>) -> impl IntoResponse {
+    Json(json!({
+        "object": "list",
+        "data": [
+            { "id": "aether-cache",     "object": "model", "created": 0, "owned_by": "aether" },
+            { "id": "aether-pipeline",  "object": "model", "created": 0, "owned_by": "aether" },
+            { "id": "aether-fallback",  "object": "model", "created": 0, "owned_by": "aether" },
+        ],
+    }))
+}
+
+// ---------------------------------------------------------------------------
+// GET /graph/stats — detailed graph statistics
+// ---------------------------------------------------------------------------
+
+/// Detailed statistics about the semantic memory graph.
+///
+/// Returns:
+///
+/// - `node_count` — total nodes.
+/// - `edge_count` — total directed edges in the adjacency list (each
+///   undirected edge is stored twice, once per endpoint).
+/// - `avg_edges_per_node` — `edge_count / node_count` (0 if empty).
+/// - `max_edges` — the largest adjacency list of any single node (capped at
+///   `top_k = 5`).
+/// - `density` — `edge_count / (N * (N-1))` for `N > 1`, else 0 (the
+///   directed-edge density of the adjacency list).
+/// - `top_connected_nodes` — the top 5 nodes by adjacency-list length, each
+///   as `{ id, text, edge_count }`.
+pub async fn graph_stats(State(state): State<AppState>) -> impl IntoResponse {
+    let g = state.graph.lock().await;
+    let node_count = g.len();
+    let edge_count = g.edge_count();
+    let max_edges = g
+        .adjacency
+        .values()
+        .map(|v| v.len())
+        .max()
+        .unwrap_or(0);
+    let avg_edges_per_node = if node_count > 0 {
+        edge_count as f64 / node_count as f64
+    } else {
+        0.0
+    };
+    let density = if node_count > 1 {
+        edge_count as f64 / (node_count as f64 * (node_count as f64 - 1.0))
+    } else {
+        0.0
+    };
+
+    // Top connected nodes: sort adjacency entries by length (desc), take 5.
+    // We clone the (id, edge_count) pairs out of the adjacency map so we can
+    // drop the borrow before looking up node texts (avoiding a double-borrow
+    // of `g.adjacency` and `g.nodes`).
+    let mut node_edge_counts: Vec<(String, usize)> = g
+        .adjacency
+        .iter()
+        .map(|(id, nbrs)| (id.clone(), nbrs.len()))
+        .collect();
+    node_edge_counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+    let top_connected: Vec<serde_json::Value> = node_edge_counts
+        .into_iter()
+        .take(5)
+        .filter_map(|(id, ec)| {
+            g.nodes.get(&id).map(|n| {
+                json!({
+                    "id": id,
+                    "text": n.text.clone(),
+                    "edge_count": ec,
+                })
+            })
+        })
+        .collect();
+
+    Json(json!({
+        "node_count": node_count,
+        "edge_count": edge_count,
+        "avg_edges_per_node": avg_edges_per_node,
+        "max_edges": max_edges,
+        "density": density,
+        "top_connected_nodes": top_connected,
+    }))
+}

@@ -45,6 +45,7 @@ mod atd;
 mod cache;
 mod clt;
 mod compress;
+mod dashboard;
 mod decompose;
 mod graph;
 mod handlers;
@@ -136,16 +137,24 @@ const PORT: u16 = 3004;
 ///
 /// # Routes
 ///
-/// | Method | Path                   | Handler                       |
-/// |--------|------------------------|-------------------------------|
-/// | POST   | `/v1/chat/completions` | [`handlers::chat_completions`]|
-/// | POST   | `/v1/interrupt`        | [`handlers::interrupt`]       |
-/// | POST   | `/graph/add`           | [`handlers::graph_add`]       |
-/// | GET    | `/graph`               | [`handlers::graph_get`]       |
-/// | POST   | `/graph/search`        | [`handlers::graph_search`]    |
-/// | POST   | `/graph/clear`         | [`handlers::graph_clear`]     |
-/// | GET    | `/pipeline`            | [`handlers::pipeline_stats`]  |
-/// | GET    | `/health`              | [`handlers::health`]          |
+/// | Method | Path                   | Handler                              |
+/// |--------|------------------------|--------------------------------------|
+/// | POST   | `/v1/chat/completions` | [`handlers::chat_completions`]       |
+/// | POST   | `/v1/chat/stream`      | [`handlers::chat_completions_stream`]|
+/// | POST   | `/v1/interrupt`        | [`handlers::interrupt`]              |
+/// | GET    | `/v1/models`           | [`handlers::list_models`]            |
+/// | POST   | `/graph/add`           | [`handlers::graph_add`]              |
+/// | GET    | `/graph`               | [`handlers::graph_get`]              |
+/// | POST   | `/graph/search`        | [`handlers::graph_search`]           |
+/// | POST   | `/graph/clear`         | [`handlers::graph_clear`]            |
+/// | GET    | `/graph/export`        | [`handlers::graph_export`]           |
+/// | POST   | `/graph/import`        | [`handlers::graph_import`]           |
+/// | GET    | `/graph/stats`         | [`handlers::graph_stats`]            |
+/// | GET    | `/pipeline`            | [`handlers::pipeline_stats`]         |
+/// | GET    | `/health`              | [`handlers::health`]                 |
+/// | GET    | `/dashboard`           | [`handlers::dashboard`]              |
+/// | GET    | `/metrics`             | [`handlers::prometheus_metrics`]     |
+/// | GET    | `/config`              | [`handlers::get_config`]             |
 ///
 /// # Panics
 ///
@@ -190,13 +199,21 @@ async fn main() {
 
     let app = Router::new()
         .route("/v1/chat/completions", post(handlers::chat_completions))
+        .route("/v1/chat/stream", post(handlers::chat_completions_stream))
         .route("/v1/interrupt", post(handlers::interrupt))
+        .route("/v1/models", get(handlers::list_models))
         .route("/graph/add", post(handlers::graph_add))
         .route("/graph", get(handlers::graph_get))
         .route("/graph/search", post(handlers::graph_search))
         .route("/graph/clear", post(handlers::graph_clear))
+        .route("/graph/export", get(handlers::graph_export))
+        .route("/graph/import", post(handlers::graph_import))
+        .route("/graph/stats", get(handlers::graph_stats))
         .route("/pipeline", get(handlers::pipeline_stats))
         .route("/health", get(handlers::health))
+        .route("/dashboard", get(handlers::dashboard))
+        .route("/metrics", get(handlers::prometheus_metrics))
+        .route("/config", get(handlers::get_config))
         .layer(CorsLayer::very_permissive())
         .with_state(state);
 

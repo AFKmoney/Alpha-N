@@ -17,6 +17,13 @@ import { Dock, DockHint } from "@/components/alpha/dock";
 import { StartMenu } from "@/components/alpha/start-menu";
 import { LiveMutationViewer } from "@/components/alpha/live-mutation-viewer";
 import { ContextMenu, triggerContextMenu, buildDesktopActions } from "@/components/alpha/context-menu";
+import { CommandPalette } from "@/components/alpha/command-palette";
+import { ToastSystem } from "@/components/alpha/toast-system";
+import { ShortcutsOverlay } from "@/components/alpha/shortcuts-overlay";
+import { NotificationCenter } from "@/components/alpha/notification-center";
+import { EvolutionGraph } from "@/components/alpha/evolution-graph";
+import { DebateReplay } from "@/components/alpha/debate-replay";
+import { SystemSearch } from "@/components/alpha/system-search";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import type { AppKind } from "@/lib/alpha/os-types";
@@ -108,6 +115,15 @@ export default function Page() {
       <SynapseMap />
       <BeforeAfter />
       <ChatPanel />
+
+      {/* System UI — command palette, toasts, shortcuts, notifications, search */}
+      <CommandPalette />
+      <ToastSystem />
+      <ShortcutsOverlay />
+      <NotificationCenter />
+      <EvolutionGraph />
+      <DebateReplay />
+      <SystemSearch />
     </div>
   );
 }

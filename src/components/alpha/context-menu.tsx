@@ -2,6 +2,16 @@
  * context-menu.tsx — the global right-click menu system for Alpha-OS.
  * Exposes the ContextMenu overlay component plus builder helpers for the
  * standard window / desktop / dock action sets.
+ *
+ * SA3-WINDOW-OS additions:
+ * - Submenu support (hover-to-open flyout) so the desktop right-click can
+ *   surface a wallpaper picker and the window right-click can surface a
+ *   transparency picker without overflowing the top-level menu.
+ * - buildDesktopActions now includes a "Change Wallpaper" submenu showing
+ *   the first 6 wallpaper presets; clicking one POSTs to /api/alpha/wallpaper
+ *   and dispatches alpha-wallpaper-change so the desktop updates instantly.
+ * - buildWindowActions now includes a "Transparency" submenu with 4 opacity
+ *   presets that call setWindowOpacity on the os-store.
  */
 "use client";
 
@@ -14,18 +24,21 @@ import {
   Brain,
   Sparkles,
   Send,
-  Trash2,
   Monitor,
   RotateCw,
   Copy,
+  ChevronRight,
 } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import type { AppKind } from "@/lib/alpha/os-types";
+import { WALLPAPER_PRESETS } from "@/lib/alpha/wallpaper-presets";
 import { cn } from "@/lib/utils";
 
 /**
  * ContextMenuItem — represents a single action in the right-click menu.
+ * A `submenu` (non-empty array) renders the item as a parent with a
+ * hover-to-open flyout containing the child actions.
  */
 interface ContextMenuAction {
   label: string;
@@ -33,6 +46,8 @@ interface ContextMenuAction {
   onClick: () => void;
   danger?: boolean;
   separator?: boolean;
+  /** Optional submenu flyout (rendered on hover). Parent onClick is unused. */
+  submenu?: ContextMenuAction[];
 }
 
 /**
@@ -52,15 +67,21 @@ export function ContextMenu() {
     actions: ContextMenuAction[];
   } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+  /** Index of the action whose submenu is currently open (hover). */
+  const [openSubmenu, setOpenSubmenu] = useState<number | null>(null);
 
   const show = useCallback((x: number, y: number, actions: ContextMenuAction[]) => {
     // Adjust position to prevent viewport overflow
     const adjustedX = x + 200 > window.innerWidth ? x - 200 : x;
     const adjustedY = y + (actions.length * 36) > window.innerHeight ? y - (actions.length * 36) : y;
     setMenu({ x: adjustedX, y: adjustedY, actions });
+    setOpenSubmenu(null);
   }, []);
 
-  const hide = useCallback(() => setMenu(null), []);
+  const hide = useCallback(() => {
+    setMenu(null);
+    setOpenSubmenu(null);
+  }, []);
 
   useEffect(() => {
     const onContextMenu = (e: CustomEvent) => {
@@ -106,16 +127,27 @@ export function ContextMenu() {
           animate={{ opacity: 1, scale: 1 }}
           exit={{ opacity: 0, scale: 0.9 }}
           transition={{ duration: 0.12 }}
-          className="glass-strong fixed z-[100] min-w-[200px] overflow-hidden rounded-xl border border-border/60 p-1.5 shadow-2xl"
+          className="glass-strong fixed z-[100] min-w-[200px] overflow-visible rounded-xl border border-border/60 p-1.5 shadow-2xl"
           style={{ left: menu.x, top: menu.y }}
         >
           {menu.actions.map((action, i) => (
-            <div key={i}>
+            <div key={i} className="relative">
               {action.separator && <div className="my-1 h-px bg-border/40" />}
               <button
                 onClick={() => {
-                  action.onClick();
-                  hide();
+                  // Only fire onClick for leaf items — parents with submenus
+                  // toggle their flyout via hover, not click.
+                  if (!action.submenu || action.submenu.length === 0) {
+                    action.onClick();
+                    hide();
+                  }
+                }}
+                onMouseEnter={() => {
+                  if (action.submenu && action.submenu.length > 0) {
+                    setOpenSubmenu(i);
+                  } else {
+                    setOpenSubmenu(null);
+                  }
                 }}
                 className={cn(
                   "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left font-mono-ae text-xs transition-colors",
@@ -125,8 +157,46 @@ export function ContextMenu() {
                 )}
               >
                 <span className={cn(action.danger && "text-[oklch(0.78_0.2_20)]")}>{action.icon}</span>
-                <span>{action.label}</span>
+                <span className="flex-1">{action.label}</span>
+                {action.submenu && action.submenu.length > 0 && (
+                  <ChevronRight className="h-3 w-3 text-muted-foreground" />
+                )}
               </button>
+
+              {/* ---- Submenu flyout ---- */}
+              {action.submenu && action.submenu.length > 0 && openSubmenu === i && (
+                <div
+                  className="glass-strong absolute left-full top-0 z-[101] ml-1 min-w-[180px] overflow-visible rounded-xl border border-border/60 p-1.5 shadow-2xl"
+                  // Keep the submenu open while the cursor is over the parent
+                  // OR over the flyout itself. onMouseLeave on the parent
+                  // already sets openSubmenu=null when the cursor leaves to
+                  // a non-parent item; this wrapper just stops the
+                  // click-away handler from firing on flyout interactions.
+                  onMouseEnter={() => setOpenSubmenu(i)}
+                  onMouseLeave={() => setOpenSubmenu(null)}
+                >
+                  {action.submenu.map((sub, j) => (
+                    <div key={j}>
+                      {sub.separator && <div className="my-1 h-px bg-border/40" />}
+                      <button
+                        onClick={() => {
+                          sub.onClick();
+                          hide();
+                        }}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-left font-mono-ae text-xs transition-colors",
+                          sub.danger
+                            ? "text-[oklch(0.78_0.2_20)] hover:bg-[oklch(0.65_0.24_25)]/15"
+                            : "text-foreground/80 hover:bg-foreground/[0.08]"
+                        )}
+                      >
+                        <span className={cn(sub.danger && "text-[oklch(0.78_0.2_20)]")}>{sub.icon}</span>
+                        <span>{sub.label}</span>
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           ))}
         </motion.div>
@@ -186,6 +256,20 @@ export function buildWindowActions(
     onClick: () => window.dispatchEvent(new CustomEvent("alpha-reload-window", { detail: { windowId: winId } })),
   });
 
+  // ---- SA3-WINDOW-OS: Transparency submenu ----
+  const currentOpacity = os.windows.find((w) => w.id === winId)?.opacity ?? 1;
+  actions.push({
+    label: "Transparency",
+    icon: <Copy className="h-3.5 w-3.5" />,
+    onClick: () => {},
+    submenu: [
+      { label: `100%${currentOpacity === 1 ? "  ✓" : ""}`, icon: <span className="font-mono-ae text-xs">▪</span>, onClick: () => os.setWindowOpacity(winId, 1) },
+      { label: `80%${currentOpacity > 0.79 && currentOpacity < 0.81 ? "  ✓" : ""}`, icon: <span className="font-mono-ae text-xs">▫</span>, onClick: () => os.setWindowOpacity(winId, 0.8) },
+      { label: `60%${currentOpacity > 0.59 && currentOpacity < 0.61 ? "  ✓" : ""}`, icon: <span className="font-mono-ae text-xs">◦</span>, onClick: () => os.setWindowOpacity(winId, 0.6) },
+      { label: `40%${currentOpacity > 0.39 && currentOpacity < 0.41 ? "  ✓" : ""}`, icon: <span className="font-mono-ae text-xs">·</span>, onClick: () => os.setWindowOpacity(winId, 0.4) },
+    ],
+  });
+
   actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
 
   // Ask AI — explain what this window does
@@ -237,11 +321,39 @@ export function buildWindowActions(
 }
 
 /**
+ * Apply a wallpaper preset by POSTing to the wallpaper API and dispatching
+ * the alpha-wallpaper-change event so the desktop canvas swaps instantly.
+ */
+function applyWallpaperPreset(presetId: string, name: string): void {
+  const wallpaper = { presetId, config: {}, name };
+  void fetch("/api/alpha/wallpaper", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ action: "set", presetId, config: {}, name }),
+  }).then((r) => {
+    if (!r.ok) return;
+    // Notify the desktop background canvas to switch presets immediately.
+    window.dispatchEvent(new CustomEvent("alpha-wallpaper-change", { detail: wallpaper }));
+  }).catch(() => {
+    // Swallow — the desktop just won't swap until next reload.
+  });
+}
+
+/**
  * Build the desktop (empty area) context menu actions.
  */
 export function buildDesktopActions(
   os: ReturnType<typeof useOS.getState>
 ): ContextMenuAction[] {
+  // First 6 wallpaper presets — quick-picker submenu.
+  const wallpaperSubmenu: ContextMenuAction[] = WALLPAPER_PRESETS.slice(0, 6).map(
+    (p) => ({
+      label: p.name,
+      icon: <span className="font-mono-ae text-xs">◐</span>,
+      onClick: () => applyWallpaperPreset(p.id, p.name),
+    })
+  );
+
   return [
     {
       label: "Open Terminal",
@@ -269,10 +381,24 @@ export function buildDesktopActions(
       onClick: () => {},
       separator: true,
     },
+    // ---- SA3-WINDOW-OS: Quick wallpaper picker submenu (first 6 presets) ----
     {
       label: "Change Wallpaper",
       icon: <span className="font-mono-ae text-sm">◐</span>,
       onClick: () => os.openApp("wallpaper"),
+      submenu: wallpaperSubmenu,
+    },
+    {
+      label: "",
+      icon: null,
+      onClick: () => {},
+      separator: true,
+    },
+    // ---- SA3-WINDOW-OS: Show desktop (minimize all) shortcut ----
+    {
+      label: "Show Desktop",
+      icon: <Minus className="h-3.5 w-3.5" />,
+      onClick: () => os.minimizeAll(),
     },
   ];
 }
