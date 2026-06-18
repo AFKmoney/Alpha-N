@@ -450,6 +450,38 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ ok: true, suggestions });
     }
 
+    // -------- action: install (AI provides code directly, no LLM call needed) --------
+    if (action === "install") {
+      const name = typeof body.name === "string" ? body.name.trim() : "";
+      const description = typeof body.description === "string" ? body.description.trim() : "";
+      const category = typeof body.category === "string" ? body.category : "AI Tools";
+      const code = typeof body.code === "string" ? body.code : "";
+
+      if (!name || !code) {
+        return NextResponse.json(
+          { ok: false, error: "name and code are required for install" },
+          { status: 400 }
+        );
+      }
+
+      const safeCategory = isCategory(category) ? category : "AI Tools";
+      const id = `ga-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+
+      try {
+        if (STALE_CLIENT) {
+          await generatedAppRaw.create(db, { id, name, description, category: safeCategory, code });
+        } else {
+          await db.generatedApp.create({ data: { id, name, description, category: safeCategory, code } });
+        }
+        return NextResponse.json({ ok: true, app: { id, name, code } });
+      } catch (err) {
+        return NextResponse.json(
+          { ok: false, error: err instanceof Error ? err.message : "DB error" },
+          { status: 500 }
+        );
+      }
+    }
+
     // -------- action: generate (default) --------
     const name = typeof body.name === "string" ? body.name.trim() : "";
     const description =

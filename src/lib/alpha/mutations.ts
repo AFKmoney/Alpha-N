@@ -144,7 +144,12 @@ export type Mutation =
   | { type: "set_wallpaper"; presetId: string }
   | { type: "minimize_all" }
   | { type: "set_always_on_top"; windowId: string; onTop: boolean }
-  | { type: "switch_desktop"; desktop: number };
+  | { type: "switch_desktop"; desktop: number }
+  // ---- AI POWER: OS-as-context mutations ----
+  | { type: "navigate_graph"; path: string }
+  | { type: "create_app_from_code"; name: string; code: string; description?: string; category?: string }
+  | { type: "create_wallpaper"; name: string; description: string; colors: string[] }
+  | { type: "list_directory"; path: string };
 
 // ---- Web search result (fed back to the AI) ----
 export interface WebSearchResult {
@@ -486,5 +491,13 @@ export function describeMutation(m: Mutation): string {
       return `📌 Always-on-top: ${m.onTop}`;
     case "switch_desktop":
       return `🖥 Switched to desktop ${m.desktop + 1}`;
+    case "navigate_graph":
+      return `⬡ Navigated graph to ${m.path}`;
+    case "create_app_from_code":
+      return `✨ Created app from code: ${m.name}`;
+    case "create_wallpaper":
+      return `🖼 Created wallpaper: ${m.name}`;
+    case "list_directory":
+      return `📁 Listed: ${m.path}`;
   }
 }

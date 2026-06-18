@@ -426,6 +426,94 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
           osStore.getState().setActiveDesktop(m.desktop);
           applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Switched to desktop ${m.desktop + 1}` });
         }
+        // ---- AI POWER: OS-as-context mutations ----
+        if (m.type === "navigate_graph" && m.path) {
+          setAiBusy(true, `Navigating graph: ${m.path}…`);
+          try {
+            // Fetch the file graph scoped to this path's neighbourhood
+            const res = await fetch(`/api/alpha/file-graph?path=${encodeURIComponent(m.path)}`);
+            const data = await res.json();
+            // Store the graph neighbourhood in the evolution store for the AI to see
+            store.getState().addFileRead({
+              path: `[graph:${m.path}]`,
+              content: `Nodes: ${data.nodes.length}, Edges: ${data.edges.length}\n` +
+                data.nodes.map((n: { path: string; kind: string; lines: number }) =>
+                  `  ${n.kind === "dir" ? "[DIR]" : "     "} ${n.path} (${n.lines} lines)`
+                ).join("\n"),
+              time: Date.now(),
+            });
+            applyMutation({ type: "add_log", level: "observe", agent: "architect", message: `Navigated graph to ${m.path} (${data.nodes.length} neighbors)` });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "graph failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Graph navigation failed: ${msg.slice(0, 60)}` });
+          }
+        }
+        if (m.type === "create_app_from_code" && m.name && m.code) {
+          setAiBusy(true, `Installing AI-coded app: ${m.name}…`);
+          try {
+            // Save the AI-generated code as a generated app in the DB
+            const res = await fetch("/api/alpha/generate-app", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "install",
+                name: m.name,
+                description: m.description || "AI-generated app",
+                category: m.category || "AI Tools",
+                code: m.code,
+              }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              // Pin to desktop so the user sees it immediately
+              osStore.getState().pinToDesktop("custom", {
+                label: m.name,
+                icon: "✨",
+                data: { spec: m.description || "AI-generated", generatedAppId: data.app?.id },
+              });
+              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created and installed app: ${m.name}` });
+            } else {
+              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `App install failed: ${data.error?.slice(0, 60)}` });
+            }
+          } catch { /* ignore */ }
+        }
+        if (m.type === "create_wallpaper" && m.name) {
+          setAiBusy(true, `Creating wallpaper: ${m.name}…`);
+          try {
+            // Save the wallpaper description as a UserPreference so the wallpaper system can pick it up
+            const res = await fetch("/api/alpha/wallpaper", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                action: "save",
+                presetId: `ai-${Date.now()}`,
+                name: m.name,
+                config: { description: m.description, colors: m.colors, aiGenerated: true },
+              }),
+            });
+            const data = await res.json();
+            if (data.ok) {
+              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created wallpaper: ${m.name} (${m.colors.join(", ")})` });
+            } else {
+              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Wallpaper creation failed` });
+            }
+          } catch { /* ignore */ }
+        }
+        if (m.type === "list_directory" && m.path) {
+          setAiBusy(true, `Listing: ${m.path}…`);
+          try {
+            const res = await fetch(`/api/alpha/files?path=${encodeURIComponent(m.path)}`);
+            const data = await res.json();
+            if (data.type === "dir") {
+              store.getState().addFileRead({
+                path: `[dir:${m.path}]`,
+                content: `Directory listing:\n${data.entries.map((e: { name: string; isDir: boolean }) => `${e.isDir ? "[DIR] " : "      "}${e.name}`).join("\n")}`,
+                time: Date.now(),
+              });
+              applyMutation({ type: "add_log", level: "observe", agent: "architect", message: `Listed ${m.path}: ${data.entries.length} entries` });
+            }
+          } catch { /* ignore */ }
+        }
       }
 
       // ---- LAYER D: FEEDBACK LEARNING — track reward for each mutation ----

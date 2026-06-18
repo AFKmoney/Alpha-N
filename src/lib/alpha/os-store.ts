@@ -166,6 +166,7 @@ function defaultRect(kind: AppKind, index: number): { x: number; y: number; w: n
     wallpaper: { w: 600, h: 500 },
     custom: { w: 560, h: 400 },
     control: { w: 340, h: 600 },
+    filegraph: { w: 800, h: 560 },
     // ---- SA3-WINDOW-OS: new app default sizes ----
     calculator: { w: 360, h: 480 },
     notes: { w: 640, h: 480 },

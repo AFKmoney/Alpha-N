@@ -23,6 +23,7 @@ import { AgentPanel } from "./agent-panel";
 import { EvolutionLog } from "./evolution-log";
 import { LoomApp } from "./apps/loom-app";
 import { ControlCenterApp } from "./apps/control-center-app";
+import { FileGraphApp } from "./apps/file-graph-app";
 import { CalculatorApp } from "./apps/calculator-app";
 import { NotesApp } from "./apps/notes-app";
 import { ClipboardApp } from "./apps/clipboard-app";
@@ -103,6 +104,8 @@ function renderAppContent(kind: string, windowId: string) {
       return <CustomApp windowId={windowId} />;
     case "control":
       return <ControlCenterApp windowId={windowId} />;
+    case "filegraph":
+      return <FileGraphApp windowId={windowId} />;
     case "calculator":
       return <CalculatorApp windowId={windowId} />;
     case "notes":
