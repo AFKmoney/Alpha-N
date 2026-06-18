@@ -45,13 +45,11 @@ import {
   useRef as reactUseRef,
   useMemo as reactUseMemo,
   useCallback as reactUseCallback,
-  useReducer as reactUseReducer,
 } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
-import { Slider } from "@/components/ui/slider";
 import { Badge } from "@/components/ui/badge";
 import {
   Card,
@@ -62,12 +60,6 @@ import {
   CardFooter,
 } from "@/components/ui/card";
 import { Progress } from "@/components/ui/progress";
-import {
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-} from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { cn as libCn } from "@/lib/utils";
 
@@ -109,13 +101,11 @@ const MODULE_REGISTRY: Record<string, Record<string, unknown>> = {
     useRef: reactUseRef,
     useMemo: reactUseMemo,
     useCallback: reactUseCallback,
-    useReducer: reactUseReducer,
   },
   "@/components/ui/button": { Button },
   "@/components/ui/input": { Input },
   "@/components/ui/textarea": { Textarea },
   "@/components/ui/switch": { Switch },
-  "@/components/ui/slider": { Slider },
   "@/components/ui/badge": { Badge },
   "@/components/ui/card": {
     Card,
@@ -126,7 +116,6 @@ const MODULE_REGISTRY: Record<string, Record<string, unknown>> = {
     CardFooter,
   },
   "@/components/ui/progress": { Progress },
-  "@/components/ui/tabs": { Tabs, TabsList, TabsTrigger, TabsContent },
   "@/components/ui/label": { Label },
   "@/lib/utils": { cn: libCn },
 };
@@ -397,6 +386,155 @@ function CodeViewer({ code }: { code: string }): React.ReactElement {
 }
 
 // ----------------------------------------------------------------------------
+// GeneratingState — shows a "AI is coding..." animation with fake streaming
+// code lines while the LLM generates the app. Listens for the
+// alpha-generated-app-ready / alpha-generated-app-error events.
+// ----------------------------------------------------------------------------
+function GeneratingState({
+  windowId,
+  tempId,
+  appName,
+  description,
+}: {
+  windowId: string;
+  tempId: string;
+  appName: string;
+  description: string;
+}): React.ReactElement {
+  const { setWindowData } = useOS();
+  const [streamedLines, setStreamedLines] = useState<string[]>([]);
+  const [done, setDone] = useState(false);
+
+  // Fake streaming code effect — shows lines appearing one by one to give
+  // the user the feeling that the AI is writing code in real-time.
+  const fakeCode = useMemo(
+    () => [
+      `"use client";`,
+      ``,
+      `import { useState, useEffect, useRef } from "react";`,
+      `import { Button } from "@/components/ui/button";`,
+      `import { Card, CardContent } from "@/components/ui/card";`,
+      ``,
+      `export function ${appName.replace(/[^A-Za-z0-9]/g, "") || "GeneratedApp"}({ windowId }: { windowId?: string }) {`,
+      `  const [state, setState] = useState(0);`,
+      `  // ${description.slice(0, 60)}`,
+      `  // ... AI is writing ...`,
+    ],
+    [appName, description]
+  );
+
+  useEffect(() => {
+    let i = 0;
+    const interval = setInterval(() => {
+      if (i < fakeCode.length) {
+        setStreamedLines((prev) => [...prev, fakeCode[i]]);
+        i++;
+      } else {
+        clearInterval(interval);
+      }
+    }, 200);
+    return () => clearInterval(interval);
+  }, [fakeCode]);
+
+  // Listen for the "ready" event — swap to the real app.
+  useEffect(() => {
+    const onReady = (e: Event) => {
+      const detail = (e as CustomEvent).detail as {
+        tempId: string;
+        realId: string;
+        name: string;
+        code: string;
+      };
+      if (detail.tempId !== tempId) return;
+      setDone(true);
+      // Update the window data so GeneratedAppRenderer re-fetches the real app
+      setWindowData(windowId, {
+        generatedAppId: detail.realId,
+        spec: description,
+        isGenerating: false,
+      });
+    };
+    const onError = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { tempId: string; error: string };
+      if (detail.tempId !== tempId) return;
+      setWindowData(windowId, {
+        generatedAppId: null,
+        spec: description,
+        isGenerating: false,
+        generateError: detail.error,
+      });
+    };
+    window.addEventListener("alpha-generated-app-ready", onReady);
+    window.addEventListener("alpha-generated-app-error", onError);
+    return () => {
+      window.removeEventListener("alpha-generated-app-ready", onReady);
+      window.removeEventListener("alpha-generated-app-error", onError);
+    };
+  }, [tempId, windowId, setWindowData, description]);
+
+  return (
+    <div className="flex h-full w-full flex-col bg-background">
+      {/* Header */}
+      <div className="flex items-center gap-2 border-b border-border/50 px-4 py-2.5">
+        <Loader2 className="h-4 w-4 animate-spin text-[oklch(0.82_0.17_195)]" />
+        <div className="min-w-0 flex-1">
+          <h3 className="truncate font-mono-ae text-sm font-semibold text-foreground">
+            {done ? "Installing..." : `Generating: ${appName}`}
+          </h3>
+          <p className="truncate text-[0.65rem] text-muted-foreground">
+            {done ? "App compiled — loading..." : "AI is writing code..."}
+          </p>
+        </div>
+      </div>
+
+      {/* Streaming code viewer */}
+      <div className="flex min-h-0 flex-1 flex-col p-4">
+        <div className="rounded-lg border border-[oklch(0.82_0.17_195)]/20 bg-[oklch(0.09_0.012_265)] p-3">
+          <div className="mb-2 flex items-center gap-2">
+            <span className="h-2 w-2 animate-pulse rounded-full bg-[oklch(0.82_0.17_195)]" />
+            <span className="font-mono-ae text-[0.65rem] text-[oklch(0.82_0.17_195)]">
+              {done ? "compiling..." : "streaming source..."}
+            </span>
+          </div>
+          <pre className="font-mono-ae text-[0.7rem] leading-relaxed">
+            {streamedLines.map((line, i) => (
+              <div key={i} className="flex hover:bg-foreground/[0.03]">
+                <span className="select-none w-8 shrink-0 pr-2 text-right text-muted-foreground/40">
+                  {i + 1}
+                </span>
+                <span className="whitespace-pre text-foreground/70">{line}</span>
+              </div>
+            ))}
+            {!done && (
+              <span className="inline-block h-3.5 w-1.5 animate-pulse bg-[oklch(0.82_0.17_195)]" />
+            )}
+          </pre>
+        </div>
+
+        {/* Description */}
+        <div className="mt-3 rounded-lg border border-border/40 bg-card/30 p-3">
+          <div className="eyebrow mb-1">app description</div>
+          <p className="text-[0.75rem] leading-snug text-foreground">{description}</p>
+        </div>
+
+        {done && (
+          <motion.div
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="mt-3 flex items-center gap-2 rounded-lg border border-[oklch(0.7_0.18_145)]/30 bg-[oklch(0.7_0.18_145)]/[0.06] p-3"
+          >
+            <Check className="h-4 w-4 text-[oklch(0.7_0.18_145)]" />
+            <span className="font-mono-ae text-[0.7rem] text-[oklch(0.7_0.18_145)]">
+              Code generated — installing on desktop...
+            </span>
+          </motion.div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ----------------------------------------------------------------------------
 // Main component
 // ----------------------------------------------------------------------------
 export function GeneratedAppRenderer({
@@ -404,20 +542,21 @@ export function GeneratedAppRenderer({
 }: {
   windowId: string;
 }): React.ReactElement {
-  const { windows } = useOS();
+  const { windows, setWindowData } = useOS();
   const win = windows.find((w) => w.id === windowId);
   const generatedAppId = (win?.data?.generatedAppId as string) ?? null;
   const spec = (win?.data?.spec as string) ?? "";
+  const isGenerating = (win?.data?.isGenerating as boolean) ?? false;
+  const generateError = (win?.data?.generateError as string) ?? null;
+  const suggestionName = (win?.data?.suggestionName as string) ?? "Generated App";
+  const suggestionDesc = (win?.data?.suggestionDesc as string) ?? spec;
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [app, setApp] = useState<GeneratedAppData | null>(null);
   const [liveMode, setLiveMode] = useState(false);
 
-  // Fetch the generated app's source code. Lives in a useCallback so the
-  // setState calls inside it are NOT counted as "synchronous setState in an
-  // effect body" by react-hooks/set-state-in-effect — they happen inside an
-  // async function awaited from the effect.
+  // Fetch the generated app's source code.
   const loadApp = useCallback(async (id: string): Promise<void> => {
     setLoading(true);
     setError(null);
@@ -427,6 +566,8 @@ export function GeneratedAppRenderer({
       const data = (await r.json()) as { ok: boolean; app?: GeneratedAppData; error?: string };
       if (data.ok && data.app) {
         setApp(data.app);
+        // Auto-run the app once loaded — the user wants to see it immediately.
+        setLiveMode(true);
       } else {
         setError(data.error || "App not found.");
       }
@@ -437,12 +578,12 @@ export function GeneratedAppRenderer({
     }
   }, []);
 
-  // Kick off the fetch whenever the id changes. Render-time check below
-  // handles the missing-id case without any setState inside the effect.
+  // Kick off the fetch whenever the id changes (and it's not a temp/generating id).
   useEffect(() => {
-    if (!generatedAppId) return;
+    if (!generatedAppId || isGenerating) return;
+    if (generatedAppId.startsWith("generating-")) return;
     void loadApp(generatedAppId);
-  }, [generatedAppId, loadApp]);
+  }, [generatedAppId, isGenerating, loadApp]);
 
   // Pull `code` out so useMemo's dependency matches the inferred one.
   const code = app?.code ?? "";
@@ -454,6 +595,24 @@ export function GeneratedAppRenderer({
   }, [code]);
 
   // -------- Render --------
+
+  // If the AI is still generating, show the streaming-code generating state.
+  if (isGenerating && generatedAppId && generatedAppId.startsWith("generating-")) {
+    return (
+      <GeneratingState
+        windowId={windowId}
+        tempId={generatedAppId}
+        appName={suggestionName}
+        description={suggestionDesc}
+      />
+    );
+  }
+
+  // If generation failed, show the error.
+  if (generateError) {
+    return <ErrorState message={generateError} />;
+  }
+
   if (!generatedAppId) {
     return <ErrorState message="No app id was attached to this window." />;
   }

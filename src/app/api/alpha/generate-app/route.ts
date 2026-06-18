@@ -185,31 +185,37 @@ function isCategory(value: string): value is Category {
 const RUNTIME_CONTRACT = `
 RUNTIME CONTRACT (critical — your code runs in a sandboxed new Function() scope):
 - "use client"; directive is REQUIRED at the top.
-- You MAY use JSX OR React.createElement — both are transpiled at runtime by Babel.
+- You MAY use JSX — it is transpiled at runtime by Babel.
 - React is available as a global; you do NOT need to import React.
 - You MAY import the following modules (these are the ONLY ones available —
   any other import will fail to resolve and the app will not run):
-    import { useState, useEffect, useRef, useMemo, useCallback, useReducer } from "react";
+    import { useState, useEffect, useRef, useMemo, useCallback } from "react";
     import { Button } from "@/components/ui/button";
     import { Input } from "@/components/ui/input";
     import { Textarea } from "@/components/ui/textarea";
     import { Switch } from "@/components/ui/switch";
-    import { Slider } from "@/components/ui/slider";
     import { Badge } from "@/components/ui/badge";
     import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from "@/components/ui/card";
     import { Progress } from "@/components/ui/progress";
-    import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
     import { Label } from "@/components/ui/label";
     import { cn } from "@/lib/utils";
-- Use ONLY Tailwind CSS utility classes for styling. NEVER use inline styles for colors.
-  Stick to the existing palette: text-foreground, text-muted-foreground, bg-background,
-  bg-card, border-border, bg-primary, text-primary-foreground. Accent oklch values you
-  may use inline (e.g. className="text-[oklch(0.82_0.17_195)]") are also acceptable.
-- The component MUST accept a single props object: { windowId?: string }.
-- Export a NAMED function (e.g. "export function PomodoroTimer({ windowId }: { windowId?: string })").
-- The function name should be PascalCase and descriptive.
-- Persist state to localStorage if the app is meant to remember data across opens.
-- Return ONLY the source code. No markdown fences, no commentary, no explanation.
+
+CRITICAL RULES (violating these will cause the app to fail):
+1. If you use a hook (useState, useEffect, useRef, useMemo, useCallback), you MUST
+   import it from "react" at the top of the file. Do NOT use hooks without importing them.
+2. NEVER use NodeJS types (NodeJS.Timeout, NodeJS.Process, etc). For timers, use:
+     const ref = useRef<ReturnType<typeof setInterval> | null>(null);
+3. Do NOT use "useReducer" — it is not in the allowed import list.
+4. Do NOT use "Slider" or "Tabs" — they are not in the allowed import list.
+5. Do NOT import React itself — it is a global.
+6. Keep the code SIMPLE and ROBUST. Prefer fewer features that work over many that break.
+7. The root element MUST fill its container: className="flex h-full w-full flex-col bg-background p-4"
+8. Use ONLY Tailwind CSS utility classes for styling. Stick to: text-foreground,
+   text-muted-foreground, bg-background, bg-card, border-border.
+9. The component MUST accept: { windowId?: string }
+10. Export a NAMED function (e.g. "export function PomodoroTimer({ windowId }: { windowId?: string })").
+11. Persist state to localStorage if the app should remember data.
+12. Return ONLY the source code. No markdown fences, no commentary, no explanation.
 `.trim();
 
 /**

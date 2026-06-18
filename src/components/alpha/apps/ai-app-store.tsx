@@ -182,6 +182,26 @@ export function AIAppStore({ windowId }: { windowId?: string }): React.ReactElem
     async (suggestion: AppSuggestion): Promise<void> => {
       const key = `${suggestion.name}::${suggestion.description}`;
       setGeneratingKey(key);
+
+      // Open a window IMMEDIATELY showing a "generating..." state.
+      // The GeneratedAppRenderer will show the code streaming in.
+      // We use a temporary negative ID until the real one comes back.
+      const tempId = `generating-${Date.now()}`;
+      openApp("custom", {
+        title: `Generating: ${suggestion.name}`,
+        icon: "✨",
+        w: 720,
+        h: 520,
+        data: {
+          spec: suggestion.description,
+          generatedAppId: tempId,
+          isGenerating: true,
+          suggestionName: suggestion.name,
+          suggestionDesc: suggestion.description,
+          suggestionCategory: suggestion.category,
+        },
+      });
+
       try {
         const res = await fetch("/api/alpha/generate-app", {
           method: "POST",
@@ -197,12 +217,42 @@ export function AIAppStore({ windowId }: { windowId?: string }): React.ReactElem
         if (!data.ok) {
           throw new Error(data.error || "Generation failed.");
         }
+
+        // Pin the generated app to the desktop as a shortcut icon that STAYS.
+        const os = useOS.getState();
+        os.pinToDesktop("custom", {
+          label: suggestion.name,
+          icon: "✨",
+          data: {
+            spec: suggestion.description,
+            generatedAppId: data.app.id,
+          },
+        });
+
+        // Dispatch an event so the generating window swaps to the real app.
+        window.dispatchEvent(
+          new CustomEvent("alpha-generated-app-ready", {
+            detail: {
+              tempId,
+              realId: data.app.id,
+              name: suggestion.name,
+              code: data.app.code,
+            },
+          })
+        );
+
         toast({
           title: "App installed",
-          description: `${suggestion.name} is ready to open.`,
+          description: `${suggestion.name} is on your desktop.`,
         });
         refreshInstalled();
       } catch (err: unknown) {
+        // Close the generating window on failure
+        window.dispatchEvent(
+          new CustomEvent("alpha-generated-app-error", {
+            detail: { tempId, error: err instanceof Error ? err.message : "Unknown error" },
+          })
+        );
         toast({
           title: "Generation failed",
           description: err instanceof Error ? err.message : "Unknown error.",
@@ -211,7 +261,7 @@ export function AIAppStore({ windowId }: { windowId?: string }): React.ReactElem
         setGeneratingKey(null);
       }
     },
-    [refreshInstalled, toast]
+    [openApp, refreshInstalled, toast]
   );
 
   // -------- Delete an installed app --------
@@ -258,6 +308,27 @@ export function AIAppStore({ windowId }: { windowId?: string }): React.ReactElem
     if (!name || !description) return;
 
     setCustomSubmitting(true);
+
+    // Open a window immediately showing the generating state
+    const tempId = `generating-${Date.now()}`;
+    openApp("custom", {
+      title: `Generating: ${name}`,
+      icon: "✨",
+      w: 720,
+      h: 520,
+      data: {
+        spec: description,
+        generatedAppId: tempId,
+        isGenerating: true,
+        suggestionName: name,
+        suggestionDesc: description,
+        suggestionCategory: activeCategory,
+      },
+    });
+    setCustomOpen(false);
+    setCustomName("");
+    setCustomDesc("");
+
     try {
       const res = await fetch("/api/alpha/generate-app", {
         method: "POST",
@@ -271,15 +342,31 @@ export function AIAppStore({ windowId }: { windowId?: string }): React.ReactElem
       });
       const data = await res.json();
       if (!data.ok) throw new Error(data.error || "Generation failed.");
+
+      // Pin to desktop so it STAYS
+      useOS.getState().pinToDesktop("custom", {
+        label: name,
+        icon: "✨",
+        data: { spec: description, generatedAppId: data.app.id },
+      });
+
+      window.dispatchEvent(
+        new CustomEvent("alpha-generated-app-ready", {
+          detail: { tempId, realId: data.app.id, name, code: data.app.code },
+        })
+      );
+
       toast({
         title: "Custom app installed",
-        description: `${name} is ready to open.`,
+        description: `${name} is on your desktop.`,
       });
-      setCustomOpen(false);
-      setCustomName("");
-      setCustomDesc("");
       refreshInstalled();
     } catch (err: unknown) {
+      window.dispatchEvent(
+        new CustomEvent("alpha-generated-app-error", {
+          detail: { tempId, error: err instanceof Error ? err.message : "Unknown error" },
+        })
+      );
       toast({
         title: "Generation failed",
         description: err instanceof Error ? err.message : "Unknown error.",
