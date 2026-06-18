@@ -76,7 +76,7 @@ export default function Page() {
         onContextMenu={(e) => {
           // Only trigger desktop context menu if clicking on empty desktop (not a window)
           if (e.target === e.currentTarget) {
-            triggerContextMenu(e, buildDesktopActions(useOS.getState()));
+            triggerContextMenu(e, buildDesktopActions(useOS.getState(), useEvolution.getState()));
           }
         }}
         onDragOver={(e) => {

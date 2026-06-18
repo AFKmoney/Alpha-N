@@ -59,6 +59,8 @@ export interface AppWindow {
   opacity?: number;
   /** Current snap zone (set by drag-to-edge). "none" = free-floating. */
   snapState?: SnapState;
+  /** When true, the window floats above all non-always-on-top windows. */
+  alwaysOnTop?: boolean;
 }
 
 // ---- Layout / tiling ----

@@ -117,6 +117,8 @@ interface OSStore {
   setWindowOpacity: (id: string, opacity: number) => void;
   /** Minimize every window on the active desktop ("show desktop"). */
   minimizeAll: () => void;
+  /** Toggle or set the always-on-top flag for a window. */
+  setAlwaysOnTop: (id: string, onTop: boolean) => void;
 }
 
 let winId = 0;
@@ -546,6 +548,17 @@ export const useOS = create<OSStore>((set, get) => ({
         w.desktop === desktop && !w.minimized ? { ...w, minimized: true } : w
       ),
       activeWindowId: null,
+    }));
+  },
+
+  setAlwaysOnTop: (id, onTop) => {
+    // Always-on-top windows get a very high z so they float above normal ones.
+    set((s) => ({
+      windows: s.windows.map((w) =>
+        w.id === id
+          ? { ...w, alwaysOnTop: onTop, z: onTop ? 99999 : s.zTop }
+          : w
+      ),
     }));
   },
 }));

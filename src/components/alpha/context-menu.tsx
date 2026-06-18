@@ -28,6 +28,17 @@ import {
   RotateCw,
   Copy,
   ChevronRight,
+  FolderPlus,
+  FilePlus,
+  Trash2,
+  Pencil,
+  Pin,
+  ArrowRightLeft,
+  Move,
+  Maximize2,
+  Layers,
+  Sun,
+  FolderInput,
 } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
@@ -226,6 +237,9 @@ export function triggerContextMenu(
 /**
  * Build the standard window context menu actions.
  * Used by WindowFrame's onContextMenu handler.
+ *
+ * AI-adaptive: includes minimize, maximize, scale (snap), reload,
+ * transparency, always-on-top, move-to-desktop, and AI actions.
  */
 export function buildWindowActions(
   winId: string,
@@ -233,31 +247,60 @@ export function buildWindowActions(
   os: ReturnType<typeof useOS.getState>,
   evolution: ReturnType<typeof useEvolution.getState>
 ): ContextMenuAction[] {
+  const win = os.windows.find((w) => w.id === winId);
+  const isMaximized = win?.maximized ?? false;
+  const isOnTop = win?.alwaysOnTop ?? false;
+  const currentOpacity = win?.opacity ?? 1;
+  const currentSnap = win?.snapState ?? "none";
+  const currentDesktop = win?.desktop ?? 0;
+
   const actions: ContextMenuAction[] = [];
 
-  // Minimize
+  // ---- Window state: minimize / maximize / restore ----
   actions.push({
     label: "Minimize",
     icon: <Minus className="h-3.5 w-3.5" />,
     onClick: () => os.minimizeWindow(winId),
   });
 
-  // Maximize / Restore
   actions.push({
-    label: os.windows.find((w) => w.id === winId)?.maximized ? "Restore" : "Maximize",
+    label: isMaximized ? "Restore" : "Maximize",
     icon: <Square className="h-3.5 w-3.5" />,
     onClick: () => os.toggleMaximize(winId),
   });
 
-  // Reload (dispatches a custom event the WindowFrame listens for)
+  // ---- Scale: snap submenu (left/right/top/quarters) ----
+  const snapSubmenu: ContextMenuAction[] = [
+    { label: `Left Half${currentSnap === "left" ? "  ✓" : ""}`, icon: <Move className="h-3.5 w-3.5" />, onClick: () => os.snapWindow(winId, "left") },
+    { label: `Right Half${currentSnap === "right" ? "  ✓" : ""}`, icon: <Move className="h-3.5 w-3.5" />, onClick: () => os.snapWindow(winId, "right") },
+    { label: `Top (Maximize)${currentSnap === "top" ? "  ✓" : ""}`, icon: <Maximize2 className="h-3.5 w-3.5" />, onClick: () => os.snapWindow(winId, "top") },
+    { label: `Bottom-Left${currentSnap === "bl" ? "  ✓" : ""}`, icon: <Move className="h-3.5 w-3.5" />, onClick: () => os.snapWindow(winId, "bl") },
+    { label: `Bottom-Right${currentSnap === "br" ? "  ✓" : ""}`, icon: <Move className="h-3.5 w-3.5" />, onClick: () => os.snapWindow(winId, "br") },
+  ];
+  if (currentSnap !== "none") {
+    snapSubmenu.push({
+      label: "Unsnap (free)",
+      icon: <Move className="h-3.5 w-3.5" />,
+      onClick: () => os.snapWindow(winId, "none"),
+    });
+  }
+  actions.push({
+    label: "Scale (snap)",
+    icon: <Maximize2 className="h-3.5 w-3.5" />,
+    onClick: () => {},
+    submenu: snapSubmenu,
+  });
+
+  // ---- Reload ----
   actions.push({
     label: "Reload",
     icon: <RotateCw className="h-3.5 w-3.5" />,
     onClick: () => window.dispatchEvent(new CustomEvent("alpha-reload-window", { detail: { windowId: winId } })),
   });
 
-  // ---- SA3-WINDOW-OS: Transparency submenu ----
-  const currentOpacity = os.windows.find((w) => w.id === winId)?.opacity ?? 1;
+  actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
+
+  // ---- Transparency submenu ----
   actions.push({
     label: "Transparency",
     icon: <Copy className="h-3.5 w-3.5" />,
@@ -270,9 +313,29 @@ export function buildWindowActions(
     ],
   });
 
+  // ---- Always on top ----
+  actions.push({
+    label: isOnTop ? "Disable Always-on-Top" : "Always on Top",
+    icon: <Pin className="h-3.5 w-3.5" />,
+    onClick: () => os.setAlwaysOnTop(winId, !isOnTop),
+  });
+
+  // ---- Move to desktop submenu ----
+  const desktopSubmenu: ContextMenuAction[] = [0, 1, 2, 3].map((d) => ({
+    label: `Desktop ${d + 1}${d === currentDesktop ? "  ✓" : ""}`,
+    icon: <Monitor className="h-3.5 w-3.5" />,
+    onClick: () => os.moveWindowToDesktop(winId, d),
+  }));
+  actions.push({
+    label: "Move to Desktop",
+    icon: <Layers className="h-3.5 w-3.5" />,
+    onClick: () => {},
+    submenu: desktopSubmenu,
+  });
+
   actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
 
-  // Ask AI — explain what this window does
+  // ---- AI actions ----
   actions.push({
     label: "Ask AI about this",
     icon: <Brain className="h-3.5 w-3.5" />,
@@ -281,7 +344,6 @@ export function buildWindowActions(
     },
   });
 
-  // Improve with AI — suggest an improvement
   actions.push({
     label: "Improve with AI",
     icon: <Sparkles className="h-3.5 w-3.5" />,
@@ -290,7 +352,6 @@ export function buildWindowActions(
     },
   });
 
-  // Send to chat — opens chat with context about this window
   actions.push({
     label: "Send to Chat",
     icon: <Send className="h-3.5 w-3.5" />,
@@ -302,14 +363,7 @@ export function buildWindowActions(
 
   actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
 
-  // Add to desktop (if on another desktop, move to current)
-  actions.push({
-    label: "Move to this desktop",
-    icon: <Monitor className="h-3.5 w-3.5" />,
-    onClick: () => os.moveWindowToDesktop(winId, os.activeDesktop),
-  });
-
-  // Close
+  // ---- Close ----
   actions.push({
     label: "Close",
     icon: <X className="h-3.5 w-3.5" />,
@@ -318,6 +372,14 @@ export function buildWindowActions(
   });
 
   return actions;
+}
+
+/**
+ * Fire a toast notification via the global alpha-toast event.
+ * Any component can call this — the ToastSystem component listens.
+ */
+function toast(type: "success" | "error" | "info" | "warning", title: string, message?: string): void {
+  window.dispatchEvent(new CustomEvent("alpha-toast", { detail: { type, title, message } }));
 }
 
 /**
@@ -334,16 +396,66 @@ function applyWallpaperPreset(presetId: string, name: string): void {
     if (!r.ok) return;
     // Notify the desktop background canvas to switch presets immediately.
     window.dispatchEvent(new CustomEvent("alpha-wallpaper-change", { detail: wallpaper }));
+    toast("success", "Wallpaper changed", name);
   }).catch(() => {
-    // Swallow — the desktop just won't swap until next reload.
+    toast("error", "Wallpaper change failed");
   });
 }
 
 /**
+ * Create a sector (directory) at the given relative path via the files API.
+ * Fires a toast and dispatches alpha-files-refresh so the Files app re-lists.
+ */
+function createSector(relPath: string): void {
+  void fetch("/api/alpha/files", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: relPath, action: "mkdir" }),
+  }).then((r) => r.json()).then((data) => {
+    if (data.ok) {
+      toast("success", "Sector created", relPath);
+      window.dispatchEvent(new CustomEvent("alpha-files-refresh"));
+    } else {
+      toast("error", "Sector creation failed", data.error);
+    }
+  }).catch(() => toast("error", "Sector creation failed"));
+}
+
+/**
+ * Create a vector (empty file) at the given relative path via the files API.
+ */
+function createVector(relPath: string): void {
+  void fetch("/api/alpha/files", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ path: relPath, action: "touch" }),
+  }).then((r) => r.json()).then((data) => {
+    if (data.ok) {
+      toast("success", "Vector created", relPath);
+      window.dispatchEvent(new CustomEvent("alpha-files-refresh"));
+    } else {
+      toast("error", "Vector creation failed", data.error);
+    }
+  }).catch(() => toast("error", "Vector creation failed"));
+}
+
+/**
+ * Prompt the user for a name (simple browser prompt) — used by create
+ * sector/vector and rename actions. Returns null if cancelled.
+ */
+function promptName(defaultName: string, title: string): string | null {
+  if (typeof window === "undefined") return null;
+  return window.prompt(title, defaultName);
+}
+
+/**
  * Build the desktop (empty area) context menu actions.
+ * This is the AI-adaptive desktop right-click: create sectors/vectors,
+ * open apps, change wallpaper, show desktop, and trigger AI actions.
  */
 export function buildDesktopActions(
-  os: ReturnType<typeof useOS.getState>
+  os: ReturnType<typeof useOS.getState>,
+  evolution?: ReturnType<typeof useEvolution.getState>
 ): ContextMenuAction[] {
   // First 6 wallpaper presets — quick-picker submenu.
   const wallpaperSubmenu: ContextMenuAction[] = WALLPAPER_PRESETS.slice(0, 6).map(
@@ -354,53 +466,94 @@ export function buildDesktopActions(
     })
   );
 
-  return [
-    {
-      label: "Open Terminal",
-      icon: <span className="font-mono-ae text-sm">▸_</span>,
-      onClick: () => os.openApp("terminal"),
+  const actions: ContextMenuAction[] = [];
+
+  // ---- New: create sector / vector ----
+  actions.push({
+    label: "New Sector",
+    icon: <FolderPlus className="h-3.5 w-3.5" />,
+    onClick: () => {
+      const name = promptName("new-sector", "Sector name:");
+      if (name) createSector(name.replace(/\s+/g, "-"));
     },
-    {
-      label: "Open Code Editor",
-      icon: <span className="font-mono-ae text-sm">{`{}`}</span>,
-      onClick: () => os.openApp("realcode"),
+  });
+  actions.push({
+    label: "New Vector",
+    icon: <FilePlus className="h-3.5 w-3.5" />,
+    onClick: () => {
+      const name = promptName("new-vector.txt", "Vector name:");
+      if (name) createVector(name.replace(/\s+/g, "-"));
     },
-    {
-      label: "Open Browser",
-      icon: <span className="font-mono-ae text-sm">◉</span>,
-      onClick: () => os.openApp("browser"),
-    },
-    {
-      label: "Open App Repository",
-      icon: <span className="font-mono-ae text-sm">⊞</span>,
-      onClick: () => os.openApp("repository"),
-    },
-    {
-      label: "",
-      icon: null,
-      onClick: () => {},
-      separator: true,
-    },
-    // ---- SA3-WINDOW-OS: Quick wallpaper picker submenu (first 6 presets) ----
-    {
-      label: "Change Wallpaper",
-      icon: <span className="font-mono-ae text-sm">◐</span>,
-      onClick: () => os.openApp("wallpaper"),
-      submenu: wallpaperSubmenu,
-    },
-    {
-      label: "",
-      icon: null,
-      onClick: () => {},
-      separator: true,
-    },
-    // ---- SA3-WINDOW-OS: Show desktop (minimize all) shortcut ----
-    {
-      label: "Show Desktop",
-      icon: <Minus className="h-3.5 w-3.5" />,
-      onClick: () => os.minimizeAll(),
-    },
-  ];
+  });
+
+  actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
+
+  // ---- Open apps ----
+  actions.push({
+    label: "Open Terminal",
+    icon: <span className="font-mono-ae text-sm">▸_</span>,
+    onClick: () => os.openApp("terminal"),
+  });
+  actions.push({
+    label: "Open Code Editor",
+    icon: <span className="font-mono-ae text-sm">{`{}`}</span>,
+    onClick: () => os.openApp("realcode"),
+  });
+  actions.push({
+    label: "Open Files",
+    icon: <span className="font-mono-ae text-sm">▣</span>,
+    onClick: () => os.openApp("files"),
+  });
+  actions.push({
+    label: "Open Browser",
+    icon: <span className="font-mono-ae text-sm">◉</span>,
+    onClick: () => os.openApp("browser"),
+  });
+
+  actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
+
+  // ---- Wallpaper submenu ----
+  actions.push({
+    label: "Change Wallpaper",
+    icon: <span className="font-mono-ae text-sm">◐</span>,
+    onClick: () => os.openApp("wallpaper"),
+    submenu: wallpaperSubmenu,
+  });
+
+  // ---- Theme toggle ----
+  actions.push({
+    label: os.theme === "dark" ? "Light Theme" : "Dark Theme",
+    icon: <Sun className="h-3.5 w-3.5" />,
+    onClick: () => os.toggleTheme(),
+  });
+
+  // ---- Show desktop ----
+  actions.push({
+    label: "Show Desktop",
+    icon: <Minus className="h-3.5 w-3.5" />,
+    onClick: () => os.minimizeAll(),
+  });
+
+  // ---- AI actions (only if evolution store is available) ----
+  if (evolution) {
+    actions.push({ label: "", icon: null, onClick: () => {}, separator: true });
+    actions.push({
+      label: "Ask AI to organize",
+      icon: <Brain className="h-3.5 w-3.5" />,
+      onClick: () => {
+        evolution.sendUserMessage("Analyze the desktop and suggest how I should organize my workspace. What apps should I open and how should I arrange them?");
+      },
+    });
+    actions.push({
+      label: "AI: improve this OS",
+      icon: <Sparkles className="h-3.5 w-3.5" />,
+      onClick: () => {
+        evolution.sendUserMessage("Look at the current desktop state and propose an improvement you can make right now. Then make it.");
+      },
+    });
+  }
+
+  return actions;
 }
 
 /**
@@ -428,6 +581,11 @@ export function buildDockAppActions(
       onClick: () => os.minimizeWindow(openWin.id),
     });
     actions.push({
+      label: "Maximize",
+      icon: <Maximize2 className="h-3.5 w-3.5" />,
+      onClick: () => os.toggleMaximize(openWin.id),
+    });
+    actions.push({
       label: "Close",
       icon: <X className="h-3.5 w-3.5" />,
       onClick: () => os.closeWindow(openWin.id),
@@ -442,4 +600,125 @@ export function buildDockAppActions(
   }
 
   return actions;
+}
+
+/**
+ * Build the file/sector context menu actions for the Files app.
+ * Provides rename, delete, move, copy, and open-with actions for
+ * vectors (files) and sectors (directories).
+ *
+ * @param entryName  — the name of the file/sector
+ * @param entryPath  — the full relative path
+ * @param isDir      — true if this is a sector (directory)
+ * @param onOpen     — callback to open/navigate into the entry
+ * @param onRefresh  — callback to refresh the listing after mutations
+ */
+export function buildFileActions(opts: {
+  name: string;
+  path: string;
+  isDir: boolean;
+  onOpen: () => void;
+  onRefresh: () => void;
+}): ContextMenuAction[] {
+  const { name, path, isDir, onOpen, onRefresh } = opts;
+
+  const deleteEntry = () => {
+    void fetch(`/api/alpha/files?path=${encodeURIComponent(path)}`, { method: "DELETE" })
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.ok) {
+          toast("success", `${isDir ? "Sector" : "Vector"} deleted`, name);
+          onRefresh();
+        } else {
+          toast("error", "Delete failed", data.error);
+        }
+      })
+      .catch(() => toast("error", "Delete failed"));
+  };
+
+  const renameEntry = () => {
+    const newName = promptName(name, `Rename ${isDir ? "sector" : "vector"}:`);
+    if (!newName || newName === name) return;
+    const parent = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    const newPath = parent ? `${parent}/${newName}` : newName;
+    void fetch("/api/alpha/files", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "move", from: path, to: newPath }),
+    }).then((r) => r.json()).then((data) => {
+      if (data.ok) {
+        toast("success", "Renamed", `${name} → ${newName}`);
+        onRefresh();
+      } else {
+        toast("error", "Rename failed", data.error);
+      }
+    }).catch(() => toast("error", "Rename failed"));
+  };
+
+  const moveEntry = () => {
+    const dest = promptName("", `Move "${name}" to (relative path):`);
+    if (!dest) return;
+    const newPath = `${dest.replace(/\/$/, "")}/${name}`;
+    void fetch("/api/alpha/files", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "move", from: path, to: newPath }),
+    }).then((r) => r.json()).then((data) => {
+      if (data.ok) {
+        toast("success", "Moved", `${name} → ${newPath}`);
+        onRefresh();
+      } else {
+        toast("error", "Move failed", data.error);
+      }
+    }).catch(() => toast("error", "Move failed"));
+  };
+
+  const copyEntry = () => {
+    const dest = promptName("", `Copy "${name}" to (relative path):`);
+    if (!dest) return;
+    const newPath = `${dest.replace(/\/$/, "")}/${name}`;
+    void fetch("/api/alpha/files", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action: "copy", from: path, to: newPath }),
+    }).then((r) => r.json()).then((data) => {
+      if (data.ok) {
+        toast("success", "Copied", `${name} → ${newPath}`);
+        onRefresh();
+      } else {
+        toast("error", "Copy failed", data.error);
+      }
+    }).catch(() => toast("error", "Copy failed"));
+  };
+
+  return [
+    {
+      label: isDir ? "Open Sector" : "Open Vector",
+      icon: <span className="font-mono-ae text-sm">{isDir ? "▸" : "·"}</span>,
+      onClick: onOpen,
+    },
+    { label: "", icon: null, onClick: () => {}, separator: true },
+    {
+      label: "Rename",
+      icon: <Pencil className="h-3.5 w-3.5" />,
+      onClick: renameEntry,
+    },
+    {
+      label: "Move to…",
+      icon: <ArrowRightLeft className="h-3.5 w-3.5" />,
+      onClick: moveEntry,
+    },
+    {
+      label: "Copy to…",
+      icon: <FolderInput className="h-3.5 w-3.5" />,
+      onClick: copyEntry,
+    },
+    { label: "", icon: null, onClick: () => {}, separator: true },
+    {
+      label: "Delete",
+      icon: <Trash2 className="h-3.5 w-3.5" />,
+      onClick: deleteEntry,
+      danger: true,
+    },
+  ];
 }

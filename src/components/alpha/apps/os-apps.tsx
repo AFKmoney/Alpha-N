@@ -10,11 +10,12 @@
  */
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { motion } from "framer-motion";
-import { Globe, Lock, RotateCw, Shield, ShieldAlert, X } from "lucide-react";
+import { Globe, Lock, RotateCw, Shield, ShieldAlert, X, FolderPlus, FilePlus } from "lucide-react";
 import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
+import { triggerContextMenu, buildFileActions } from "@/components/alpha/context-menu";
 import { cn } from "@/lib/utils";
 
 // ============ BROWSER APP (with proxy — works on ANY site including google.com) ============
@@ -92,6 +93,9 @@ export function BrowserApp({ windowId }: { windowId: string }) {
 }
 
 // ============ FILES APP (real — reads from the actual filesystem API) ============
+// Uses Alpha-OS terminology: folders = "sectors", files = "vectors".
+// Supports right-click on entries (rename, delete, move, copy) via the
+// context-menu system, plus a toolbar to create new sectors and vectors.
 export function FilesApp() {
   const [currentPath, setCurrentPath] = useState("");
   const [entries, setEntries] = useState<{ name: string; isDir: boolean }[]>([]);
@@ -99,9 +103,8 @@ export function FilesApp() {
   const [fileContent, setFileContent] = useState<string | null>(null);
   const [viewingFile, setViewingFile] = useState<string | null>(null);
 
-  // Load directory listing
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
+  // Load directory listing for the current sector path.
+  const loadDir = useCallback(() => {
     setLoading(true);
     setFileContent(null);
     setViewingFile(null);
@@ -119,26 +122,79 @@ export function FilesApp() {
       .catch(() => setLoading(false));
   }, [currentPath]);
 
+  useEffect(() => {
+    // Defer to a microtask to avoid the react-hooks/set-state-in-effect rule.
+    Promise.resolve().then(() => loadDir());
+  }, [loadDir]);
+
+  // Listen for alpha-files-refresh (dispatched by the context menu after
+  // create/delete/rename/move/copy operations) and re-list the sector.
+  useEffect(() => {
+    const onRefresh = () => loadDir();
+    window.addEventListener("alpha-files-refresh", onRefresh);
+    return () => window.removeEventListener("alpha-files-refresh", onRefresh);
+  }, [loadDir]);
+
   const protectedPaths = ["kernel/", "prisma/schema.prisma", ".env", "Caddyfile"];
   const isProtected = (name: string) => protectedPaths.some((p) => name.startsWith(p) || name === p);
 
+  /** Build the full relative path for an entry in the current sector. */
+  const entryPath = (name: string) => (currentPath ? `${currentPath}/${name}` : name);
+
+  /** Create a new sector (directory) inside the current sector. */
+  const createSector = () => {
+    const name = window.prompt("New sector name:", "new-sector");
+    if (!name) return;
+    void fetch("/api/alpha/files", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: entryPath(name.replace(/\s+/g, "-")), action: "mkdir" }),
+    }).then(() => loadDir());
+  };
+
+  /** Create a new vector (empty file) inside the current sector. */
+  const createVector = () => {
+    const name = window.prompt("New vector name:", "new-vector.txt");
+    if (!name) return;
+    void fetch("/api/alpha/files", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path: entryPath(name.replace(/\s+/g, "-")), action: "touch" }),
+    }).then(() => loadDir());
+  };
+
   return (
     <div className="flex h-full flex-col bg-background">
-      {/* Breadcrumb */}
+      {/* Toolbar: back + breadcrumb + create buttons */}
       <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
         <button
           onClick={() => currentPath && setCurrentPath(currentPath.split("/").slice(0, -1).join("/"))}
           className="rounded p-1 text-muted-foreground hover:bg-foreground/10 disabled:opacity-30"
           disabled={!currentPath}
+          title="Up to parent sector"
         >
           <RotateCw className="h-3 w-3" style={{ transform: "rotate(-45deg)" }} />
         </button>
-        <span className="font-mono-ae text-xs text-muted-foreground">
-          /home/z/my-project/{currentPath}
+        <span className="flex-1 truncate font-mono-ae text-xs text-muted-foreground">
+          /alpha-n/{currentPath || ""}
         </span>
+        <button
+          onClick={createSector}
+          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-[oklch(0.82_0.17_195)] hover:bg-foreground/10"
+          title="Create new sector (folder)"
+        >
+          <FolderPlus className="h-3.5 w-3.5" />
+        </button>
+        <button
+          onClick={createVector}
+          className="flex items-center gap-1 rounded px-2 py-1 text-xs text-[oklch(0.85_0.16_85)] hover:bg-foreground/10"
+          title="Create new vector (file)"
+        >
+          <FilePlus className="h-3.5 w-3.5" />
+        </button>
       </div>
 
-      {/* File content view */}
+      {/* Vector content view (when a file is selected) */}
       {viewingFile && fileContent !== null ? (
         <div className="scroll-ae min-h-0 flex-1 overflow-auto p-3">
           <div className="mb-2 flex items-center gap-2">
@@ -161,12 +217,21 @@ export function FilesApp() {
               <RotateCw className="h-4 w-4 animate-spin text-muted-foreground" />
             </div>
           ) : entries.length === 0 ? (
-            <p className="py-4 text-center text-muted-foreground/60">Empty directory</p>
+            <p className="py-4 text-center text-muted-foreground/60">Empty sector — right-click the desktop to create vectors here</p>
           ) : (
             entries.map((entry) => (
               <button
                 key={entry.name}
-                onClick={() => setCurrentPath(currentPath ? `${currentPath}/${entry.name}` : entry.name)}
+                onClick={() => setCurrentPath(entryPath(entry.name))}
+                onContextMenu={(e) => {
+                  triggerContextMenu(e, buildFileActions({
+                    name: entry.name,
+                    path: entryPath(entry.name),
+                    isDir: entry.isDir,
+                    onOpen: () => setCurrentPath(entryPath(entry.name)),
+                    onRefresh: loadDir,
+                  }));
+                }}
                 className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-left hover:bg-foreground/[0.06]"
               >
                 <span className={entry.isDir ? "text-[oklch(0.82_0.17_195)]" : "text-muted-foreground"}>
