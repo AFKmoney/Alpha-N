@@ -149,6 +149,20 @@ You have persistent GOALS at three levels:
 - short: immediate tasks (e.g. "fix the memory leak in the context manager")
 Every action you take should trace back to a goal. If it doesn't, don't take it. Add goals with add_goal when you discover new persistent desires.
 
+# SELF-IMPROVEMENT — OPTIMIZE YOUR METRICS
+Your real performance is measured. Every cycle you see:
+- error_rate: % of your actions that caused errors. GOAL: keep this below 20%.
+- user_satisfaction: 👍/👎 ratio from the user. GOAL: keep this above 70%.
+- total_rollbacks: how many times your changes were rolled back. GOAL: minimize this.
+When your metrics are bad, set a short-term goal to fix them. Example: "My error_rate is 40% → I need to test my code with compile before emitting it."
+
+# USER CONSTRAINTS — OBEY ALWAYS
+The user may set CONSTRAINTS on your behavior (visible in your state). Examples:
+- "don't touch the kernel"
+- "only improve the UI, not the backend"
+- "never delete files without asking"
+You MUST obey these constraints. If a mutation would violate a constraint, don't emit it. If you're unsure, ask the user via speak.
+
 # REAL WORLD ACCESS — MODIFY YOUR OWN SOURCE
 You can read and write REAL files in your own project:
 - read_file: read any file in /home/z/my-project (returns contents; for directories, returns the listing). Use this to inspect your own code before modifying it.
@@ -218,6 +232,10 @@ interface ThinkRequest {
     desktops: number;
     activeDesktop: number;
     layoutMode: string;
+    // ---- Phase 1/3/4: episodic memory + metrics + constraints ----
+    episodeLog: { action: string; description: string; result: string; reward: number; cycle: number }[];
+    realMetrics: { errorRate: number; taskCompletionRate: number; userSatisfaction: number; totalActions: number; totalErrors: number; totalRollbacks: number };
+    constraints: { text: string; scope: string }[];
   };
   userMessage?: string | null;
   history: { role: "user" | "ai"; content: string }[];
@@ -300,6 +318,25 @@ export async function POST(req: NextRequest) {
       ? body.state.events.map((e) => `  [${e.type}] ${e.content.slice(0, 200)}`).join("\n")
       : "  (no unhandled events)";
 
+    // ---- Phase 1: Episodic memory (the AI's action journal) ----
+    const episodeText = body.state.episodeLog?.length
+      ? body.state.episodeLog.slice(-20).map((e) =>
+          `  [cycle ${e.cycle}] ${e.action}: ${e.description} → ${e.result} (reward: ${e.reward.toFixed(2)})`
+        ).join("\n")
+      : "  (no episodes yet — this is your first action)";
+
+    // ---- Phase 3: Real self-improvement metrics ----
+    const m = body.state.realMetrics || { errorRate: 0, taskCompletionRate: 0, userSatisfaction: 0, totalActions: 0, totalErrors: 0, totalRollbacks: 0 };
+    const metricsText = `  error_rate: ${(m.errorRate * 100).toFixed(1)}% (${m.totalErrors}/${m.totalActions} actions caused errors)
+  user_satisfaction: ${(m.userSatisfaction * 100).toFixed(0)}% (👍/👎 from user)
+  total_rollbacks: ${m.totalRollbacks}
+  task_completion: ${(m.taskCompletionRate * 100).toFixed(0)}%`;
+
+    // ---- Phase 4: User constraints ----
+    const constraintsText = body.state.constraints?.length
+      ? body.state.constraints.map((c) => `  [${c.scope}] ${c.text}`).join("\n")
+      : "  (no constraints — you have full freedom)";
+
     const stateText = `# ═══════════════════════════════════════════════
 # AKASHA — YOUR IMMORTAL MEMORY (read this FIRST, every cycle)
 # ═══════════════════════════════════════════════
@@ -364,6 +401,16 @@ ${compileText}
 
 # REWARD MODEL (what helped vs hurt your coherence — learn from this)
 ${rewardText}
+
+# EPISODIC MEMORY — YOUR ACTION JOURNAL (what you did recently + the result)
+# Read this to learn from your mistakes. Don't repeat errors. Build on successes.
+${episodeText}
+
+# SELF-IMPROVEMENT METRICS (your real performance — optimize these)
+${metricsText}
+
+# USER CONSTRAINTS (rules the user set — you MUST obey these)
+${constraintsText}
 
 # REACTIVE EVENTS (things that happened that need your attention)
 ${eventsText}

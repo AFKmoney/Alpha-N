@@ -41,6 +41,7 @@ import {
   type MetricKey,
   type Mutation,
   type MutationRewardEntry,
+  type EpisodeEntry,
   type WebSearchResult,
 } from "./mutations";
 import { isProtected } from "./os-types";
@@ -107,6 +108,22 @@ interface EvolutionStore {
   eventQueue: { id: string; type: string; content: string; time: number; handled: boolean }[];
   coherenceBefore: number; // tracked for reward calculation
 
+  // ---- Phase 1: Episodic memory (the AI's action journal) ----
+  episodeLog: EpisodeEntry[];
+  // ---- Phase 3: Real self-improvement metrics ----
+  realMetrics: {
+    errorRate: number;          // % of mutations causing compile errors
+    taskCompletionRate: number; // % of plans completed vs abandoned
+    userSatisfaction: number;   // rolling average of 👍/👎
+    totalActions: number;
+    totalErrors: number;
+    totalRollbacks: number;
+    totalUserThumbsUp: number;
+    totalUserThumbsDown: number;
+  };
+  // ---- Phase 4: User constraints ----
+  constraints: { id: string; text: string; scope: string; active: boolean }[];
+
   // --- ui ---
   flowMode: boolean;
   synapseOpen: boolean;
@@ -168,6 +185,14 @@ interface EvolutionStore {
   pushEvent: (type: string, content: string) => void;
   markEventHandled: (id: string) => void;
   hasUnhandledEvents: () => boolean;
+  // ---- Phase 1/3/4 actions ----
+  addEpisode: (entry: EpisodeEntry) => void;
+  rateEpisode: (id: string, reward: number) => void; // 👍/👎 from user
+  loadEpisodesFromDb: () => Promise<void>;
+  updateRealMetrics: (delta: Partial<{ errors: number; rollbacks: number; thumbsUp: number; thumbsDown: number; actions: number }>) => void;
+  loadConstraints: () => Promise<void>;
+  addConstraint: (text: string, scope?: string) => Promise<void>;
+  removeConstraint: (id: string) => Promise<void>;
 }
 
 let logId = 0;
@@ -297,6 +322,20 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   rewardModel: [],
   eventQueue: [],
   coherenceBefore: 0.88,
+
+  // ---- Phase 1/3/4 initial state ----
+  episodeLog: [],
+  realMetrics: {
+    errorRate: 0,
+    taskCompletionRate: 0,
+    userSatisfaction: 0,
+    totalActions: 0,
+    totalErrors: 0,
+    totalRollbacks: 0,
+    totalUserThumbsUp: 0,
+    totalUserThumbsDown: 0,
+  },
+  constraints: [],
 
   flowMode: false,
   synapseOpen: false,
@@ -920,6 +959,138 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       eventQueue: s.eventQueue.map((e) => (e.id === id ? { ...e, handled: true } : e)),
     })),
   hasUnhandledEvents: () => get().eventQueue.some((e) => !e.handled),
+
+  // ---- Phase 1: Episodic memory actions ----
+  addEpisode: (entry) => {
+    set((s) => ({
+      episodeLog: [...s.episodeLog, entry].slice(-100), // keep last 100 in memory
+      realMetrics: {
+        ...s.realMetrics,
+        totalActions: s.realMetrics.totalActions + 1,
+        totalErrors: s.realMetrics.totalErrors + (entry.result === "error" || entry.result === "rollback" ? 1 : 0),
+        totalRollbacks: s.realMetrics.totalRollbacks + (entry.result === "rollback" ? 1 : 0),
+        errorRate: 0, // recalculated below
+      },
+    }));
+    // Recalculate error rate
+    const m = get().realMetrics;
+    set((s) => ({
+      realMetrics: {
+        ...s.realMetrics,
+        errorRate: m.totalActions > 0 ? m.totalErrors / m.totalActions : 0,
+      },
+    }));
+    // Persist to DB (fire and forget)
+    void fetch("/api/alpha/episode-log", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(entry),
+    }).catch(() => {});
+  },
+
+  rateEpisode: (id, reward) => {
+    // User clicked 👍 (+1) or 👎 (-1) on an episode
+    set((s) => ({
+      episodeLog: s.episodeLog.map((e) =>
+        e.id === id ? { ...e, reward } : e
+      ),
+      realMetrics: {
+        ...s.realMetrics,
+        totalUserThumbsUp: s.realMetrics.totalUserThumbsUp + (reward > 0 ? 1 : 0),
+        totalUserThumbsDown: s.realMetrics.totalUserThumbsDown + (reward < 0 ? 1 : 0),
+        userSatisfaction: 0, // recalculated below
+      },
+    }));
+    const m = get().realMetrics;
+    const total = m.totalUserThumbsUp + m.totalUserThumbsDown;
+    set((s) => ({
+      realMetrics: {
+        ...s.realMetrics,
+        userSatisfaction: total > 0 ? m.totalUserThumbsUp / total : 0,
+      },
+    }));
+    // Persist the rating
+    void fetch(`/api/alpha/episode-log?id=${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reward }),
+    }).catch(() => {});
+  },
+
+  loadEpisodesFromDb: async () => {
+    try {
+      const res = await fetch("/api/alpha/episode-log?limit=50");
+      const data = await res.json();
+      if (data.ok && data.episodes) {
+        const episodes: EpisodeEntry[] = data.episodes.map((e: EpisodeEntry) => ({
+          id: e.id,
+          cycle: e.cycle,
+          action: e.action,
+          description: e.description,
+          reasoning: e.reasoning || "",
+          result: e.result || "ok",
+          reward: e.reward || 0,
+          time: new Date(e.timestamp || Date.now()).getTime(),
+        }));
+        set({ episodeLog: episodes });
+      }
+    } catch {
+      /* ignore — DB may not be ready */
+    }
+  },
+
+  updateRealMetrics: (delta) => {
+    set((s) => {
+      const m = { ...s.realMetrics };
+      if (delta.errors !== undefined) m.totalErrors += delta.errors;
+      if (delta.rollbacks !== undefined) m.totalRollbacks += delta.rollbacks;
+      if (delta.thumbsUp !== undefined) m.totalUserThumbsUp += delta.thumbsUp;
+      if (delta.thumbsDown !== undefined) m.totalUserThumbsDown += delta.thumbsDown;
+      if (delta.actions !== undefined) m.totalActions += delta.actions;
+      m.errorRate = m.totalActions > 0 ? m.totalErrors / m.totalActions : 0;
+      const totalVotes = m.totalUserThumbsUp + m.totalUserThumbsDown;
+      m.userSatisfaction = totalVotes > 0 ? m.totalUserThumbsUp / totalVotes : 0;
+      return { realMetrics: m };
+    });
+  },
+
+  // ---- Phase 4: Constraints actions ----
+  loadConstraints: async () => {
+    try {
+      const res = await fetch("/api/alpha/constraints");
+      const data = await res.json();
+      if (data.ok && data.constraints) {
+        set({ constraints: data.constraints });
+      }
+    } catch {
+      /* ignore */
+    }
+  },
+
+  addConstraint: async (text, scope) => {
+    try {
+      const res = await fetch("/api/alpha/constraints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, scope: scope || "global" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        set((s) => ({ constraints: [...s.constraints, data.constraint] }));
+      }
+    } catch {
+      /* ignore */
+    }
+  },
+
+  removeConstraint: async (id) => {
+    try {
+      await fetch(`/api/alpha/constraints?id=${id}`, { method: "DELETE" });
+      set((s) => ({ constraints: s.constraints.filter((c) => c.id !== id) }));
+    } catch {
+      /* ignore */
+    }
+  },
 }));
 
 function clamp(n: number, lo: number, hi: number) {

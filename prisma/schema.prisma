@@ -123,3 +123,34 @@ model GeneratedApp {
   code        String   // full React component source (TSX-shaped, "use client" + export function)
   createdAt   DateTime @default(now())
 }
+
+// ============================================================
+// Alpha-OS — Episodic Memory (Phase 1: self-awareness)
+// Every action the AI takes is logged here with the result,
+// the reward, and a screenshot. The AI re-reads this journal
+// every cycle to learn from its past actions.
+// ============================================================
+model EpisodeLog {
+  id          String   @id @default(cuid())
+  cycle       Int      // which autonomous cycle this action was part of
+  action      String   // the mutation type (e.g. "replace_code", "create_app")
+  description String   // human-readable description
+  reasoning   String   @default("") // why the AI did this
+  result      String   @default("") // "ok", "error", "blocked", "rollback"
+  reward      Float    @default(0) // -1.0 to +1.0 (user feedback + auto metrics)
+  screenshot  String   @default("") // base64 screenshot after the action (optional)
+  timestamp   DateTime @default(now())
+}
+
+// ============================================================
+// Alpha-OS — User Constraints (Phase 4: granular control)
+// The user can set constraints like "don't touch the kernel"
+// or "only improve the UI, not the backend". The AI must obey.
+// ============================================================
+model Constraint {
+  id        String   @id @default(cuid())
+  text      String   // the constraint text
+  scope     String   @default("global") // global | code | ui | files
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}

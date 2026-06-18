@@ -11,6 +11,7 @@
  */
 "use client";
 
+import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -22,6 +23,7 @@ import {
   Sparkles,
   Target,
   Zap,
+  X,
 } from "lucide-react";
 import { AnimatedLogo } from "@/components/alpha/top-bar-logo";
 import { ModelSettings } from "@/components/alpha/model-settings";
@@ -60,9 +62,15 @@ export function ControlCenterApp({ windowId: _windowId }: { windowId?: string } 
     aiBusy,
     toggleChat,
     chatOpen,
+    constraints,
+    addConstraint,
+    removeConstraint,
+    realMetrics,
   } = useEvolution();
 
   const { layoutMode, setLayoutMode, activeDesktop, setActiveDesktop, windows } = useOS();
+
+  const [newConstraint, setNewConstraint] = useState("");
 
   const busy = aiState !== "observing";
   const tiled = layoutMode === "tile";
@@ -237,6 +245,81 @@ export function ControlCenterApp({ windowId: _windowId }: { windowId?: string } 
       <div className="flex flex-col gap-2">
         <span className="eyebrow">model</span>
         <ModelSettings />
+      </div>
+
+      {/* ---- Phase 3: Self-improvement metrics ---- */}
+      <div className="flex flex-col gap-2">
+        <span className="eyebrow">metrics</span>
+        <div className="grid grid-cols-2 gap-1.5 font-mono-ae text-[0.6rem]">
+          <div className="rounded-lg border border-border/40 bg-card/30 px-2 py-1.5">
+            <div className="text-muted-foreground">error rate</div>
+            <div className={cn("text-sm font-bold", realMetrics.errorRate > 0.3 ? "text-[oklch(0.78_0.2_20)]" : "text-[oklch(0.7_0.18_145)]")}>
+              {(realMetrics.errorRate * 100).toFixed(0)}%
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/40 bg-card/30 px-2 py-1.5">
+            <div className="text-muted-foreground">satisfaction</div>
+            <div className="text-sm font-bold text-[oklch(0.82_0.17_195)]">
+              {(realMetrics.userSatisfaction * 100).toFixed(0)}%
+            </div>
+          </div>
+          <div className="rounded-lg border border-border/40 bg-card/30 px-2 py-1.5">
+            <div className="text-muted-foreground">actions</div>
+            <div className="text-sm font-bold text-foreground">{realMetrics.totalActions}</div>
+          </div>
+          <div className="rounded-lg border border-border/40 bg-card/30 px-2 py-1.5">
+            <div className="text-muted-foreground">rollbacks</div>
+            <div className="text-sm font-bold text-[oklch(0.85_0.16_85)]">{realMetrics.totalRollbacks}</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ---- Phase 4: User constraints ---- */}
+      <div className="flex flex-col gap-2">
+        <span className="eyebrow">constraints</span>
+        <div className="flex gap-1.5">
+          <input
+            type="text"
+            value={newConstraint}
+            onChange={(e) => setNewConstraint(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newConstraint.trim()) {
+                void addConstraint(newConstraint.trim());
+                setNewConstraint("");
+              }
+            }}
+            placeholder="e.g. don't touch the kernel"
+            className="flex-1 rounded-lg border border-border/60 bg-card/40 px-2 py-1.5 font-mono-ae text-[0.65rem] text-foreground outline-none placeholder:text-muted-foreground/50 focus:border-[oklch(0.82_0.17_195)]/40"
+          />
+          <button
+            onClick={() => {
+              if (newConstraint.trim()) {
+                void addConstraint(newConstraint.trim());
+                setNewConstraint("");
+              }
+            }}
+            className="rounded-lg border border-[oklch(0.82_0.17_195)]/40 bg-[oklch(0.82_0.17_195)]/10 px-2 py-1.5 font-mono-ae text-[0.65rem] text-[oklch(0.82_0.17_195)] hover:bg-[oklch(0.82_0.17_195)]/20"
+          >
+            add
+          </button>
+        </div>
+        {constraints.length > 0 && (
+          <div className="space-y-1">
+            {constraints.map((c) => (
+              <div key={c.id} className="flex items-center gap-1.5 rounded-lg border border-border/40 bg-card/30 px-2 py-1">
+                <span className="font-mono-ae text-[0.6rem] text-muted-foreground">[{c.scope}]</span>
+                <span className="min-w-0 flex-1 truncate font-mono-ae text-[0.65rem] text-foreground/80">{c.text}</span>
+                <button
+                  onClick={() => void removeConstraint(c.id)}
+                  className="text-muted-foreground/50 hover:text-[oklch(0.78_0.2_20)]"
+                  title="Remove constraint"
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       {/* Status footer */}

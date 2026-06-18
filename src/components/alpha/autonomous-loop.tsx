@@ -12,7 +12,7 @@ import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import type { AppKind } from "@/lib/alpha/os-types";
 import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile } from "@/lib/alpha/ai-client";
-import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry } from "@/lib/alpha/mutations";
+import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry, type EpisodeEntry } from "@/lib/alpha/mutations";
 
 const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
 const MUTATION_STEP_MS = 320;
@@ -139,6 +139,16 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             desktops: 4,
             activeDesktop: osS.activeDesktop,
             layoutMode: osS.layoutMode,
+            // ---- Phase 1/3/4: episodic memory + metrics + constraints ----
+            episodeLog: s.episodeLog.slice(-20).map((e) => ({
+              action: e.action,
+              description: e.description,
+              result: e.result,
+              reward: e.reward,
+              cycle: e.cycle,
+            })),
+            realMetrics: s.realMetrics,
+            constraints: s.constraints.map((c) => ({ text: c.text, scope: c.scope })),
           },
           userMessage: userMessage ?? null,
           history: s.chat.map((m) => ({ role: m.role, content: m.content })),
@@ -521,6 +531,9 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
       const coherenceAfter = afterMutations.metrics.coherence;
       const coherenceBefore = afterMutations.coherenceBefore;
       const delta = coherenceAfter - coherenceBefore;
+
+      // ---- Phase 1: Episodic memory — log every meaningful action ----
+      const cycleGen = afterMutations.generation;
       for (const m of mutations) {
         if (m.type === "set_state" || m.type === "speak" || m.type === "set_generation" || m.type === "set_version") continue;
         const entry: MutationRewardEntry = {
@@ -533,6 +546,38 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
           time: Date.now(),
         };
         store.getState().addReward(entry);
+
+        // Log to episodic memory (Phase 1)
+        const episode: EpisodeEntry = {
+          id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+          cycle: cycleGen,
+          action: m.type,
+          description: describeMutation(m),
+          reasoning: (m as { note?: string }).note ?? (m as { reasoning?: string }).reasoning ?? "",
+          result: hadError ? "error" : "ok",
+          reward: delta,
+          time: Date.now(),
+        };
+        store.getState().addEpisode(episode);
+      }
+
+      // ---- Phase 1: Take a screenshot AFTER mutations if any UI mutation was applied ----
+      const hasUiMutation = mutations.some(
+        (m) => ["create_app", "close_app", "move_window", "snap_window", "set_theme",
+                "set_wallpaper", "pin_to_desktop", "pin_to_taskbar", "minimize_all",
+                "replace_code", "insert_code", "commit_evolution"].includes(m.type)
+      );
+      if (hasUiMutation) {
+        // Wait 1.5s for the UI to settle, then capture the "after" screenshot.
+        // The AI will see this in its next cycle's state.
+        setTimeout(() => {
+          void captureScreenshot(workspaceRef.current, "after").then((screenshot) => {
+            // Store the after-screenshot so the next cycle's think API can include it
+            window.dispatchEvent(new CustomEvent("alpha-episode-screenshot", {
+              detail: { screenshot, time: Date.now() },
+            }));
+          }).catch(() => {});
+        }, 1500);
       }
 
       // ---- LAYER B: mark all events as handled (the AI has now seen them) ----
@@ -593,13 +638,16 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
   const forceCycle = useEvolution((s) => s.forceCycle);
   const chat = useEvolution((s) => s.chat);
   const hydrateFromDb = useEvolution((s) => s.hydrateFromDb);
+  const loadEpisodesFromDb = useEvolution((s) => s.loadEpisodesFromDb);
+  const loadConstraints = useEvolution((s) => s.loadConstraints);
   const eventQueue = useEvolution((s) => s.eventQueue);
 
-  // Hydrate persistent cognition (Akasha, plans, goals) from the DB on mount.
-  // This is what makes the AI never forget — even across reloads.
+  // Hydrate persistent cognition (Akasha, plans, goals, episodes, constraints) on mount.
   useEffect(() => {
     void hydrateFromDb();
-  }, [hydrateFromDb]);
+    void loadEpisodesFromDb();
+    void loadConstraints();
+  }, [hydrateFromDb, loadEpisodesFromDb, loadConstraints]);
 
   // Manual "evolve" button forces an immediate real AI cycle.
   useEffect(() => {

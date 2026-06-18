@@ -23,7 +23,7 @@ const LEVEL_STYLE: Record<LogLevel, { color: string; glyph: string; label: strin
 };
 
 export function EvolutionLog() {
-  const { logs } = useEvolution();
+  const { logs, episodeLog, rateEpisode, realMetrics } = useEvolution();
   const scrollRef = useRef<HTMLDivElement>(null);
   const mounted = useMounted();
 
@@ -78,6 +78,68 @@ export function EvolutionLog() {
             );
           })}
         </AnimatePresence>
+
+        {/* ---- Phase 1/3: Episodic memory with 👍/👎 reward buttons ---- */}
+        {episodeLog.length > 0 && (
+          <div className="mt-3 border-t border-border/40 pt-2">
+            <div className="mb-2 flex items-center justify-between">
+              <span className="eyebrow text-[oklch(0.82_0.17_195)]">episode log</span>
+              <span className="font-mono-ae text-[0.55rem] text-muted-foreground">
+                err {(realMetrics.errorRate * 100).toFixed(0)}% · 👍 {realMetrics.totalUserThumbsUp} · 👎 {realMetrics.totalUserThumbsDown}
+              </span>
+            </div>
+            <div className="space-y-1">
+              {[...episodeLog].reverse().slice(0, 15).map((ep) => (
+                <div
+                  key={ep.id}
+                  className="flex items-center gap-1.5 rounded-lg px-2 py-1 hover:bg-foreground/[0.03]"
+                >
+                  <span
+                    className={cn(
+                      "shrink-0 text-xs",
+                      ep.result === "error" || ep.result === "rollback"
+                        ? "text-[oklch(0.78_0.2_20)]"
+                        : "text-[oklch(0.7_0.18_145)]"
+                    )}
+                  >
+                    {ep.result === "error" ? "✗" : ep.result === "rollback" ? "↺" : "✓"}
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-mono-ae text-[0.65rem] text-foreground/70">
+                    {ep.description}
+                  </span>
+                  <span className="font-mono-ae text-[0.55rem] text-muted-foreground/50">
+                    {ep.reward > 0 ? "+" : ""}{ep.reward.toFixed(2)}
+                  </span>
+                  {/* 👍/👎 reward buttons */}
+                  <button
+                    onClick={() => rateEpisode(ep.id, 1)}
+                    className={cn(
+                      "rounded px-1 text-[0.6rem] transition-colors",
+                      ep.reward > 0
+                        ? "bg-[oklch(0.7_0.18_145)]/20 text-[oklch(0.7_0.18_145)]"
+                        : "text-muted-foreground/50 hover:bg-[oklch(0.7_0.18_145)]/10 hover:text-[oklch(0.7_0.18_145)]"
+                    )}
+                    title="This helped"
+                  >
+                    👍
+                  </button>
+                  <button
+                    onClick={() => rateEpisode(ep.id, -1)}
+                    className={cn(
+                      "rounded px-1 text-[0.6rem] transition-colors",
+                      ep.reward < 0
+                        ? "bg-[oklch(0.78_0.2_20)]/20 text-[oklch(0.78_0.2_20)]"
+                        : "text-muted-foreground/50 hover:bg-[oklch(0.78_0.2_20)]/10 hover:text-[oklch(0.78_0.2_20)]"
+                    )}
+                    title="This hurt"
+                  >
+                    👎
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

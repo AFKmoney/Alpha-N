@@ -252,6 +252,19 @@ export interface MutationRewardEntry {
   time: number;
 }
 
+// ---- Phase 1: Episodic memory entry ----
+export interface EpisodeEntry {
+  id: string;
+  cycle: number;
+  action: string;
+  description: string;
+  reasoning: string;
+  result: string; // "ok" | "error" | "blocked" | "rollback"
+  reward: number; // -1.0 to +1.0
+  screenshot?: string;
+  time: number;
+}
+
 // ---- Code validation: detects obviously broken AI output ----
 export interface ValidationResult {
   ok: boolean;
