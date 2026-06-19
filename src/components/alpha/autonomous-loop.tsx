@@ -14,6 +14,7 @@ import type { AppKind } from "@/lib/alpha/os-types";
 import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile, auditAction } from "@/lib/alpha/ai-client";
 import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry, type EpisodeEntry } from "@/lib/alpha/mutations";
 import { getPolicy, authorize, isConsequential, type AutonomyLevel } from "@/lib/alpha/autonomy-policy";
+import { computeReward } from "@/lib/alpha/reward-model";
 
 const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
 const MUTATION_STEP_MS = 320;
@@ -210,7 +211,15 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
       const actionTimestamps: number[] = [];
       const rateLimitMs = 60_000;
 
-      for (const m of mutations) {
+      // ---- OBJECTIVE REWARD TRACKING ----
+      // Per-mutation outcome sets, populated as the loop runs. These feed
+      // the objective reward model (verifiable signals, not self-report).
+      const toolOk = new Set<string>(); // mutations whose tool call succeeded
+      const toolError = new Set<string>(); // mutations whose tool errored
+      const blocked = new Set<string>(); // mutations denied by policy/security
+
+      for (let mi = 0; mi < mutations.length; mi++) {
+        const m = mutations[mi];
         const mType = (m as { type?: string }).type ?? "unknown";
 
         // ---- AUTONOMY POLICY GATE ----
@@ -219,6 +228,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
         // adapt (e.g. switch approach or ask the user to raise the level).
         const verdict = authorize(mType, policy);
         if (!verdict.allowed) {
+          blocked.add(String(mi));
           applyMutation({
             type: "add_log",
             level: "critique",
@@ -243,6 +253,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             actionTimestamps.shift();
           }
           if (actionTimestamps.length >= policy.capabilities.actionsPerMinute) {
+            blocked.add(String(mi));
             applyMutation({
               type: "add_log",
               level: "critique",
@@ -321,12 +332,16 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
           try {
             const res = await writeFile(m.path, m.content);
             if (res.error) {
+              toolError.add(String(mi));
+              blocked.add(String(mi));
               applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File write BLOCKED: ${res.error.slice(0, 60)}` });
               osStore.getState().recordViolation(m.path, `AI tried to write protected file: ${m.path}`);
             } else {
+              toolOk.add(String(mi));
               applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Wrote ${m.content.length} bytes to ${m.path}`, });
             }
           } catch (err) {
+            toolError.add(String(mi));
             const msg = err instanceof Error ? err.message : "write failed";
             applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File write failed: ${msg.slice(0, 60)}` });
           }
@@ -383,8 +398,10 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
               time: Date.now(),
             };
             store.getState().addExecResult(cer);
+            if (execRes.ok) toolOk.add(String(mi)); else toolError.add(String(mi));
             await auditAction("execute_code", `${m.language} snippet`, currentLevel, { result: execRes.ok ? "ok" : "error" }).catch(() => {});
           } catch (err) {
+            toolError.add(String(mi));
             const msg = err instanceof Error ? err.message : "exec failed";
             applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Code exec failed: ${msg.slice(0, 60)}` });
           }
@@ -593,16 +610,31 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
       const delta = coherenceAfter - coherenceBefore;
 
       // ---- Phase 1: Episodic memory — log every meaningful action ----
+      // Reward is now OBJECTIVE: computed from verifiable tool outcomes
+      // (exec exit code, file write result, policy block, rollback) rather
+      // than the AI's self-reported coherence. This closes the
+      // "grading its own homework" loophole.
+      // Determine rollback status up-front so it feeds the reward signal.
+      const criticalEntropyRollback = afterMutations.metrics.entropy > 0.95;
+      const willRollback = hadError || criticalEntropyRollback;
       const cycleGen = afterMutations.generation;
-      for (const m of mutations) {
+      for (let mi = 0; mi < mutations.length; mi++) {
+        const m = mutations[mi];
         if (m.type === "set_state" || m.type === "speak" || m.type === "set_generation" || m.type === "set_version") continue;
+        const key = String(mi);
+        const objectiveReward = computeReward({
+          toolOk: toolOk.has(key),
+          toolError: toolError.has(key),
+          blocked: blocked.has(key),
+          rolledBack: willRollback,
+        });
         const entry: MutationRewardEntry = {
           kind: m.type,
           description: describeMutation(m),
           coherenceBefore,
           coherenceAfter,
-          delta,
-          helpful: delta >= 0,
+          delta: objectiveReward,
+          helpful: objectiveReward >= 0,
           time: Date.now(),
         };
         store.getState().addReward(entry);
@@ -614,8 +646,8 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
           action: m.type,
           description: describeMutation(m),
           reasoning: (m as { note?: string }).note ?? (m as { reasoning?: string }).reasoning ?? "",
-          result: hadError ? "error" : "ok",
-          reward: delta,
+          result: blocked.has(key) ? "blocked" : (toolError.has(key) || hadError ? "error" : "ok"),
+          reward: objectiveReward,
           time: Date.now(),
         };
         store.getState().addEpisode(episode);
@@ -647,10 +679,9 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
       }
 
       // ---- AUTO-ROLLBACK if the AI broke something ----
-      const afterState = store.getState();
-      const criticalEntropy = afterState.metrics.entropy > 0.95;
-      if (hadError || criticalEntropy) {
-        const reason = criticalEntropy
+      // willRollback was computed above (also feeds the objective reward).
+      if (willRollback) {
+        const reason = criticalEntropyRollback
           ? "Entropy exceeded critical threshold (0.95) — system destabilising."
           : "A mutation was rejected by validation/security.";
         const restored = osStore.getState().rollback(snapshot, reason);
