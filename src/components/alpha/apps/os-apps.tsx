@@ -18,6 +18,7 @@ import { useOS } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { triggerContextMenu, buildFileActions } from "@/components/alpha/context-menu";
 import { GeneratedAppRenderer } from "@/components/alpha/apps/generated-app-renderer";
+import { AuditTrail } from "@/components/alpha/audit-trail";
 import { cn } from "@/lib/utils";
 
 // ============ BROWSER APP (with proxy — works on ANY site including google.com) ============
@@ -515,6 +516,14 @@ export function SecurityApp() {
             {aiBusy ? "thinking…" : aiState}
           </span>
         </div>
+      </div>
+
+      {/* ---- Audit trail — what the AI actually did under the active level ---- */}
+      <div className="mb-2 mt-3">
+        <span className="eyebrow">audit trail · actions conséquentes</span>
+      </div>
+      <div className="mb-3">
+        <AuditTrail max={30} />
       </div>
 
       {/* ---- Protected Files (real list from SECURITY_FOUNDATION) ---- */}

@@ -7,6 +7,8 @@
 import { motion } from "framer-motion";
 import { Cpu, Database, Gauge, Sparkles, Waves } from "lucide-react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
+import { AutonomyModeSelector } from "@/components/alpha/autonomy-mode-selector";
+import { AUTONOMY_POLICIES } from "@/lib/alpha/autonomy-policy";
 import { cn } from "@/lib/utils";
 
 function formatUptime(ms: number) {
@@ -18,7 +20,15 @@ function formatUptime(ms: number) {
 }
 
 export function StatusBar() {
-  const { metrics, version, generation, aiState, activeEvolution, uptimeMs } = useEvolution();
+  const metrics = useEvolution((s) => s.metrics);
+  const version = useEvolution((s) => s.version);
+  const generation = useEvolution((s) => s.generation);
+  const aiState = useEvolution((s) => s.aiState);
+  const activeEvolution = useEvolution((s) => s.activeEvolution);
+  const uptimeMs = useEvolution((s) => s.uptimeMs);
+  const autonomyLevel = useEvolution((s) => s.autonomyLevel);
+  const autonomyMode = useEvolution((s) => s.autonomyMode);
+  const policy = AUTONOMY_POLICIES[autonomyLevel];
 
   const stateLabel =
     aiState === "observing"
@@ -62,6 +72,23 @@ export function StatusBar() {
       </div>
 
       <div className="flex items-center gap-3">
+        {/* Autonomy trust level — always visible so the user knows what
+            the AI is currently allowed to do. Click cycles levels. */}
+        <div className="hidden items-center gap-1.5 md:flex" title={policy.description}>
+          <span
+            className="h-1.5 w-1.5 rounded-full"
+            style={{ background: policy.accent }}
+          />
+          <span className="font-mono-ae text-[0.62rem]" style={{ color: policy.accent }}>
+            {policy.label}
+          </span>
+          <span className="font-mono-ae text-[0.62rem] text-muted-foreground">
+            · {autonomyMode === "active" ? "active" : "standby"}
+          </span>
+        </div>
+        <div className="hidden md:block">
+          <AutonomyModeSelector variant="compact" />
+        </div>
         <div className="hidden items-center gap-1.5 sm:flex">
           <Sparkles className="h-3 w-3 text-[oklch(0.85_0.16_85)]" />
           <span className="font-mono-ae text-[0.62rem] text-muted-foreground">
