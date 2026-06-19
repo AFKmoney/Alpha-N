@@ -5,6 +5,7 @@
  */
 "use client";
 
+import { useCallback, useMemo } from "react";
 import { AnimatePresence } from "framer-motion";
 import { useOS } from "@/lib/alpha/os-store";
 import {
@@ -36,27 +37,49 @@ import { AIAppStore } from "./apps/ai-app-store";
 import { SplitHandleBar } from "./split-handle";
 
 export function WindowManager() {
-  const { windows, layoutMode, activeDesktop, viewport, splitRatios } = useOS();
+  // Subscribe with individual selectors so a window-drag (which updates
+  // window rects many times/sec) doesn't re-render unrelated windows. Each
+  // WindowFrame subscribes to its OWN window slice via useOS selector, so
+  // only the dragged frame re-renders during interaction.
+  const windows = useOS((s) => s.windows);
+  const layoutMode = useOS((s) => s.layoutMode);
+  const activeDesktop = useOS((s) => s.activeDesktop);
+  const viewport = useOS((s) => s.viewport);
+  const splitRatios = useOS((s) => s.splitRatios);
 
   // windows visible on the active desktop (not minimized)
-  const visible = windows.filter((w) => w.desktop === activeDesktop && !w.minimized);
+  const visible = useMemo(
+    () => windows.filter((w) => w.desktop === activeDesktop && !w.minimized),
+    [windows, activeDesktop]
+  );
 
   // compute tiled layout if in tile mode
-  const tiled =
-    layoutMode === "tile" && visible.length > 0
-      ? computeTiledLayout(
-          visible.length,
-          viewport,
-          splitRatios[activeDesktop] ?? defaultSplits(visible.length)
-        )
-      : null;
+  const tiled = useMemo(
+    () =>
+      layoutMode === "tile" && visible.length > 0
+        ? computeTiledLayout(
+            visible.length,
+            viewport,
+            splitRatios[activeDesktop] ?? defaultSplits(visible.length)
+          )
+        : null,
+    [layoutMode, visible.length, viewport, splitRatios, activeDesktop]
+  );
+
+  // Memoise per-window content so an app component isn't recreated when an
+  // unrelated window moves. React's reconciliation reuses the element when
+  // kind + windowId are stable across renders.
+  const renderContent = useCallback(
+    (kind: string, windowId: string) => renderAppContent(kind, windowId),
+    []
+  );
 
   return (
     <div className="absolute inset-0 overflow-hidden">
       <AnimatePresence>
         {visible.map((win, i) => (
           <WindowFrame key={win.id} win={win} tiledRect={tiled?.rects[i]}>
-            {renderAppContent(win.kind, win.id)}
+            {renderContent(win.kind, win.id)}
           </WindowFrame>
         ))}
       </AnimatePresence>

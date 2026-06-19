@@ -27,6 +27,7 @@ import {
 } from "lucide-react";
 import { AnimatedLogo } from "@/components/alpha/top-bar-logo";
 import { ModelSettings } from "@/components/alpha/model-settings";
+import { AutonomyModeSelector } from "@/components/alpha/autonomy-mode-selector";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import { DESKTOPS } from "@/lib/alpha/os-types";
@@ -191,6 +192,11 @@ export function ControlCenterApp({ windowId: _windowId }: { windowId?: string } 
           <span className="font-mono-ae">flow</span>
         </button>
       </div>
+
+      <div className="h-px w-full bg-border/40" />
+
+      {/* Autonomy trust level — sandbox / moderate / yolo */}
+      <AutonomyModeSelector />
 
       <div className="h-px w-full bg-border/40" />
 

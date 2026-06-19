@@ -18,6 +18,7 @@ import { useOS, snapRect, type AppWindow } from "@/lib/alpha/os-store";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import type { Rect, SnapState } from "@/lib/alpha/os-types";
 import { triggerContextMenu, buildWindowActions } from "./context-menu";
+import { AppErrorBoundary } from "./app-error-boundary";
 import { cn } from "@/lib/utils";
 
 interface WindowFrameProps {
@@ -307,9 +308,13 @@ export function WindowFrame({ win, tiledRect, children }: WindowFrameProps) {
           </div>
         </div>
 
-        {/* Content — keyed by reloadKey so reload re-mounts the content */}
+        {/* Content — keyed by reloadKey so reload re-mounts the content.
+            Wrapped in an error boundary so a crash in this one app never
+            takes down the whole desktop. */}
         <div key={reloadKey} className="relative min-h-0 flex-1 overflow-hidden">
-          {children}
+          <AppErrorBoundary appName={win.title}>
+            {children}
+          </AppErrorBoundary>
         </div>
 
         {/* 4-side resize handles (only in float mode, not maximized) */}
