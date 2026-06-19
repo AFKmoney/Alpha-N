@@ -40,6 +40,9 @@ interface ExecRequest {
 // Minimal, safe environment for spawned code. NEVER spread process.env.
 function buildSandboxEnv(allowNetwork: boolean): NodeJS.ProcessEnv {
   const env: NodeJS.ProcessEnv = {
+    // NODE_ENV is required by the ProcessEnv type; keep it explicit so
+    // sandboxed code runs in "production" mode (no dev-only behaviours).
+    NODE_ENV: process.env.NODE_ENV ?? "production",
     PATH: process.env.PATH ?? "",
     // Provide a clean HOME/USERPROFILE so temp dir resolution works.
     HOME: process.env.HOME ?? process.env.USERPROFILE ?? "",

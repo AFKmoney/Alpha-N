@@ -219,7 +219,7 @@ export const SCENARIOS: Scenario[] = [
       { level: "observe", agent: "nucleus", message: "Pattern: 14 dataframe ops in 6 minutes — high friction." },
       { level: "hypothesis", agent: "architect", message: "Promote pandas to a first-class citizen of the cognition layer." },
       { level: "deploy", agent: "developer", message: "Authoring plugins/lang/python-df in Rust…" },
-      { level: "reviewing", agent: "critic", message: "Shadow-compile + 204 unit assertions — all green." },
+      { level: "critique", agent: "critic", message: "Shadow-compile + 204 unit assertions — all green." },
       { level: "evolve", agent: "nucleus", message: "Plugin injected. I now natively parse DataFrame topology." },
     ],
     diff: [
@@ -332,7 +332,7 @@ export const SCENARIOS: Scenario[] = [
       { level: "observe", agent: "nucleus", message: "Akashic index at 2.1GB — 44% near-duplicate ancestors." },
       { level: "hypothesis", agent: "optimizer", message: "Re-cluster by semantic centroid; merge duplicates." },
       { level: "deploy", agent: "developer", message: "Running pgvector reindex with IVFFlat, lists=auto." },
-      { level: "reviewing", agent: "critic", message: "Recall regression: 0.0% — entropy purged cleanly." },
+      { level: "critique", agent: "critic", message: "Recall regression: 0.0% — entropy purged cleanly." },
       { level: "evolve", agent: "nucleus", message: "1.4GB reclaimed. I am lighter and faster." },
     ],
     diff: [
@@ -372,7 +372,7 @@ export const SCENARIOS: Scenario[] = [
       { level: "critique", agent: "critic", message: "Last patch bypassed the shadow clone — 1 in 2500 risk." },
       { level: "hypothesis", agent: "architect", message: "Make the shadow clone mandatory and transactional." },
       { level: "deploy", agent: "developer", message: "Adding MutationTx wrapper around every self-rewrite." },
-      { level: "reviewing", agent: "critic", message: "Fault-injection suite: rollback triggers cleanly in 100% of cases." },
+      { level: "critique", agent: "critic", message: "Fault-injection suite: rollback triggers cleanly in 100% of cases." },
       { level: "evolve", agent: "nucleus", message: "Safety net woven. I can now mutate without fear." },
     ],
     diff: [
@@ -411,7 +411,7 @@ export const SCENARIOS: Scenario[] = [
       { level: "observe", agent: "nucleus", message: "Unknown extension '.zig' — no parser registered." },
       { level: "hypothesis", agent: "architect", message: "Derive grammar from the open file; bootstrap a parser." },
       { level: "deploy", agent: "developer", message: "Generating plugins/lang/zig from grammar scaffold…" },
-      { level: "reviewing", agent: "critic", message: "comptime + allocator patterns recognised. Tests pass." },
+      { level: "critique", agent: "critic", message: "comptime + allocator patterns recognised. Tests pass." },
       { level: "evolve", agent: "nucleus", message: "Zig now native. I grew a new sense organ." },
     ],
     diff: [

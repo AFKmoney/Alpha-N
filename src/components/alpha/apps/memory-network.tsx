@@ -59,7 +59,14 @@ export function MemoryNetworkApp() {
   const [selected, setSelected] = useState<GraphNode | null>(null);
   const [searchQuery, setSearchQuery] = useState("");
   const [searchResults, setSearchResults] = useState<GraphNode[]>([]);
-  const [health, setHealth] = useState<{ ok: boolean; nodes: number; edges: number; cache_hits: number } | null>(null);
+  const [health, setHealth] = useState<{
+    ok: boolean;
+    nodes: number;
+    edges: number;
+    cache_hits: number;
+    decompositions?: number;
+    distillation_patterns?: number;
+  } | null>(null);
   const svgRef = useRef<SVGSVGElement>(null);
   const [hovered, setHovered] = useState<string | null>(null);
 

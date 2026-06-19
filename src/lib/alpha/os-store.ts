@@ -48,6 +48,16 @@ export interface RollbackEvent {
   snapshotLabel: string;
 }
 
+/** The mutable OS state that a rollback restores from a snapshot. */
+export interface RollbackRestore {
+  windows: AppWindow[];
+  codeLines: CodeLine[];
+  agents: Agent[];
+  metrics: { cpu: number; ram: number; entropy: number; coherence: number };
+  version: string;
+  generation: number;
+}
+
 interface OSStore {
   // windows
   windows: AppWindow[];
@@ -105,7 +115,7 @@ interface OSStore {
   moveWindowToDesktop: (id: string, desktop: number) => void;
 
   takeSnapshot: (label: string, state: Omit<OSSnapshot, "id" | "time" | "label" | "windows"> & { windows?: AppWindow[] }) => OSSnapshot;
-  rollback: (snapshot: OSSnapshot, reason: string) => Omit<OSSnapshot, "id" | "time" | "windows"> & { windows: AppWindow[] };
+  rollback: (snapshot: OSSnapshot, reason: string) => RollbackRestore;
   recordViolation: (path: string, reason: string) => void;
   queueTerminalCommand: (command: string) => void;
   clearTerminalCommand: (id: string) => void;
@@ -648,5 +658,8 @@ export const useOS = create<OSStore>((set, get) => ({
   },
 }));
 
-export type { AppWindow, ProtectedFile, OSSnapshot, RollbackEvent };
+// AppWindow, ProtectedFile, OSSnapshot, RollbackEvent are exported above via
+// their interface declarations. Only re-export the SECURITY_FOUNDATION const
+// and the AppWindow/ProtectedFile type aliases (which come from os-types).
+export type { AppWindow, ProtectedFile };
 export { SECURITY_FOUNDATION };

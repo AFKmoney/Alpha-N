@@ -169,7 +169,10 @@ function compileGeneratedCode(code: string): CompiledApp {
 
   // 4. Compile via `new Function`. The transformed code is plain JS that
   //    uses `require`, `exports`, `module`, and `React` (for createElement).
-  let factory: (module: typeof moduleObj, exports: Record<string, unknown>, require: typeof requireFn, React: typeof React) => void;
+  type RequireFn = (name: string) => unknown;
+  type ModuleObj = { exports: Record<string, unknown> };
+  type ReactNamespace = typeof import("react");
+  let factory: (module: ModuleObj, exports: Record<string, unknown>, require: RequireFn, React: ReactNamespace) => void;
   try {
     factory = new Function(
       "module",

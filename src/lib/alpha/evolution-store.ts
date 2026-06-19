@@ -1056,15 +1056,17 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       const res = await fetch("/api/alpha/episode-log?limit=50");
       const data = await res.json();
       if (data.ok && data.episodes) {
-        const episodes: EpisodeEntry[] = data.episodes.map((e: EpisodeEntry) => ({
-          id: e.id,
-          cycle: e.cycle,
-          action: e.action,
-          description: e.description,
-          reasoning: e.reasoning || "",
-          result: e.result || "ok",
-          reward: e.reward || 0,
-          time: new Date(e.timestamp || Date.now()).getTime(),
+        // The API returns DB rows whose time column is `timestamp`; map them
+        // onto the client-side EpisodeEntry shape (which uses `time`).
+        const episodes: EpisodeEntry[] = (data.episodes as Array<Record<string, unknown>>).map((e) => ({
+          id: String(e.id ?? ""),
+          cycle: Number(e.cycle ?? 0),
+          action: String(e.action ?? ""),
+          description: String(e.description ?? ""),
+          reasoning: String(e.reasoning ?? ""),
+          result: String(e.result ?? "ok"),
+          reward: Number(e.reward ?? 0),
+          time: new Date((e.timestamp as string) || Date.now()).getTime(),
         }));
         set({ episodeLog: episodes });
       }

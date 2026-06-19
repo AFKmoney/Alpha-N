@@ -95,6 +95,7 @@ async function callCloudLLM(
   }
 
   const completion = await zai.chat.completions.createVision({
+    model: getModelConfig().cloudModel,
     messages: [
       { role: "assistant", content: systemPrompt },
       { role: "user", content },

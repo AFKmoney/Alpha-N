@@ -57,16 +57,21 @@ export function databaseUrl(): string {
  */
 export function resolveSafe(relPath: string): string | null {
   if (!relPath || typeof relPath !== "string") return null;
-  // Strip any leading slashes so we always anchor at the project root.
-  let cleaned = relPath.replace(/^[\\/]+/, "");
+  // Reject absolute paths outright — the AI may only address the project by
+  // relative path. (Stripping leading slashes would let /etc/shadow sneak in
+  // as a project-relative path, which is a real traversal vector.)
+  if (path.isAbsolute(relPath)) return null;
   // Resolve against root then normalise. path.resolve collapses "..".
-  const full = path.normalize(path.join(PROJECT_ROOT, cleaned));
-  // Guard: the resolved path must be inside PROJECT_ROOT (same drive on
-  // Windows, same prefix elsewhere). Use path.relative to detect escapes
-  // robustly across OSes (handles .., symlinks in name, drive letters).
+  const full = path.resolve(PROJECT_ROOT, relPath);
+  // Guard: the resolved path must be inside PROJECT_ROOT. Use path.relative
+  // to detect escapes robustly across OSes (handles .., drive letters).
+  // On Windows, a relative path that crosses to another drive yields an
+  // absolute path.relative result — caught by path.isAbsolute(rel).
   const rel = path.relative(PROJECT_ROOT, full);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  return full;
+  if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+    return full;
+  }
+  return null;
 }
 
 /**
@@ -74,11 +79,13 @@ export function resolveSafe(relPath: string): string | null {
  */
 export function resolveSandboxSafe(relPath: string): string | null {
   if (!relPath || typeof relPath !== "string") return null;
-  let cleaned = relPath.replace(/^[\\/]+/, "");
-  const full = path.normalize(path.join(SANDBOX_ROOT, cleaned));
+  if (path.isAbsolute(relPath)) return null;
+  const full = path.resolve(SANDBOX_ROOT, relPath);
   const rel = path.relative(SANDBOX_ROOT, full);
-  if (rel.startsWith("..") || path.isAbsolute(rel)) return null;
-  return full;
+  if (rel === "" || (!rel.startsWith("..") && !path.isAbsolute(rel))) {
+    return full;
+  }
+  return null;
 }
 
 /** True if the given project-relative path is inside the project root. */

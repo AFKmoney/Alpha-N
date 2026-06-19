@@ -469,7 +469,7 @@ export async function POST(req: NextRequest) {
 
       try {
         if (STALE_CLIENT) {
-          await generatedAppRaw.create(db, { id, name, description, category: safeCategory, code });
+          await rawCreateApp({ id, name, description, category: safeCategory, code });
         } else {
           await db.generatedApp.create({ data: { id, name, description, category: safeCategory, code } });
         }

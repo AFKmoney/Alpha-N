@@ -73,9 +73,10 @@ export function AppRepositoryApp() {
                 whileTap={{ scale: 0.95 }}
                 draggable
                 onDragStart={(e) => {
+                  const de = e as unknown as React.DragEvent;
                   setDraggedApp(app.kind);
-                  e.dataTransfer.effectAllowed = "copy";
-                  e.dataTransfer.setData("text/appkind", app.kind);
+                  de.dataTransfer.effectAllowed = "copy";
+                  de.dataTransfer.setData("text/appkind", app.kind);
                 }}
                 onDragEnd={() => setDraggedApp(null)}
                 onClick={() => handleLaunch(app.kind)}

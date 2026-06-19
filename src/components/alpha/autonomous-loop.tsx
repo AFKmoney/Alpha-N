@@ -11,7 +11,7 @@ import { useCallback, useEffect, useRef } from "react";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { useOS } from "@/lib/alpha/os-store";
 import type { AppKind } from "@/lib/alpha/os-types";
-import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile } from "@/lib/alpha/ai-client";
+import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile, auditAction } from "@/lib/alpha/ai-client";
 import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry, type EpisodeEntry } from "@/lib/alpha/mutations";
 import { getPolicy, authorize, isConsequential, type AutonomyLevel } from "@/lib/alpha/autonomy-policy";
 
@@ -229,7 +229,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
           store.getState().applyMutation({
             type: "add_log",
             level: "critique",
-            agent: "auditor",
+            agent: "critic",
             message: `Denied "${mType}": ${verdict.reason}`,
           });
           continue;
@@ -246,7 +246,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             applyMutation({
               type: "add_log",
               level: "critique",
-              agent: "auditor",
+              agent: "critic",
               message: `⊘ Rate limit hit (${policy.capabilities.actionsPerMinute}/min under ${policy.level}). Deferring "${mType}".`,
             });
             continue;
