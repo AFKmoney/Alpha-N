@@ -107,15 +107,16 @@ export async function runDebate(
   return res.json();
 }
 
-/** Execute code in a sandbox. */
+/** Execute code in a sandbox. The level gates network egress server-side. */
 export async function executeCode(
   code: string,
-  language: "javascript" | "typescript" | "bash"
-): Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number; language: string; error?: string }> {
+  language: "javascript" | "typescript" | "bash",
+  opts?: { level?: "sandbox" | "moderate" | "yolo"; network?: boolean }
+): Promise<{ ok: boolean; stdout: string; stderr: string; exitCode: number; language: string; error?: string; sandboxed?: boolean }> {
   const res = await fetch("/api/alpha/exec", {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ code, language }),
+    body: JSON.stringify({ code, language, level: opts?.level, network: opts?.network }),
   });
   return res.json();
 }
@@ -130,6 +131,24 @@ export async function runCompile(
     body: JSON.stringify({ check }),
   });
   return res.json();
+}
+
+/** Append a consequential AI action to the persistent audit trail. */
+export async function auditAction(
+  action: string,
+  description: string,
+  level: "sandbox" | "moderate" | "yolo",
+  opts?: { result?: "ok" | "blocked" | "error" | "denied"; detail?: string }
+): Promise<void> {
+  try {
+    await fetch("/api/alpha/audit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ action, description, level, result: opts?.result, detail: opts?.detail }),
+    });
+  } catch {
+    /* audit is best-effort */
+  }
 }
 
 /**

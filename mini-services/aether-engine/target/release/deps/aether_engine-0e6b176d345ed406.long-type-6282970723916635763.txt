@@ -1,1 +1,0 @@
-fn(State<AppState>, Value) -> impl Future<Output = impl IntoResponse> {chat_completions}: Handler<_, _>

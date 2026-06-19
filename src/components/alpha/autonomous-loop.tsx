@@ -13,6 +13,7 @@ import { useOS } from "@/lib/alpha/os-store";
 import type { AppKind } from "@/lib/alpha/os-types";
 import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile } from "@/lib/alpha/ai-client";
 import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry, type EpisodeEntry } from "@/lib/alpha/mutations";
+import { getPolicy, authorize, isConsequential, type AutonomyLevel } from "@/lib/alpha/autonomy-policy";
 
 const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
 const MUTATION_STEP_MS = 320;
@@ -201,7 +202,58 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
       let hadError = false;
       const streamBefore = store.getState().mutationStream.length;
 
+      // Resolve the active autonomy policy once per cycle. Consequential
+      // mutations (file writes, exec, self-prompt, delete) are gated by it.
+      const currentLevel: AutonomyLevel = store.getState().autonomyLevel;
+      const policy = getPolicy(currentLevel);
+      // Simple client-side rate limiter for consequential actions.
+      const actionTimestamps: number[] = [];
+      const rateLimitMs = 60_000;
+
       for (const m of mutations) {
+        const mType = (m as { type?: string }).type ?? "unknown";
+
+        // ---- AUTONOMY POLICY GATE ----
+        // Every mutation is authorised against the active policy. Denied
+        // mutations are logged and skipped — the AI is told why so it can
+        // adapt (e.g. switch approach or ask the user to raise the level).
+        const verdict = authorize(mType, policy);
+        if (!verdict.allowed) {
+          applyMutation({
+            type: "add_log",
+            level: "critique",
+            agent: "nucleus",
+            message: `⊘ BLOCKED by autonomy policy [${policy.level}]: ${verdict.reason}`,
+          });
+          // Record to the mutation stream as a denial so the AI sees it.
+          store.getState().applyMutation({
+            type: "add_log",
+            level: "critique",
+            agent: "auditor",
+            message: `Denied "${mType}": ${verdict.reason}`,
+          });
+          continue;
+        }
+
+        // ---- RATE LIMIT (consequential actions only) ----
+        if (isConsequential(mType) && policy.capabilities.actionsPerMinute > 0) {
+          const now = Date.now();
+          // Drop timestamps older than the window.
+          while (actionTimestamps.length && now - actionTimestamps[0] > rateLimitMs) {
+            actionTimestamps.shift();
+          }
+          if (actionTimestamps.length >= policy.capabilities.actionsPerMinute) {
+            applyMutation({
+              type: "add_log",
+              level: "critique",
+              agent: "auditor",
+              message: `⊘ Rate limit hit (${policy.capabilities.actionsPerMinute}/min under ${policy.level}). Deferring "${mType}".`,
+            });
+            continue;
+          }
+          actionTimestamps.push(now);
+        }
+
         applyMutation(m as Mutation);
         await sleep(MUTATION_STEP_MS);
         // check if the latest mutation stream entry is a violation
@@ -312,8 +364,15 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
         // ---- LAYER C: SANDBOXED CODE EXECUTION ----
         if (m.type === "execute_code" && m.code) {
           setAiBusy(true, `Executing ${m.language} code…`);
+          // Persist an audit entry before running — track what's about to happen.
           try {
-            const execRes = await executeCode(m.code, m.language);
+            await auditAction("execute_code", `${m.language} snippet (${m.code.length}b)`, currentLevel, { detail: m.code.slice(0, 200) });
+          } catch { /* audit best-effort */ }
+          try {
+            const execRes = await executeCode(m.code, m.language, {
+              level: currentLevel,
+              network: policy.capabilities.execNetwork,
+            });
             const cer: CodeExecResult = {
               code: m.code,
               language: m.language,
@@ -324,6 +383,7 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
               time: Date.now(),
             };
             store.getState().addExecResult(cer);
+            await auditAction("execute_code", `${m.language} snippet`, currentLevel, { result: execRes.ok ? "ok" : "error" }).catch(() => {});
           } catch (err) {
             const msg = err instanceof Error ? err.message : "exec failed";
             applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Code exec failed: ${msg.slice(0, 60)}` });

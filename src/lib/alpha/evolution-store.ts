@@ -46,6 +46,8 @@ import {
 } from "./mutations";
 import { isProtected } from "./os-types";
 import { useOS } from "./os-store";
+import { DEFAULT_AUTONOMY_LEVEL, type AutonomyLevel } from "./autonomy-policy";
+import { db } from "@/lib/db";
 
 interface ActiveEvolution {
   scenario: Scenario;
@@ -79,6 +81,12 @@ interface EvolutionStore {
   // The AI may self-upgrade in standby ONLY if it found a critical bug or web-discovered upgrade
   // and tests it in sandbox first.
   autonomyMode: "standby" | "active";
+  /**
+   * Trust level governing what the AI may do without asking.
+   * sandbox (read-only) | moderate (sandboxed writes+exec) | yolo (full).
+   * Orthogonal to autonomyMode: standby+active is *when* it acts, this is *what* it may do.
+   */
+  autonomyLevel: AutonomyLevel;
   aiBusy: boolean;
   aiReasoning: string | null;
   lastCycleAt: number;
@@ -156,6 +164,8 @@ interface EvolutionStore {
   // --- AI-driven actions ---
   toggleAutonomy: () => void; // toggles between standby and active
   setAutonomyMode: (mode: "standby" | "active") => void;
+  /** Switch the trust level (sandbox/moderate/yolo). Persisted to UserPreference. */
+  setAutonomyLevel: (level: AutonomyLevel) => void;
   triggerCycle: () => void; // force an immediate real AI cycle
   setAiBusy: (busy: boolean, reasoning?: string | null) => void;
   sendUserMessage: (content: string) => void;
@@ -273,6 +283,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })),
 
   autonomyMode: "standby" as "standby" | "active",
+  autonomyLevel: DEFAULT_AUTONOMY_LEVEL,
   aiBusy: false,
   aiReasoning: null,
   lastCycleAt: 0,
@@ -475,6 +486,17 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     autonomyMode: s.autonomyMode === "standby" ? "active" : "standby",
   })),
   setAutonomyMode: (mode) => set({ autonomyMode: mode }),
+  setAutonomyLevel: (level) => {
+    set({ autonomyLevel: level });
+    // Persist so the choice survives reloads.
+    void db.userPreference
+      .upsert({
+        where: { key: "autonomyLevel" },
+        create: { key: "autonomyLevel", value: level },
+        update: { value: level },
+      })
+      .catch(() => { /* DB may be unavailable on first boot */ });
+  },
   triggerCycle: () => set({ forceCycle: true }),
   setAiBusy: (busy, reasoning = null) =>
     set({ aiBusy: busy, aiReasoning: reasoning, aiState: busy ? "self-improving" : "observing" }),
@@ -835,6 +857,18 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       }));
     } catch {
       // DB not available yet — continue with seed memory
+    }
+    // Hydrate persisted autonomy level preference (best-effort).
+    try {
+      const prefRes = await fetch("/api/alpha/personality?key=autonomyLevel");
+      if (prefRes.ok) {
+        const pref = await prefRes.json();
+        if (pref.value === "sandbox" || pref.value === "moderate" || pref.value === "yolo") {
+          set({ autonomyLevel: pref.value });
+        }
+      }
+    } catch {
+      /* preference optional */
     }
   },
 
