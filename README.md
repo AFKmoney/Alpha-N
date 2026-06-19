@@ -43,16 +43,49 @@ The AI doesn't live inside the OS — the AI **is** the OS. Alpha-N observes its
 
 ## Quick start
 
+Works on **Windows, macOS, and Linux** (paths resolve from the project root
+at runtime — no more hardcoded `/home/z/my-project`).
+
 ```bash
-bun install
-bun run db:push     # create the SQLite schema
-bun run dev         # OS boots at http://localhost:3000
+npm install
+npx prisma generate   # generate the Prisma client
+npx prisma db push    # create the SQLite schema
+npm run dev           # OS boots at http://localhost:3000
 ```
+
+Copy `.env.example` to `.env` if you want to customise the DB location,
+project root, or sandbox directory. Defaults work out of the box.
+
+### Quality gates
+
+```bash
+npm run typecheck   # tsc --noEmit (now blocks builds — no more hidden errors)
+npm run test        # vitest (52 tests: autonomy policy, paths, code validation, reward model)
+npm run lint        # eslint (high-signal rules re-enabled)
+npm run build       # production build
+```
+
+CI runs all four on every push/PR via `.github/workflows/ci.yml`.
+
+### Autonomy levels — the trust dial
+
+Three switchable trust levels govern what the AI may do without asking.
+Set them from the **Control Center** app on the desktop. The kernel
+(`kernel/*`) stays protected regardless of the level.
+
+| Level | File writes | Exec | Network | Self-prompt | Rate limit |
+|-------|-------------|------|---------|-------------|------------|
+| 🛡 **Bac à sable** | ✗ | ✗ | ✗ | ✗ | 30/min |
+| 🟡 **Modéré** (default) | ✓ sandboxed | ✓ sandboxed | ✗ | ✗ (council) | 20/min |
+| 🔥 **YOLO** | ✓ | ✓ | ✓ | ✓ | unlimited |
+
+The autonomous loop runs every mutation through `authorize()` before
+applying it — denied mutations are logged and skipped, never executed.
 
 Cloud mode works out of the box. To use a local model instead:
 
 1. Drop a `.gguf` file in `models/`.
-2. Open Model Settings (sidebar) → select **Aether**.
+2. Open Model Settings (Control Center) → select **Aether**.
 3. Pick your model — the Aether Engine loads it with 10× effective context.
 
 ### Services
@@ -93,6 +126,25 @@ The AI may **never** rewrite these kernel files — any attempt is blocked and l
 | `kernel/sandbox.ts` | Process isolation |
 | `kernel/pty-bridge.ts` | Terminal bridge |
 | `kernel/akasha.ts` | Long-term memory index |
+
+### Defense in depth
+
+Beyond the kernel, the v2 hardening adds several independent layers:
+
+- **Autonomy policy** (`autonomy-policy.ts`) — fail-closed `authorize()` gates
+  every mutation against the active trust level before it runs.
+- **Sandboxed exec** (`/api/alpha/exec`) — AI code runs in an isolated dir
+  outside the project, with a minimal env (no `process.env` leakage), hard
+  timeout, and network gated to YOLO mode.
+- **Path traversal guard** (`paths.ts`) — `resolveSafe()` rejects absolute
+  paths and `..` escapes via `path.relative` detection, symlink-aware.
+- **Audit trail** (`audit-log.ts`) — every consequential AI action is
+  recorded to `SystemEvent` and surfaced in the Control Center.
+- **Objective reward model** (`reward-model.ts`) — the AI is graded on
+  verifiable outcomes (compile/exec results, rollbacks, user votes), not
+  its own self-reported coherence.
+- **Error boundaries** — a crashing app window is isolated with a retry
+  fallback; it can never take down the whole desktop.
 
 ## Related
 
