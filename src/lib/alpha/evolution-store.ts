@@ -8,7 +8,6 @@
 
 import { create } from "zustand";
 import {
-  AGENT_META,
   GHOST_CODE,
   LIVING_CODE,
   SCENARIOS,
@@ -48,12 +47,21 @@ import { isProtected } from "./os-types";
 import { useOS } from "./os-store";
 import { DEFAULT_AUTONOMY_LEVEL, type AutonomyLevel } from "./autonomy-policy";
 import { db } from "@/lib/db";
-
-interface ActiveEvolution {
-  scenario: Scenario;
-  phase: number;
-  startedAt: number;
-}
+import {
+  type ActiveEvolution,
+  T0,
+  STATUS_BY_LEVEL,
+  idleAgents,
+  makeLog,
+  bumpVersion,
+  nextMutId,
+  nextChatId,
+  nextMemId,
+  nextIntId,
+  seedHistoryEntry,
+  seedLogs,
+  seedChat,
+} from "./evolution-store-helpers";
 
 interface EvolutionStore {
   // --- state of the organism ---
@@ -205,63 +213,6 @@ interface EvolutionStore {
   removeConstraint: (id: string) => Promise<void>;
 }
 
-let logId = 0;
-let mutId = 0;
-let chatId = 0;
-let memId = 0;
-let intId = 0;
-// Fixed epoch for the *initial* state so SSR and client agree.
-const T0 = 1_704_067_200_000; // 2024-01-01T00:00:00Z
-function makeLog(
-  level: LogLevel,
-  agent: AgentRole | "nucleus",
-  message: string,
-  time: number = T0
-): LogEntry {
-  return { id: `log-${logId++}`, time, level, agent, message };
-}
-
-function bumpVersion(prev: string): string {
-  const parts = prev.split(".").map(Number);
-  parts[2] += 1;
-  if (parts[2] >= 10) {
-    parts[2] = 0;
-    parts[1] += 1;
-  }
-  if (parts[1] >= 10) {
-    parts[1] = 0;
-    parts[0] += 1;
-  }
-  return parts.join(".");
-}
-
-const IDLE_LOAD: Record<AgentRole, number> = {
-  architect: 0.12,
-  developer: 0.18,
-  critic: 0.09,
-  optimizer: 0.15,
-};
-function idleAgents(): Agent[] {
-  return (Object.keys(AGENT_META) as AgentRole[]).map((role) => ({
-    role,
-    name: AGENT_META[role].name,
-    glyph: AGENT_META[role].glyph,
-    hue: AGENT_META[role].hue,
-    status: "idle" as AgentStatus,
-    thought: "Standing by. The Nucleus is calm.",
-    load: IDLE_LOAD[role],
-  }));
-}
-
-const STATUS_BY_LEVEL: Record<LogLevel, AgentStatus> = {
-  observe: "thinking",
-  critique: "reviewing",
-  hypothesis: "thinking",
-  deploy: "deploying",
-  evolve: "deploying",
-  heal: "optimizing",
-};
-
 export const useEvolution = create<EvolutionStore>((set, get) => ({
   aiState: "observing",
   generation: 0,
@@ -272,11 +223,8 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   agents: idleAgents(),
   activeAgent: null,
 
-  history: [{ ...SEED_VERSION, timestamp: T0 }],
-  logs: [
-    makeLog("evolve", "nucleus", "N-Core online. Three layers synchronised. The organism is awake."),
-    makeLog("observe", "architect", "Surveying own source tree — 312 modules, 0 wounds detected."),
-  ],
+  history: [seedHistoryEntry()],
+  logs: seedLogs(),
   activeEvolution: null,
   pendingDiff: null,
 
@@ -288,15 +236,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   aiReasoning: null,
   lastCycleAt: 0,
   forceCycle: false,
-  chat: [
-    {
-      id: `chat-${chatId++}`,
-      role: "ai",
-      content:
-        "I am Alpha-OS. I am in standby mode — I will not code unless you ask me to. Tell me what you want me to do: open an app, search the web, rewrite code, or give me a project to work on. Switch to 'active' mode in the sidebar if you want me to work autonomously.",
-      time: T0,
-    },
-  ],
+  chat: seedChat(),
   mutationStream: [],
   beforeAfter: null,
   beforeAfterOpen: false,
@@ -304,19 +244,19 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
 
   akashaMemory: [
     {
-      id: `mem-${memId++}`,
+      id: nextMemId(),
       text: "I am Alpha-OS. I am not an AI inside an OS — I am the OS itself. The desktop is my body.",
       kind: "architecture",
       time: T0,
     },
     {
-      id: `mem-${memId++}`,
+      id: nextMemId(),
       text: "The kernel files (boot, security, rollback, sandbox, pty-bridge, akasha) are sovereign. I must never rewrite them.",
       kind: "lesson",
       time: T0,
     },
     {
-      id: `mem-${memId++}`,
+      id: nextMemId(),
       text: "Every cycle I must look at my screenshot to verify my code dimensions well against the visible UI.",
       kind: "lesson",
       time: T0,
@@ -503,7 +443,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
 
   sendUserMessage: (content) => {
     const msg: ChatMessage = {
-      id: `chat-${chatId++}`,
+      id: nextChatId(),
       role: "user",
       content,
       time: Date.now(),
@@ -513,7 +453,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
 
   pushAiMessage: (content, reasoning) => {
     const msg: ChatMessage = {
-      id: `chat-${chatId++}`,
+      id: nextChatId(),
       role: "ai",
       content,
       reasoning,
@@ -543,7 +483,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           }));
           // still record the attempt in the stream so it's visible
           const am: AppliedMutation = {
-            id: `mut-${mutId++}`,
+            id: nextMutId(),
             kind: "violation",
             description: `⛔ BLOCKED: tried to rewrite ${path}`,
             time: now,
@@ -561,7 +501,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
           logs: [makeLog("critique", "critic", `VALIDATION: rejected mutation — ${validation.reason}. Rolling back intent.`, now), ...st.logs].slice(0, 80),
         }));
         const am: AppliedMutation = {
-          id: `mut-${mutId++}`,
+          id: nextMutId(),
           kind: "violation",
           description: `⛔ REJECTED: ${validation.reason}`,
           time: now,
@@ -769,7 +709,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     }
     // record in the optimization stream
     const am: AppliedMutation = {
-      id: `mut-${mutId++}`,
+      id: nextMutId(),
       kind: m.type,
       description: describeMutation(m),
       time: now,
@@ -800,7 +740,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   // ---- Akasha: persistent memory ----
   addMemory: (text, kind) => {
     set((s) => {
-      const mem: AkashaMemory = { id: `mem-${memId++}`, text, kind, time: Date.now() };
+      const mem: AkashaMemory = { id: nextMemId(), text, kind, time: Date.now() };
       return {
         akashaMemory: [mem, ...s.akashaMemory].slice(0, 100),
         logs: [makeLog("evolve", "nucleus", `Committed to Akasha: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
@@ -816,12 +756,12 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     void fetch("/api/alpha/aether?endpoint=graph/add", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ id: `mem-${memId}`, text, kind, metadata: { source: "akasha" } }),
+      body: JSON.stringify({ id: nextMemId(), text, kind, metadata: { source: "akasha" } }),
     }).catch(() => {});
   },
   addIntention: (text, priority) => {
     set((s) => {
-      const intention: AkashaIntention = { id: `int-${intId++}`, text, priority, time: Date.now(), resolved: false };
+      const intention: AkashaIntention = { id: nextIntId(), text, priority, time: Date.now(), resolved: false };
       return {
         akashaIntentions: [intention, ...s.akashaIntentions].slice(0, 50),
         logs: [makeLog("hypothesis", "architect", `New intention[${priority}]: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
