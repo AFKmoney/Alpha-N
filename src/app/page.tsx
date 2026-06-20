@@ -18,6 +18,7 @@ import { Dock, DockHint } from "@/components/alpha/dock";
 import { StartMenu } from "@/components/alpha/start-menu";
 import { LiveMutationViewer } from "@/components/alpha/live-mutation-viewer";
 import { ContextMenu, triggerContextMenu, buildDesktopActions } from "@/components/alpha/context-menu";
+import { useThemeSync } from "@/components/alpha/use-theme-sync";
 import { CommandPalette } from "@/components/alpha/command-palette";
 import { ToastSystem } from "@/components/alpha/toast-system";
 import { ShortcutsOverlay } from "@/components/alpha/shortcuts-overlay";
@@ -32,6 +33,8 @@ import type { AppKind } from "@/lib/alpha/os-types";
 export default function Page() {
   const workspaceRef = useRef<HTMLElement>(null);
   const setViewport = useOS((s) => s.setViewport);
+  // Sync the <html> class with the store's theme (dark/light).
+  useThemeSync();
 
   // Track the viewport = the FULL screen. Windows can move/resize anywhere
   // within the screen framing (0,0 to innerWidth, innerHeight), regardless

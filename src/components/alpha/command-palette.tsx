@@ -213,12 +213,9 @@ export function CommandPalette() {
         hint: "Switch light/dark mode",
         icon: <span className="font-mono-ae text-xs">◐</span>,
         run: () => {
-          // Notify any listener (next-themes provider, etc.) — main agent
-          // wires this up at the app root.
-          window.dispatchEvent(new CustomEvent("alpha-theme-toggle"));
-          // Visual fallback: flip a class on <html> so the user sees feedback
-          // even if no provider is mounted.
-          document.documentElement.classList.toggle("light");
+          // Toggle through the OS store — useThemeSync() reflects it onto
+          // <html>. The old custom-event + manual class flip was racy.
+          useOS.getState().toggleTheme();
         },
       },
     ];

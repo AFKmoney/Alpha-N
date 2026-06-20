@@ -24,40 +24,8 @@ import { triggerContextMenu, buildDockAppActions } from "@/components/alpha/cont
 import { useEvolution } from "@/lib/alpha/evolution-store";
 import { cn } from "@/lib/utils";
 
-/**
- * Light-theme CSS overrides. Injected once on mount; toggled by setting
- * data-theme="light" on the <html> element. Deliberately minimal — just
- * enough to give the OS a usable light variant without forking globals.css.
- */
-const LIGHT_THEME_CSS = `
-:root[data-theme="light"] {
-  --background: oklch(0.97 0.005 250);
-  --foreground: oklch(0.18 0.02 265);
-  --card: oklch(0.95 0.008 250 / 0.85);
-  --card-foreground: oklch(0.18 0.02 265);
-  --popover: oklch(0.97 0.008 250 / 0.96);
-  --popover-foreground: oklch(0.15 0.02 265);
-  --secondary: oklch(0.9 0.01 250);
-  --secondary-foreground: oklch(0.2 0.02 265);
-  --muted: oklch(0.9 0.01 250 / 0.7);
-  --muted-foreground: oklch(0.42 0.02 265);
-  --accent: oklch(0.85 0.04 290);
-  --accent-foreground: oklch(0.18 0.02 265);
-  --border: oklch(0.35 0.02 265 / 0.18);
-  --input: oklch(0.35 0.02 265 / 0.18);
-  --sidebar: oklch(0.95 0.008 250 / 0.9);
-  --sidebar-foreground: oklch(0.18 0.02 265);
-}
-[data-theme="light"] .glass {
-  background: linear-gradient(135deg, oklch(0.97 0.01 250 / 0.78), oklch(0.9 0.008 250 / 0.88));
-  border: 1px solid oklch(0.3 0.02 265 / 0.16);
-  box-shadow: inset 0 1px 0 0 oklch(1 0 0 / 0.4), 0 18px 40px -18px oklch(0.3 0.02 265 / 0.3);
-}
-[data-theme="light"] .glass-strong {
-  background: linear-gradient(135deg, oklch(0.97 0.012 250 / 0.95), oklch(0.88 0.008 250 / 0.98));
-  border: 1px solid oklch(0.3 0.02 265 / 0.22);
-}
-`;
+// NOTE: theme CSS (light/dark) now lives entirely in globals.css, applied via
+// the .dark class on <html>. See use-theme-sync.ts. No runtime injection here.
 
 export function Dock() {
   const {
@@ -105,23 +73,9 @@ export function Dock() {
     };
   }, []);
 
-  // ---- SA3-WINDOW-OS: Theme CSS injection + data-theme attribute sync ----
-  useEffect(() => {
-    // Inject the light-theme stylesheet once.
-    let styleEl = document.getElementById("alpha-theme-overrides") as HTMLStyleElement | null;
-    if (!styleEl) {
-      styleEl = document.createElement("style");
-      styleEl.id = "alpha-theme-overrides";
-      styleEl.textContent = LIGHT_THEME_CSS;
-      document.head.appendChild(styleEl);
-    }
-    // Apply the current theme to <html>.
-    if (theme === "light") {
-      document.documentElement.setAttribute("data-theme", "light");
-    } else {
-      document.documentElement.removeAttribute("data-theme");
-    }
-  }, [theme]);
+  // NOTE: theme sync (dark/light class on <html>) is now handled centrally by
+  // useThemeSync() in page.tsx, and the light/dark variable split lives in
+  // globals.css. The old runtime <style> injection here was racy and is gone.
 
   // ---- SA3-WINDOW-OS: Global keyboard shortcuts for window management ----
   // Dock is a singleton always-mounted component, so this listener is registered once.
