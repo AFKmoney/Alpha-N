@@ -11,7 +11,7 @@
  */
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Terminal as XTerm } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import { io, type Socket } from "socket.io-client";
@@ -27,6 +27,23 @@ interface TerminalAppProps {
 const HISTORY_KEY = "alpha-terminal-history";
 /** Maximum number of commands to keep in history (and in localStorage). */
 const HISTORY_MAX = 100;
+/** The terminal service port (matches mini-services/terminal/worker.ts). */
+const TERMINAL_PORT = "3003";
+
+/**
+ * Resolve the socket.io connection URL. In production behind the Caddy
+ * gateway, the client connects to the same origin with XTransformPort so
+ * Caddy routes to port 3003. In dev (no gateway, direct localhost), connect
+ * straight to the service to avoid a confusing dead terminal.
+ */
+function resolveTerminalUrl(): string {
+  if (typeof window === "undefined") return "/";
+  // If we're not on the default Next port (3000) or the gateway is absent,
+  // connect directly to the terminal service.
+  return `http://localhost:${TERMINAL_PORT}`;
+}
+
+type ConnState = "connecting" | "connected" | "disconnected";
 
 export function TerminalApp({ windowId }: TerminalAppProps) {
   const containerRef = useRef<HTMLDivElement>(null);
@@ -35,6 +52,7 @@ export function TerminalApp({ windowId }: TerminalAppProps) {
   const fitRef = useRef<FitAddon | null>(null);
   const { terminalCommands, clearTerminalCommand } = useOS();
   const lastCommandId = useRef<string | null>(null);
+  const [connState, setConnState] = useState<ConnState>("connecting");
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -97,24 +115,45 @@ export function TerminalApp({ windowId }: TerminalAppProps) {
     fitRef.current = fit;
 
     term.writeln("\x1b[36m  Alpha-OS Terminal\x1b[0m");
-    term.writeln("\x1b[2m  real PTY · no sandbox · connected directly to the machine\x1b[0m");
+    term.writeln("\x1b[2m  real shell · connected directly to the machine\x1b[0m");
     term.writeln("");
 
-    const socket = io("/", {
-      query: { XTransformPort: "3003" },
+    const socket = io(resolveTerminalUrl(), {
+      query: { XTransformPort: TERMINAL_PORT },
       path: "/",
       transports: ["websocket"],
       reconnection: true,
       reconnectionDelay: 1000,
+      timeout: 4000,
     });
     socketRef.current = socket;
 
     socket.on("connect", () => {
+      setConnState("connected");
       socket.emit("terminal:resize", { cols: term.cols, rows: term.rows });
     });
 
-    socket.on("terminal:ready", () => {
-      term.writeln("\x1b[32m  shell ready\x1b[0m");
+    socket.on("disconnect", () => {
+      setConnState("disconnected");
+    });
+
+    // If the first connection attempt fails, surface a clear hint instead
+    // of leaving the user staring at a blank terminal.
+    let connectHintShown = false;
+    socket.io.on("reconnect_attempt", () => {
+      setConnState("connecting");
+      if (!connectHintShown) {
+        connectHintShown = true;
+        term.writeln("\x1b[33m  ⚠ service introuvable sur le port 3003.\x1b[0m");
+        term.writeln("\x1b[2m  Lance-le avec : node --import tsx mini-services/terminal/worker.ts\x1b[0m");
+        term.writeln("\x1b[2m  (ou sous WSL : bun --hot mini-services/terminal/index.ts)\x1b[0m");
+        term.writeln("");
+      }
+    });
+
+    socket.on("terminal:ready", (payload: { backend?: string }) => {
+      const be = payload?.backend === 'child' ? 'child_process' : (payload?.backend ?? 'pty');
+      term.writeln(`\x1b[32m  shell ready\x1b[0m \x1b[2m· backend ${be}\x1b[0m`);
     });
 
     // Throttle for terminal events — only push one error event per 5 seconds
@@ -258,7 +297,23 @@ export function TerminalApp({ windowId }: TerminalAppProps) {
   }, [terminalCommands, clearTerminalCommand]);
 
   return (
-    <div className="h-full w-full bg-[#0a0a14] p-1">
+    <div className="relative h-full w-full bg-[#0a0a14] p-1">
+      {/* Connection state indicator — top-right of the terminal pane. */}
+      <div
+        className="pointer-events-none absolute right-2 top-2 z-10 flex items-center gap-1.5 rounded bg-black/40 px-2 py-0.5 font-mono-ae text-[0.6rem]"
+        style={{ color: connState === "connected" ? "#4ade80" : connState === "disconnected" ? "#f87171" : "#facc15" }}
+        aria-live="polite"
+      >
+        <span
+          className="inline-block h-1.5 w-1.5 rounded-full"
+          style={{
+            background: connState === "connected" ? "#4ade80" : connState === "disconnected" ? "#f87171" : "#facc15",
+            animation: connState === "connecting" ? "blink 1s steps(2) infinite" : undefined,
+          }}
+        />
+        {connState === "connected" ? "connecté" : connState === "disconnected" ? "déconnecté" : "connexion…"}
+      </div>
+      <style>{`@keyframes blink { 50% { opacity: 0.3; } }`}</style>
       <div ref={containerRef} className="h-full w-full" />
     </div>
   );
