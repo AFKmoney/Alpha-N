@@ -15,6 +15,7 @@ import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, ex
 import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry, type EpisodeEntry } from "@/lib/alpha/mutations";
 import { getPolicy, authorize, isConsequential, type AutonomyLevel } from "@/lib/alpha/autonomy-policy";
 import { computeReward } from "@/lib/alpha/reward-model";
+import { buildLesson, derivePersistedLesson } from "@/lib/alpha/learning-engine";
 
 const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
 const MUTATION_STEP_MS = 320;
@@ -151,6 +152,9 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
             })),
             realMetrics: s.realMetrics,
             constraints: s.constraints.map((c) => ({ text: c.text, scope: c.scope })),
+            // Send accumulated lessons from PREVIOUS cycles so the AI reads
+            // its own feedback before deciding what to do this cycle.
+            persistedLessons: s.persistedLessons,
           },
           userMessage: userMessage ?? null,
           history: s.chat.map((m) => ({ role: m.role, content: m.content })),
@@ -651,6 +655,34 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
           time: Date.now(),
         };
         store.getState().addEpisode(episode);
+      }
+
+      // ---- CLOSE THE LEARNING LOOP ----
+      // After recording this cycle's episodes, run them through the learning
+      // engine. If a strategy is failing repeatedly, persist a lesson so the
+      // NEXT think call leads with "stop doing X the same way". This is what
+      // makes the organism adapt instead of repeating failures.
+      try {
+        const episodes = store.getState().episodeLog;
+        const episodesForLearning = episodes.map((e) => ({
+          kind: e.action,
+          description: e.description,
+          result: (e.result === "rollback" ? "error" : e.result) as "ok" | "blocked" | "error",
+          reward: e.reward,
+        }));
+        const lesson = buildLesson(episodesForLearning);
+        const derived = derivePersistedLesson(lesson, episodesForLearning);
+        if (derived) {
+          store.getState().addPersistedLesson(derived);
+          applyMutation({
+            type: "add_log",
+            level: "evolve",
+            agent: "nucleus",
+            message: `🧠 LEARNING: ${derived.text}`,
+          });
+        }
+      } catch {
+        // Learning is best-effort — never let it break the cycle.
       }
 
       // ---- Phase 1: Take a screenshot AFTER mutations if any UI mutation was applied ----

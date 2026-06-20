@@ -140,6 +140,11 @@ interface EvolutionStore {
   // ---- Phase 4: User constraints ----
   constraints: { id: string; text: string; scope: string; active: boolean }[];
 
+  // ---- Learning loop: persistent lessons derived from the reward trail ----
+  // These survive across cycles and are injected at the TOP of each think
+  // prompt so the AI adapts its behaviour instead of repeating failures.
+  persistedLessons: { id: string; text: string; weight: number; createdAt: number }[];
+
   // --- ui ---
   flowMode: boolean;
   synapseOpen: boolean;
@@ -207,6 +212,8 @@ interface EvolutionStore {
   addEpisode: (entry: EpisodeEntry) => void;
   rateEpisode: (id: string, reward: number) => void; // 👍/👎 from user
   loadEpisodesFromDb: () => Promise<void>;
+  /** Record a persistent lesson (closes the learning loop). De-dupes. */
+  addPersistedLesson: (lesson: { id: string; text: string; weight: number; createdAt: number }) => void;
   updateRealMetrics: (delta: Partial<{ errors: number; rollbacks: number; thumbsUp: number; thumbsDown: number; actions: number }>) => void;
   loadConstraints: () => Promise<void>;
   addConstraint: (text: string, scope?: string) => Promise<void>;
@@ -287,6 +294,7 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
     totalUserThumbsDown: 0,
   },
   constraints: [],
+  persistedLessons: [],
 
   flowMode: false,
   synapseOpen: false,
@@ -960,6 +968,28 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
       headers: { "content-type": "application/json" },
       body: JSON.stringify(entry),
     }).catch(() => {});
+  },
+
+  // ---- Learning loop: persistent lessons ----
+  addPersistedLesson: (lesson) => {
+    set((s) => {
+      // De-dupe by text (a repeated failure shouldn't pile up identical rows).
+      if (s.persistedLessons.some((l) => l.text === lesson.text)) {
+        // Bump the weight instead so the strongest pattern surfaces first.
+        return {
+          persistedLessons: s.persistedLessons
+            .map((l) => (l.text === lesson.text ? { ...l, weight: Math.max(l.weight, lesson.weight) } : l))
+            .sort((a, b) => b.weight - a.weight)
+            .slice(0, 12),
+        };
+      }
+      return {
+        // Keep newest first, capped — a lesson roll is not unbounded.
+        persistedLessons: [{ ...lesson }, ...s.persistedLessons]
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, 12),
+      };
+    });
   },
 
   rateEpisode: (id, reward) => {

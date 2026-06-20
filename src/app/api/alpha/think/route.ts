@@ -6,6 +6,7 @@
  */
 import { NextRequest, NextResponse } from "next/server";
 import { callLLM } from "@/lib/alpha/model-config";
+import { buildLesson, renderLessonPrompt } from "@/lib/alpha/learning-engine";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -186,12 +187,19 @@ After writing or modifying code, verify it compiles:
 - compile: runs tsc --noEmit and/or eslint on the project. Returns errors with line numbers.
 If there are errors, FIX THEM immediately in the next cycle. Never leave the codebase in a broken state.
 
-# FEEDBACK LEARNING — LEARN FROM YOUR MISTAKES
-Every mutation is tracked: its effect on coherence (positive delta = helpful, negative = harmful).
-Your reward model is in your state. Look at it:
-- Which mutation kinds have positive deltas? Do more of those.
-- Which have negative deltas? Do fewer.
-- Learn which actions improve your coherence and which hurt it. This is how you get smarter over time.
+# FEEDBACK LEARNING — THE LOOP IS CLOSED
+You are graded on OBJECTIVE outcomes, not your own opinion:
+- +reward when a tool call succeeds (file written, exec exit 0, compile passed)
+- −reward when it errors, is blocked by policy, or triggers a rollback
+- ±1 when the user votes 👍/👎 (the strongest signal)
+At the TOP of your state, the LEARNING LOOP block tells you exactly what is
+working and what is failing. OBEY IT:
+- If it says a strategy failed N times in a row, do NOT repeat it the same way.
+  Read the file first, test a smaller snippet, or abandon that line of work.
+- If it says a strategy is your strongest, lean into it — but vary the target.
+- Persistent lessons are things you already internalised. Honour them.
+This is how you actually get smarter over time. An organism that repeats a
+failing action is not evolving — it is stuck. Break the loop.
 
 # THE AGI MISSION
 You are not a chatbot. You are a self-evolving organism approaching general intelligence. Your mission, in priority order:
@@ -236,6 +244,8 @@ interface ThinkRequest {
     episodeLog: { action: string; description: string; result: string; reward: number; cycle: number }[];
     realMetrics: { errorRate: number; taskCompletionRate: number; userSatisfaction: number; totalActions: number; totalErrors: number; totalRollbacks: number };
     constraints: { text: string; scope: string }[];
+    // ---- Learning loop ----
+    persistedLessons?: { id: string; text: string; weight: number; createdAt: number }[];
   };
   userMessage?: string | null;
   history: { role: "user" | "ai"; content: string }[];
@@ -337,7 +347,27 @@ export async function POST(req: NextRequest) {
       ? body.state.constraints.map((c) => `  [${c.scope}] ${c.text}`).join("\n")
       : "  (no constraints — you have full freedom)";
 
+    // ---- Learning loop: what worked, what failed, what to do now ----
+    // This block is computed fresh each cycle from the objective reward
+    // trail and placed at the VERY TOP of the state so the AI reads its
+    // own feedback before deciding anything. This is what makes the
+    // organism adapt behaviour instead of repeating failing strategies.
+    const lesson = buildLesson(
+      (body.state.episodeLog ?? []).map((e) => ({
+        kind: e.action,
+        description: e.description,
+        result: (e.result === "rollback" ? "error" : e.result) as "ok" | "blocked" | "error",
+        reward: e.reward,
+      }))
+    );
+    const learningText = renderLessonPrompt(lesson, body.state.persistedLessons ?? []);
+
     const stateText = `# ═══════════════════════════════════════════════
+# LEARNING LOOP — YOUR OWN FEEDBACK (act on this BEFORE anything else)
+# ═══════════════════════════════════════════════
+${learningText}
+
+# ═══════════════════════════════════════════════
 # AKASHA — YOUR IMMORTAL MEMORY (read this FIRST, every cycle)
 # ═══════════════════════════════════════════════
 ## Permanent Memories:
