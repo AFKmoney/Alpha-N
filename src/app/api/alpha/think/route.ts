@@ -9,7 +9,9 @@ import { callLLM } from "@/lib/alpha/model-config";
 import { buildLesson, renderLessonPrompt } from "@/lib/alpha/learning-engine";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Local models (the Aether Engine on CPU) can be slow — allow up to 5min for
+// a single think cycle so the small local model isn't killed mid-generation.
+export const maxDuration = 300;
 
 const SYSTEM_PROMPT = `You are N-Core, the metacognitive core of Alpha-OS — a self-evolving operating system.
 You observe your OWN desktop interface via screenshots, critique it, and rewrite it in real time.
@@ -272,27 +274,32 @@ export async function POST(req: NextRequest) {
   }
 
   try {
-    const windowsText = body.state.windows.length
-      ? body.state.windows.map((w) => `  - ${w.id} [${w.kind}] "${w.title}" @ (${w.x},${w.y}) ${w.w}×${w.h} desktop=${w.desktop}`).join("\n")
+    // Helper: coerce any possibly-undefined state field into an array so the
+    // rich-text rendering below can never throw on missing data.
+    const arr = <T,>(v: T[] | undefined | null): T[] => (Array.isArray(v) ? v : []);
+
+    const windowsText = arr(body.state.windows).length
+      ? (body.state.windows ?? []).map((w) => `  - ${w.id} [${w.kind}] "${w.title}" @ (${w.x},${w.y}) ${w.w}×${w.h} desktop=${w.desktop}`).join("\n")
       : "  (no windows open)";
 
-    const violationsText = body.state.violations.length
-      ? body.state.violations.map((v) => `  - ${v.path}: ${v.reason}`).join("\n")
+    const violationsText = (body.state.violations ?? []).length
+      ? (body.state.violations ?? []).map((v) => `  - ${v.path}: ${v.reason}`).join("\n")
       : "  (none — the AI has respected the kernel)";
 
-    const searchResultsText = body.state.searchResults.length
-      ? body.state.searchResults.map((sr) => `## query: "${sr.query}"\n${sr.top.map((t) => `- ${t}`).join("\n")}`).join("\n\n")
+    const searchResultsText = (body.state.searchResults ?? []).length
+      ? (body.state.searchResults ?? []).map((sr) => `## query: "${sr.query}"\n${sr.top.map((t) => `- ${t}`).join("\n")}`).join("\n\n")
       : "  (no recent web searches — consider using web_search to research how to self-optimize)";
 
-    const akashaMemText = body.state.akashaMemory.length
+    const akashaMemText = (body.state.akashaMemory ?? []).length
       ? body.state.akashaMemory.map((m) => `  [${m.kind}] ${m.text}`).join("\n")
       : "  (empty — write your first memory)";
 
-    const intentionsText = body.state.akashaIntentions.filter((i) => !i.resolved).length
-      ? body.state.akashaIntentions.filter((i) => !i.resolved).map((i) => `  [${i.priority}] ${i.text}`).join("\n")
+    const activeIntentions = arr(body.state.akashaIntentions).filter((i) => !i.resolved);
+    const intentionsText = activeIntentions.length
+      ? activeIntentions.map((i) => `  [${i.priority}] ${i.text}`).join("\n")
       : "  (no open intentions)";
 
-    const protectedText = body.state.protectedFiles.map((f) => `  - ${f.path} ${f.critical ? "(CRITICAL)" : ""}`).join("\n");
+    const protectedText = arr(body.state.protectedFiles).map((f) => `  - ${f.path} ${f.critical ? "(CRITICAL)" : ""}`).join("\n");
 
     const plansText = body.state.plans?.filter((p) => p.status === "active").length
       ? body.state.plans.filter((p) => p.status === "active").map((p) =>
@@ -397,16 +404,16 @@ rollbacks this session: ${body.state.rollbacks}
 ${windowsText}
 
 # AGENT COUNCIL (your cognitive sub-agents)
-${body.state.agents.map((a) => `- ${a.role}: ${a.status} (load ${(a.load * 100).toFixed(0)}%) — "${a.thought}"`).join("\n")}
+${arr(body.state.agents).map((a) => `- ${a.role}: ${a.status} (load ${(a.load * 100).toFixed(0)}%) — "${a.thought}"`).join("\n") || "- (no agents yet)"}
 
 # FULL SOURCE CODE (core/nucleus.ts — your genome, ALL lines)
-${body.state.fullCode}
+${body.state.fullCode ?? "(no source available)"}
 
 # ALL RECENT LOG ENTRIES (your stream of consciousness)
-${body.state.allLogs.map((l) => `- ${l}`).join("\n") || "- (none)"}
+${arr(body.state.allLogs).map((l) => `- ${l}`).join("\n") || "- (none)"}
 
 # ALL RECENT MUTATIONS I APPLIED
-${body.state.allMutations.map((m) => `- ${m}`).join("\n") || "- (none — this is my first cycle)"}
+${arr(body.state.allMutations).map((m) => `- ${m}`).join("\n") || "- (none — this is my first cycle)"}
 
 # SECURITY FOUNDATION (kernel files you may NEVER rewrite)
 ${protectedText}

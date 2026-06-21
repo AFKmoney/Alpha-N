@@ -58,3 +58,6 @@ tool-results/
 local-*
 .claude
 .z-ai-config
+
+# Windows reserved device name artifact
+nul

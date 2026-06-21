@@ -61,6 +61,11 @@ export interface LLMResponse {
  * For cloud: uses z-ai-web-dev-sdk's createVision (handles both text and image).
  * For local: uses fetch to the OpenAI-compatible /chat/completions endpoint.
  *
+ * RESILIENCE: if the configured provider fails, the call automatically falls
+ * back to the other one. This is what keeps the OS responsive when, e.g., the
+ * cloud SDK isn't configured (no .z-ai-config) but the local Aether Engine is
+ * running — the organism stays alive instead of going silent.
+ *
  * If the local model doesn't support vision, the image is omitted and only
  * text is sent — the AI still has full OS control via the rich text context.
  */
@@ -72,10 +77,82 @@ export async function callLLM(
 ): Promise<LLMResponse> {
   const config = getModelConfig();
 
-  if (config.provider === "aether") {
-    return callAetherLLM(systemPrompt, userText, screenshot);
+  // Try the configured provider first.
+  try {
+    if (config.provider === "aether") {
+      return await callAetherLLM(systemPrompt, userText, screenshot);
+    }
+    return await callCloudLLM(systemPrompt, userText, screenshot, options);
+  } catch (primaryError) {
+    // If the configured provider failed, fall back to the OTHER one before
+    // giving up. Log which provider was used so the failure is diagnosable.
+    const errMsg = primaryError instanceof Error ? primaryError.message : String(primaryError);
+    console.warn(`[alpha-n] primary provider "${config.provider}" failed (${errMsg.slice(0, 120)}); trying fallback…`);
+
+    try {
+      if (config.provider === "aether") {
+        // Was using local — try cloud as a fallback.
+        return await callCloudLLM(systemPrompt, userText, screenshot, options);
+      }
+      // Was using cloud — try the local Aether Engine as a fallback.
+      return await callAetherLLM(systemPrompt, userText, screenshot);
+    } catch (fallbackError) {
+      // Both providers failed — surface the original (primary) error so the
+      // caller can report it, but include the fallback failure too.
+      const fbMsg = fallbackError instanceof Error ? fallbackError.message : String(fallbackError);
+      throw new Error(
+        `Both LLM providers failed. Cloud: ${errMsg.slice(0, 150)} | Aether: ${fbMsg.slice(0, 150)}`
+      );
+    }
   }
-  return callCloudLLM(systemPrompt, userText, screenshot, options);
+}
+
+/**
+ * Probe which provider is actually working right now. Used at boot so the OS
+ * can switch to whichever backend is reachable instead of failing silently.
+ * Returns the provider to use + a flag telling whether it auto-switched.
+ */
+export async function probeProviders(): Promise<{
+  provider: ModelProvider;
+  cloudOk: boolean;
+  aetherOk: boolean;
+  aetherModels: string[];
+}> {
+  const cloudOk = await probeCloud();
+  const { ok: aetherOk, models: aetherModels } = await probeAether();
+
+  // Prefer the configured provider when it works; otherwise pick whichever
+  // is reachable, defaulting to cloud.
+  const config = getModelConfig();
+  let provider: ModelProvider = config.provider;
+  if (provider === "cloud" && !cloudOk && aetherOk) provider = "aether";
+  else if (provider === "aether" && !aetherOk && cloudOk) provider = "cloud";
+  else if (!cloudOk && !aetherOk) provider = config.provider; // nothing works; keep config
+  return { provider, cloudOk, aetherOk, aetherModels };
+}
+
+async function probeCloud(): Promise<boolean> {
+  try {
+    const ZAI = (await import("z-ai-web-dev-sdk")).default;
+    await ZAI.create();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function probeAether(): Promise<{ ok: boolean; models: string[] }> {
+  try {
+    const res = await fetch("http://localhost:3004/v1/models", { cache: "no-store" });
+    if (!res.ok) return { ok: false, models: [] };
+    const data = await res.json();
+    const ids: string[] = Array.isArray(data?.data)
+      ? data.data.map((m: { id?: string }) => m.id).filter((x: unknown): x is string => typeof x === "string")
+      : [];
+    return { ok: true, models: ids };
+  } catch {
+    return { ok: false, models: [] };
+  }
 }
 
 // ---- Cloud (z-ai SDK) ----
@@ -114,6 +191,12 @@ async function callCloudLLM(
 // relevant memories from its semantic graph, augments the prompt, and
 // forwards to the loaded GGUF model from the models/ folder.
 // It returns an OpenAI-compatible response.
+//
+// IMPORTANT: this runs SERVER-SIDE (inside API routes), so it must hit the
+// engine directly on localhost:3004 — a relative "/api/alpha/aether" URL
+// would resolve against the wrong host in a server fetch and silently fail.
+const AETHER_BASE = process.env.AETHER_BASE_URL || "http://localhost:3004";
+
 async function callAetherLLM(
   systemPrompt: string,
   userText: string,
@@ -121,23 +204,27 @@ async function callAetherLLM(
 ): Promise<LLMResponse> {
   const config = getModelConfig();
   const hasImage = config.aetherHasVision && screenshot;
-  const content: Array<{ type: string; text?: string; image_url?: { url: string } }> = [{ type: "text", text: userText }];
-  if (hasImage) {
-    content.push({ type: "image_url", image_url: { url: screenshot! } });
-  }
 
-  const res = await fetch("/api/alpha/aether?endpoint=chat", {
+  // Pick a model: the configured one if set, otherwise let the engine decide
+  // by omitting the field (it routes through its pipeline). We DON'T hardcode
+  // a model id here so new .gguf files dropped in models/ Just Work once the
+  // engine picks them up.
+  const payload: Record<string, unknown> = {
+    messages: [
+      { role: "system", content: systemPrompt },
+      { role: "user", content: hasImage ? [{ type: "text", text: userText }, { type: "image_url", image_url: { url: screenshot! } }] : userText },
+    ],
+    stream: false,
+    temperature: 0.7,
+  };
+  if (config.aetherModel) payload.model = config.aetherModel;
+
+  const res = await fetch(`${AETHER_BASE}/v1/chat/completions`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({
-      model: config.aetherModel || "aether",
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: hasImage ? content : userText },
-      ],
-      stream: false,
-      temperature: 0.7,
-    }),
+    body: JSON.stringify(payload),
+    // Local inference on CPU can be slow; allow up to 90s.
+    signal: AbortSignal.timeout(280_000),
   });
 
   if (!res.ok) {
@@ -147,6 +234,9 @@ async function callAetherLLM(
 
   const data = await res.json();
   const result = data?.choices?.[0]?.message?.content ?? "";
+  if (!result) {
+    throw new Error("Aether Engine returned an empty response");
+  }
   return { content: result, raw: data };
 }
 
@@ -167,7 +257,7 @@ export async function testModelConnection(): Promise<{
   try {
     if (config.provider === "aether") {
       // Aether Engine — check health endpoint
-      const res = await fetch("http://localhost:3004/health", { cache: "no-store" });
+      const res = await fetch(`${AETHER_BASE}/health`, { cache: "no-store" });
       if (res.ok) {
         const data = await res.json();
         const modelInfo = config.aetherModel || "(no model loaded)";

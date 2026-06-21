@@ -772,6 +772,43 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
     void loadConstraints();
   }, [hydrateFromDb, loadEpisodesFromDb, loadConstraints]);
 
+  // ---- BOOT: auto-detect a working LLM provider ----
+  // The default config is "cloud", but the cloud SDK only works when a
+  // .z-ai-config is present. If it isn't (common on a fresh checkout), the
+  // organism would boot into a dead state — think() throws and the AI never
+  // replies. Probe both providers on mount and let the server switch to
+  // whichever is reachable (often the local Aether Engine).
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/alpha/probe-providers", { method: "POST", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        // Surface the decision in the logs so the user can see which brain
+        // the organism actually booted with.
+        if (data.switched) {
+          useEvolution.setState((s) => ({
+            logs: [
+              {
+                id: `log-boot-${Date.now()}`,
+                time: Date.now(),
+                level: "evolve" as const,
+                agent: "nucleus" as const,
+                message: `↺ Auto-switched LLM provider to "${data.activeProvider}" (the other wasn't reachable).`,
+              },
+              ...s.logs,
+            ].slice(0, 80),
+          }));
+        }
+      })
+      .catch(() => {
+        /* probe is best-effort; fallback logic in callLLM still applies */
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   // Manual "evolve" button forces an immediate real AI cycle.
   useEffect(() => {
     if (!forceCycle) return;
