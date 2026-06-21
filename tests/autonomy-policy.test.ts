@@ -158,3 +158,54 @@ describe("autonomy-policy — isConsequential classification", () => {
     }
   });
 });
+
+describe("autonomy-policy — self-control mutations", () => {
+  it("allows the AI to de-escalate autonomy mode freely", () => {
+    // set_autonomy_mode is allow() under every level — the AI can always
+    // switch between standby/active.
+    for (const level of ["sandbox", "moderate", "yolo"] as const) {
+      expect(authorize("set_autonomy_mode", getPolicy(level)).allowed).toBe(true);
+    }
+  });
+
+  it("blocks a self-driven yolo escalation from moderate", () => {
+    // The AI at moderate tries to grant itself yolo — must be denied.
+    const verdict = authorize("set_autonomy_level", getPolicy("moderate"), {
+      target: "yolo",
+    });
+    expect(verdict.allowed).toBe(false);
+    expect(verdict.reason).toMatch(/yolo/i);
+  });
+
+  it("blocks a self-driven yolo escalation from sandbox", () => {
+    const verdict = authorize("set_autonomy_level", getPolicy("sandbox"), {
+      target: "yolo",
+    });
+    expect(verdict.allowed).toBe(false);
+  });
+
+  it("allows de-escalation (yolo → moderate) and same-level switches", () => {
+    expect(
+      authorize("set_autonomy_level", getPolicy("yolo"), { target: "moderate" }).allowed
+    ).toBe(true);
+    expect(
+      authorize("set_autonomy_level", getPolicy("yolo"), { target: "yolo" }).allowed
+    ).toBe(true);
+    expect(
+      authorize("set_autonomy_level", getPolicy("moderate"), { target: "sandbox" }).allowed
+    ).toBe(true);
+  });
+
+  it("allows the AI already at yolo to re-affirm yolo", () => {
+    expect(
+      authorize("set_autonomy_level", getPolicy("yolo"), { target: "yolo" }).allowed
+    ).toBe(true);
+  });
+
+  it("gates reload_engine behind fileWrite capability", () => {
+    // sandbox has fileWrite=false → blocked. moderate/yolo → allowed.
+    expect(authorize("reload_engine", getPolicy("sandbox")).allowed).toBe(false);
+    expect(authorize("reload_engine", getPolicy("moderate")).allowed).toBe(true);
+    expect(authorize("reload_engine", getPolicy("yolo")).allowed).toBe(true);
+  });
+});

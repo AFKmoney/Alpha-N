@@ -587,21 +587,27 @@ async fn call_backend(
     // --- NATIVE ENGINE (preferred): run inference in-process via llama.cpp.
     // No network hop, no external server. The whole point of the proprietary
     // engine. Falls through to the HTTP backend if the native engine isn't
-    // loaded or errors.
-    if let Some(engine) = &state.native_engine {
-        let prompt = crate::engine::messages_to_prompt(&augmented);
-        let max_tokens = body
-            .get("max_tokens")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(256) as u32;
-        let guard = engine.lock().await;
-        match guard.complete(&prompt, max_tokens) {
-            Ok(text) if !text.trim().is_empty() => return text,
-            Ok(_) => {
-                // empty generation — fall through to backend / fallback
-            }
-            Err(e) => {
-                eprintln!("[aether-engine] native inference error: {e}");
+    // loaded or errors. The outer lock is held only long enough to clone the
+    // inner Arc, so a generation never blocks a /admin/reload swap.
+    {
+        let outer = state.native_engine.lock().await;
+        if let Some(engine) = outer.as_ref() {
+            let prompt = crate::engine::messages_to_prompt(&augmented);
+            let max_tokens = body
+                .get("max_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(256) as u32;
+            let engine = engine.clone();
+            drop(outer); // release the swap-lock before the (slow) generation
+            let guard = engine.lock().await;
+            match guard.complete(&prompt, max_tokens) {
+                Ok(text) if !text.trim().is_empty() => return text,
+                Ok(_) => {
+                    // empty generation — fall through to backend / fallback
+                }
+                Err(e) => {
+                    eprintln!("[aether-engine] native inference error: {e}");
+                }
             }
         }
     }
@@ -1212,6 +1218,53 @@ pub async fn get_config(State(state): State<AppState>) -> impl IntoResponse {
         "cache_threshold": 0.95,
         "retrieval_threshold": 0.92,
     }))
+}
+
+// ---------------------------------------------------------------------------
+// POST /admin/reload — hot-swap the native inference engine at runtime
+// ---------------------------------------------------------------------------
+
+/// Reload the in-process GGUF model. Accepts an optional `{ model }` body:
+///   - `{ model: "/abs/path.gguf" }` — load that file (also sets `AETHER_MODEL`
+///     so subsequent loads keep using it).
+///   - `{}` or omitted — reload the auto-detected/last model.
+///
+/// The OS calls this via `/api/alpha/reload-engine` when the AI (or a user)
+/// emits a `reload_engine` mutation, letting the organism swap its own brain
+/// without a process restart. Acquires the engine lock so no generation is
+/// in flight during the swap.
+pub async fn admin_reload(
+    State(state): State<AppState>,
+    body: Option<Json<serde_json::Value>>,
+) -> impl IntoResponse {
+    let model_arg = body
+        .and_then(|Json(v)| v.get("model").and_then(|m| m.as_str()).map(String::from));
+
+    // If a specific model was requested, record it so NativeEngine picks it
+    // up (env var is the documented override path).
+    if let Some(ref m) = model_arg {
+        std::env::set_var("AETHER_MODEL", m);
+    }
+
+    match crate::engine::NativeEngine::load(2048) {
+        Ok(eng) => {
+            // Swap the engine atomically. In-flight generations holding the
+            // old inner Arc keep running until they drop; new requests pick
+            // up the new engine.
+            let mut guard = state.native_engine.lock().await;
+            *guard = Some(std::sync::Arc::new(tokio::sync::Mutex::new(eng)));
+            let msg = match model_arg {
+                Some(m) => format!("engine reloaded → {m}"),
+                None => "engine reloaded (auto-detected model)".to_string(),
+            };
+            eprintln!("[aether-engine] {msg}");
+            Json(json!({ "ok": true, "message": msg }))
+        }
+        Err(e) => {
+            eprintln!("[aether-engine] reload failed: {e}");
+            Json(json!({ "ok": false, "error": e }))
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

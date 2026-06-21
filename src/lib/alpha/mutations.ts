@@ -149,7 +149,16 @@ export type Mutation =
   | { type: "navigate_graph"; path: string }
   | { type: "create_app_from_code"; name: string; code: string; description?: string; category?: string }
   | { type: "create_wallpaper"; name: string; description: string; colors: string[] }
-  | { type: "list_directory"; path: string };
+  | { type: "list_directory"; path: string }
+  // ---- Self-control: the AI manages its own runtime configuration ----
+  // Escalate or de-escalate autonomy. In moderate/sandbox these are still
+  // gated by authorize(), so the AI cannot silently grant itself yolo
+  // powers — only the user (or a yolo session) can. Logged + audited.
+  | { type: "set_autonomy_mode"; mode: "standby" | "active" }
+  | { type: "set_autonomy_level"; level: "sandbox" | "moderate" | "yolo" }
+  // Hot-reload the inference engine with a (possibly different) model.
+  // Lets the AI swap its own brain without restarting the OS.
+  | { type: "reload_engine"; model?: string };
 
 // ---- Web search result (fed back to the AI) ----
 export interface WebSearchResult {
@@ -512,5 +521,11 @@ export function describeMutation(m: Mutation): string {
       return `🖼 Created wallpaper: ${m.name}`;
     case "list_directory":
       return `📁 Listed: ${m.path}`;
+    case "set_autonomy_mode":
+      return `🎛 autonomy mode → ${m.mode}`;
+    case "set_autonomy_level":
+      return `🎚 autonomy level → ${m.level}`;
+    case "reload_engine":
+      return `🔄 reload engine${m.model ? ` → ${m.model}` : ""}`;
   }
 }

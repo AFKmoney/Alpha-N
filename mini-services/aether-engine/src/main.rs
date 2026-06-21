@@ -138,10 +138,11 @@ pub struct AppState {
     /// Shared HTTP client with a 120-second timeout, reused across all
     /// backend calls to benefit from connection pooling.
     pub client: reqwest::Client,
-    /// The NATIVE inference engine (llama.cpp in-process). When present,
-    /// `call_backend` routes to it directly — no external server needed.
-    /// None when no GGUF was found at startup.
-    pub native_engine: Option<Arc<Mutex<engine::NativeEngine>>>,
+    /// The NATIVE inference engine (llama.cpp in-process), hot-swappable.
+    /// Outer lock guards the Option so /admin/reload can atomically replace
+    /// the engine at runtime; inner lock serialises generation calls. None
+    /// when no GGUF was found at startup.
+    pub native_engine: Arc<Mutex<Option<Arc<Mutex<engine::NativeEngine>>>>>,
 }
 
 /// The TCP port the Aether Engine HTTP server binds to.
@@ -236,7 +237,7 @@ async fn main() {
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .expect("reqwest client"),
-        native_engine,
+        native_engine: Arc::new(Mutex::new(native_engine)),
     };
 
     let app = Router::new()
@@ -259,6 +260,10 @@ async fn main() {
         // --- Agentic layer (v3.2) ---
         .route("/v1/agent/run", post(handlers::agent_run))
         .route("/v1/tools", get(handlers::list_tools))
+        // --- Admin: hot-reload the native inference engine at runtime ---
+        // Lets the OS (or the AI itself) swap the running GGUF model without
+        // restarting the engine process. See handlers::admin_reload.
+        .route("/admin/reload", post(handlers::admin_reload))
         .layer(CorsLayer::very_permissive())
         .with_state(state);
 

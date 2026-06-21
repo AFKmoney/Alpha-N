@@ -148,7 +148,13 @@ export function isConsequential(mutationType: string): boolean {
  */
 export function authorize(
   mutationType: string,
-  policy: AutonomyPolicy
+  policy: AutonomyPolicy,
+  /**
+   * Optional context for mutations whose authorisation depends on their
+   * arguments. Currently only `set_autonomy_level` uses it (`{ target }` =
+   * the level the AI wants to switch TO). All other mutations ignore it.
+   */
+  args?: { target?: string }
 ): { allowed: boolean; reason: string | null } {
   const caps = policy.capabilities;
   const deny = (reason: string) => ({ allowed: false, reason });
@@ -216,6 +222,33 @@ export function authorize(
     case "set_generation":
     case "set_version":
       return allow();
+
+    // ---- Self-control ----
+    // The AI may freely DE-ESCALATE (active→standby, yolo→moderate) and
+    // set its mode. ESCALATING the trust LEVEL is the dangerous one: we
+    // refuse a self-driven jump to yolo unless yolo is already active,
+    // so the AI can never grant itself new powers it didn't already have.
+    case "set_autonomy_mode":
+      return allow();
+    case "set_autonomy_level": {
+      // target is the level the AI wants to switch TO. We only block an
+      // escalation INTO yolo when the current policy isn't already yolo.
+      const target = (args?.target ?? "sandbox") as AutonomyLevel;
+      if (target === "yolo" && policy.level !== "yolo") {
+        return deny(
+          `Policy [${policy.level}]: the AI cannot self-escalate to yolo — only the user can grant that.`
+        );
+      }
+      return allow();
+    }
+    // Hot-reloading the engine is consequential but not destructive — it
+    // lets the AI swap its own brain (e.g. load a freshly-downloaded model).
+    // Allowed under any level where file writes are permitted; otherwise
+    // blocked so the AI can't thrash the engine in sandbox mode.
+    case "reload_engine":
+      return caps.fileWrite
+        ? allow()
+        : deny(`Policy [${policy.level}]: engine reload needs write capability`);
 
     default:
       // Unknown mutation kind — refuse by default (fail closed).

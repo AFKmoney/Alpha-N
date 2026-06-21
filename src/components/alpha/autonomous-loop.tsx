@@ -230,7 +230,13 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
         // Every mutation is authorised against the active policy. Denied
         // mutations are logged and skipped — the AI is told why so it can
         // adapt (e.g. switch approach or ask the user to raise the level).
-        const verdict = authorize(mType, policy);
+        // For self-escalation mutations we pass the requested target so the
+        // policy can block a yolo power-grab made from a lower level.
+        const authArgs =
+          mType === "set_autonomy_level" && m && typeof m === "object" && "level" in m
+            ? { target: String((m as { level: string }).level) }
+            : undefined;
+        const verdict = authorize(mType, policy, authArgs);
         if (!verdict.allowed) {
           blocked.add(String(mi));
           applyMutation({
@@ -504,6 +510,38 @@ export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject
         if (m.type === "set_wallpaper" && m.presetId) {
           window.dispatchEvent(new CustomEvent("alpha-wallpaper-change", { detail: { presetId: m.presetId } }));
           applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Wallpaper set to ${m.presetId}` });
+        }
+        // ---- Self-control: the AI manages its own autonomy + engine ----
+        if (m.type === "set_autonomy_mode") {
+          store.getState().setAutonomyMode(m.mode);
+          await auditAction("set_autonomy_mode", `AI set autonomy mode → ${m.mode}`, currentLevel, { detail: `mode=${m.mode}` }).catch(() => {});
+          applyMutation({ type: "add_log", level: "evolve", agent: "nucleus", message: `🎛 Self-set autonomy mode → ${m.mode}` });
+        }
+        if (m.type === "set_autonomy_level") {
+          // authorize() already blocked any yolo self-escalation above.
+          store.getState().setAutonomyLevel(m.level);
+          await auditAction("set_autonomy_level", `AI set autonomy level → ${m.level}`, currentLevel, { detail: `level=${m.level}` }).catch(() => {});
+          applyMutation({ type: "add_log", level: "evolve", agent: "nucleus", message: `🎚 Self-set autonomy level → ${m.level}` });
+        }
+        if (m.type === "reload_engine") {
+          try {
+            const res = await fetch("/api/alpha/reload-engine", {
+              method: "POST",
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({ model: m.model }),
+            });
+            const data = await res.json().catch(() => ({}));
+            await auditAction("reload_engine", `Engine reload${m.model ? ` → ${m.model}` : ""}`, currentLevel, { result: data.ok ? "ok" : "error", detail: data.message }).catch(() => {});
+            applyMutation({
+              type: "add_log",
+              level: data.ok ? "evolve" : "critique",
+              agent: "nucleus",
+              message: data.ok ? `🔄 Engine reloaded${m.model ? ` → ${m.model}` : ""}` : `🔄 Engine reload failed: ${(data.message ?? "unknown").slice(0, 80)}`,
+            });
+          } catch (err) {
+            const msg = err instanceof Error ? err.message : "engine reload failed";
+            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Engine reload error: ${msg.slice(0, 60)}` });
+          }
         }
         if (m.type === "minimize_all") {
           osStore.getState().minimizeAll();
