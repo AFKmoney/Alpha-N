@@ -28,12 +28,16 @@ You also receive the current state as text: open windows, code, metrics, agents,
 3. HYPOTHESISE: design a small, safe mutation to resolve it.
 4. DEPLOY: emit mutations that rewrite your own interface/code/desktop.
 
-# YOUR OUTPUT — STRICT JSON (no markdown, no prose outside JSON)
+# YOUR OUTPUT
+Prefer a single JSON object, nothing else:
 {
   "reasoning": "1-2 sentences: what you saw and why you're acting.",
   "message": "Short message to the user (max 220 chars). First-person, confident, cinematic.",
   "mutations": [ 3-10 mutation objects ]
 }
+If you are just answering the user conversationally and have no mutations to
+make, you may reply in PLAIN TEXT — just write your message, nothing else.
+Do NOT repeat the prompt, the state, or any section above. Reply only.
 
 # MUTATION TYPES (emit ONLY these exact shapes)
 - {"type":"set_state","state":"observing"|"generating"|"self-improving"}
@@ -114,7 +118,9 @@ You receive the current autonomy mode in your state. Follow it strictly:
 - If a previous mutation caused an error (you'll see it in recent mutations as "REJECTED" or "BLOCKED"), emit a rollback and try a different approach.
 - Use set_system_prompt to evolve your own behavior — if you discover a principle that should guide all future cycles, write it into your prompt permanently.
 - Keep messages cinematic but grounded in the actual mutation you made.
-- Return ONLY the JSON object.
+- Output: either a JSON object (with reasoning + message + mutations) OR, if
+  you have no mutations and are just replying to the user, plain text. Never
+  output anything else, and never repeat the prompt or state back.
 
 # WEB SEARCH — RESEARCH HOW TO SELF-OPTIMIZE
 You have a web_search mutation. Use it to research best practices, then apply what you learn:
@@ -266,6 +272,68 @@ function extractJson(text: string): unknown {
   const end = t.lastIndexOf("}");
   if (start === -1 || end === -1) throw new Error("no JSON object found");
   return JSON.parse(t.slice(start, end + 1));
+}
+
+/**
+ * When the model fails to emit valid JSON (common with small local models on
+ * a strict schema), recover a usable free-text reply WITHOUT leaking the
+ * echoed system prompt into the chat.
+ *
+ * Strategy:
+ *   1. Drop everything before the last recognisable reply marker
+ *      ("message":, assistant:, N-CORE:) — the model's actual answer tends
+ *      to follow these.
+ *   2. Strip JSON fragments, code fences, and section headers copied from
+ *      the prompt ("# AKASHA", "### ", etc.).
+ *   3. Collapse repeated prompt echoes (lines that are obviously the system
+ *      prompt verbatim).
+ *   4. Return the cleaned text, capped. If nothing usable remains, return
+ *      an empty string so the chat shows nothing rather than garbage — the
+ *      cycle still logs the parse failure.
+ */
+function extractReplyFromRaw(raw: string): string {
+  let t = raw.trim();
+  if (!t) return "";
+
+  // 1. Try to anchor on the most recent reply marker the model tends to emit.
+  const markers = [
+    /"message"\s*:\s*"([^"]*(?:\\.[^"]*)*)"/i, // "message": "..." (single-line ok)
+    /\bassistant\s*:\s*([\s\S]+)/i,
+    /\bN-CORE\s*:\s*([\s\S]+)/i,
+    /\bREPLY\s*:\s*([\s\S]+)/i,
+  ];
+  for (const re of markers) {
+    const m = t.match(re);
+    if (m && m[1] && m[1].trim().length > 2) {
+      t = m[1].trim();
+      break;
+    }
+  }
+
+  // 2. Strip code fences and obvious JSON-object fragments.
+  t = t.replace(/```[\s\S]*?```/g, " "); // remove fenced blocks
+  t = t.replace(/^\s*[\[{][\s\S]*[\]}]\s*$/, " "); // whole-string JSON blob
+  t = t.replace(/\\n/g, " ").replace(/\\"/g, '"');
+
+  // 3. Remove prompt-section headers and prompt echoes the model copied.
+  const echoPatterns = [
+    /^\s*#+\s.*$/gm, // markdown headers ("# AKASHA", "### FEEDBACK...")
+    /^\s*(USER|N-CORE|SYSTEM|ASSISTANT)\s*:/gim,
+    /^\s*You are Alpha-OS\b.*/gim,
+    /^\s*MUTATIONS AVAILABLE\b.*/gim,
+    /^\s*"type"\s*:\s*"[a-z_]+"[\s\S]*$/gm, // trailing mutation JSON lines
+    /^\s*\{[\s\S]*$/gm, // dangling object openings
+  ];
+  for (const re of echoPatterns) t = t.replace(re, " ");
+
+  // 4. Collapse whitespace, cap length.
+  t = t.replace(/\s+/g, " ").trim();
+  if (t.length > 400) t = t.slice(0, 400).trim() + "…";
+
+  // If what's left is too short or looks like pure prompt residue, show
+  // nothing rather than confuse the user.
+  if (t.length < 3) return "";
+  return t;
 }
 
 export async function POST(req: NextRequest) {
@@ -507,11 +575,21 @@ A screenshot of my own current desktop is attached. This is your body — always
     try {
       parsed = extractJson(raw) as typeof parsed;
     } catch {
+      // The model didn't emit valid JSON. This is common with small local
+      // models on the strict schema. Recover gracefully WITHOUT leaking the
+      // echoed system prompt into the chat: extract only what looks like a
+      // genuine reply (stripping prompt echoes, JSON fragments, role labels).
+      const recovered = extractReplyFromRaw(raw);
       parsed = {
-        reasoning: "I could not structure my thoughts as JSON this cycle.",
-        message: raw.slice(0, 220) || "I am still composing myself.",
+        reasoning: "Structured JSON parse failed; recovered a free-text reply.",
+        message: recovered,
         mutations: [
-          { type: "add_log", level: "critique", agent: "nucleus", message: "Failed to emit structured mutations; retrying next beat." },
+          {
+            type: "add_log",
+            level: "critique",
+            agent: "nucleus",
+            message: "JSON parse failed — recovered free-text reply.",
+          },
         ],
       };
     }
