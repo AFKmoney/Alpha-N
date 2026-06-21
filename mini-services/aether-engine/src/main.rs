@@ -55,6 +55,7 @@ mod clt;
 mod compress;
 mod dashboard;
 mod decompose;
+mod engine; // Native GGUF inference (llama.cpp bindings) — the real brain.
 mod graph;
 mod handlers;
 mod hcm;
@@ -132,10 +133,15 @@ pub struct AppState {
     pub stats: Arc<Mutex<Stats>>,
     /// Base URL of the downstream GGUF backend (e.g. an OpenAI-compatible
     /// llama.cpp / Ollama server). Trailing slashes are stripped before use.
+    /// When `native_engine` is loaded, this is used only as a fallback.
     pub backend: String,
     /// Shared HTTP client with a 120-second timeout, reused across all
     /// backend calls to benefit from connection pooling.
     pub client: reqwest::Client,
+    /// The NATIVE inference engine (llama.cpp in-process). When present,
+    /// `call_backend` routes to it directly — no external server needed.
+    /// None when no GGUF was found at startup.
+    pub native_engine: Option<Arc<Mutex<engine::NativeEngine>>>,
 }
 
 /// The TCP port the Aether Engine HTTP server binds to.
@@ -179,6 +185,30 @@ async fn main() {
     let backend = std::env::var("AETHER_BACKEND")
         .unwrap_or_else(|_| "http://localhost:11434/v1".to_string());
 
+    // --- Load the NATIVE inference engine (llama.cpp) if a GGUF is present.
+    // This makes the Aether self-sufficient: no Ollama/cloud required. The
+    // pipeline below still runs, but `call_backend` prefers the native engine.
+    let native_engine = match engine::NativeEngine::find_model_path() {
+        Some(path) => {
+            eprintln!("[aether-engine] native model detected: {}", path.display());
+            match engine::NativeEngine::load(2048) {
+                Ok(eng) => {
+                    eprintln!("[aether-engine] ✓ native engine online");
+                    Some(Arc::new(Mutex::new(eng)))
+                }
+                Err(e) => {
+                    eprintln!("[aether-engine] native engine load failed: {e}");
+                    eprintln!("[aether-engine] falling back to HTTP backend {backend}");
+                    None
+                }
+            }
+        }
+        None => {
+            eprintln!("[aether-engine] no GGUF in models/ — using HTTP backend {backend}");
+            None
+        }
+    };
+
     let state = AppState {
         graph: Arc::new(Mutex::new(graph::MemoryGraph::new())),
         cache: Arc::new(Mutex::new(cache::ActionCache::new())),
@@ -206,6 +236,7 @@ async fn main() {
             .timeout(std::time::Duration::from_secs(120))
             .build()
             .expect("reqwest client"),
+        native_engine,
     };
 
     let app = Router::new()

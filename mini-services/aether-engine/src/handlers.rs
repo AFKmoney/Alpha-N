@@ -583,6 +583,30 @@ async fn call_backend(
     context_block: &str,
 ) -> String {
     let augmented = augment_messages(body, context_block);
+
+    // --- NATIVE ENGINE (preferred): run inference in-process via llama.cpp.
+    // No network hop, no external server. The whole point of the proprietary
+    // engine. Falls through to the HTTP backend if the native engine isn't
+    // loaded or errors.
+    if let Some(engine) = &state.native_engine {
+        let prompt = crate::engine::messages_to_prompt(&augmented);
+        let max_tokens = body
+            .get("max_tokens")
+            .and_then(|v| v.as_u64())
+            .unwrap_or(256) as u32;
+        let guard = engine.lock().await;
+        match guard.complete(&prompt, max_tokens) {
+            Ok(text) if !text.trim().is_empty() => return text,
+            Ok(_) => {
+                // empty generation — fall through to backend / fallback
+            }
+            Err(e) => {
+                eprintln!("[aether-engine] native inference error: {e}");
+            }
+        }
+    }
+
+    // --- HTTP BACKEND (fallback): forward to an OpenAI-compatible server.
     let backend_url = format!("{}/chat/completions", state.backend.trim_end_matches('/'));
     let client = state.client.clone();
 
