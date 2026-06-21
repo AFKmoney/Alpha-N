@@ -8,6 +8,13 @@ const nextConfig: NextConfig = {
     ignoreBuildErrors: false,
   },
   reactStrictMode: false,
+  // Pin the Turbopack workspace root to THIS project. Without it, Next infers
+  // the root from the nearest lockfile — and if there's a stray package.json
+  // in a parent dir (common on dev machines), Turbopack picks the wrong root,
+  // breaks module resolution, and throws "unexpected Turbopack error".
+  turbopack: {
+    root: __dirname,
+  },
 };
 
 export default nextConfig;
