@@ -3,9 +3,10 @@
   "version": "0.2.0",
   "private": true,
   "scripts": {
-    "dev": "next dev -p 3000",
+    "dev": "node scripts/ensure-dirs.mjs && next dev -p 3000",
     "build": "next build && node scripts/postbuild.mjs",
     "start": "next start -p 3000",
+    "postinstall": "node scripts/ensure-dirs.mjs",
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

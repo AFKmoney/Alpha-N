@@ -298,16 +298,23 @@ export function ModelSettings() {
 /** GGUF model picker — scans the models/ folder for .gguf files */
 function GgufModelPicker({ selected, onSelect }: { selected: string; onSelect: (model: string) => void }) {
   const [models, setModels] = useState<{ name: string; sizeMB: number }[]>([]);
+  const [folder, setFolder] = useState<string>("");
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
+  const scan = () => {
+    setLoading(true);
     void fetch("/api/alpha/models-list")
       .then((r) => r.json())
       .then((data) => {
         setModels(data.models || []);
+        setFolder(data.folder || "");
         setLoading(false);
       })
       .catch(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    scan();
   }, []);
 
   if (loading) {
@@ -316,15 +323,46 @@ function GgufModelPicker({ selected, onSelect }: { selected: string; onSelect: (
 
   return (
     <div>
-      <label className="eyebrow mb-1 block">GGUF model (from models/ folder)</label>
+      <div className="mb-1 flex items-center justify-between">
+        <label className="eyebrow block">GGUF model (from models/ folder)</label>
+        <button
+          onClick={scan}
+          className="font-mono-ae text-[0.55rem] text-muted-foreground underline-offset-2 hover:text-foreground hover:underline"
+          title="Re-scan the models/ folder"
+        >
+          rescan
+        </button>
+      </div>
       {models.length === 0 ? (
-        <div className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3 text-center">
-          <p className="font-mono-ae text-[0.65rem] text-muted-foreground/70">
-            No .gguf files found in <code className="text-[oklch(0.85_0.16_85)]">models/</code>
+        <div className="rounded-lg border border-dashed border-border/60 bg-card/30 p-3">
+          <p className="font-mono-ae text-[0.65rem] text-muted-foreground/80">
+            No .gguf files found.
           </p>
-          <p className="mt-1 text-[0.55rem] text-muted-foreground/50">
-            Drop your GGUF model file in the models/ folder and it will appear here.
-          </p>
+          {folder && (
+            <p className="mt-1 break-all font-mono-ae text-[0.55rem] text-muted-foreground/60">
+              Looking in: <code className="text-[oklch(0.85_0.16_85)]">{folder}</code>
+            </p>
+          )}
+          <div className="mt-2 space-y-1 text-[0.6rem] leading-relaxed text-muted-foreground/70">
+            <p>① Download a GGUF model — try:</p>
+            <ul className="ml-3 list-disc space-y-0.5">
+              <li>Qwen2.5-1.5B-Instruct (fast, small)</li>
+              <li>Llama-3.2-1B-Instruct</li>
+              <li>Phi-3.5-mini (better quality)</li>
+            </ul>
+            <p className="mt-1">
+              ② Drop it in the <code className="text-[oklch(0.85_0.16_85)]">models/</code> folder above
+            </p>
+            <p>③ Click <span className="text-foreground">rescan</span> — it will appear here</p>
+          </div>
+          <a
+            href="https://huggingface.co/models?other=gguf"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="mt-2 inline-block font-mono-ae text-[0.55rem] text-[oklch(0.82_0.17_195)] underline underline-offset-2"
+          >
+            browse GGUF models on HuggingFace →
+          </a>
         </div>
       ) : (
         <div className="space-y-1">
