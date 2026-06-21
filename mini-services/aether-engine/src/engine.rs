@@ -27,7 +27,7 @@ use llama_cpp_2::{
     llama_backend::LlamaBackend,
     llama_batch::LlamaBatch,
     model::params::LlamaModelParams,
-    model::{AddBos, LlamaModel, Special},
+    model::{AddBos, LlamaChatMessage, LlamaChatTemplate, LlamaModel, Special},
     token::LlamaToken,
 };
 
@@ -36,6 +36,11 @@ use llama_cpp_2::{
 /// Clone and frees itself on drop, so it must be a process-wide singleton.
 pub struct NativeEngine {
     model: LlamaModel,
+    /// The model's built-in chat template (Jinja), extracted from the GGUF
+    /// metadata at load time. Used by apply_chat_template so the prompt is
+    /// formatted EXACTLY as the model was trained on — no naive
+    /// "role: content" concatenation that confuses instruct-tuned models.
+    chat_template: Option<LlamaChatTemplate>,
     ctx_capacity: u32,
 }
 
@@ -100,6 +105,23 @@ impl NativeEngine {
         let model = LlamaModel::load_from_file(backend, &model_path, &model_params)
             .map_err(|e| format!("model load failed: {e:?}"))?;
 
+        // Extract the model's built-in chat template (the Jinja the model was
+        // instruction-tuned with). This is the KEY to good outputs: applying
+        // the real template formats the prompt exactly as the model expects,
+        // instead of naive "role: content" concatenation that makes instruct
+        // models ramble off-topic. chat_template() returns a ready-to-use
+        // LlamaChatTemplate (no need to wrap it).
+        let chat_template = match model.chat_template(None) {
+            Ok(tmpl) => {
+                eprintln!("[aether-engine] using model chat template");
+                Some(tmpl)
+            }
+            Err(e) => {
+                eprintln!("[aether-engine] no chat template in model ({e:?}); using naive format");
+                None
+            }
+        };
+
         eprintln!(
             "[aether-engine] model loaded (vocab {} tokens)",
             model.n_vocab()
@@ -107,6 +129,7 @@ impl NativeEngine {
 
         Ok(Self {
             model,
+            chat_template,
             ctx_capacity,
         })
     }
@@ -173,37 +196,80 @@ impl NativeEngine {
         }
         Ok(output)
     }
-}
 
-/// Convert an OpenAI-style messages array into a single prompt string the
-/// model can consume. Simple chat-template concatenation (role: content).
-pub fn messages_to_prompt(messages: &serde_json::Value) -> String {
-    let mut out = String::new();
-    if let Some(arr) = messages.as_array() {
-        for msg in arr {
-            let role = msg.get("role").and_then(|v| v.as_str()).unwrap_or("user");
-            let content = msg
-                .get("content")
-                .map(|c| {
-                    // content may be a string or an array of {text} parts.
-                    if let Some(s) = c.as_str() {
-                        s.to_string()
-                    } else if let Some(parts) = c.as_array() {
-                        parts
-                            .iter()
-                            .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
-                            .collect::<Vec<_>>()
-                            .join("")
-                    } else {
-                        String::new()
-                    }
-                })
-                .unwrap_or_default();
-            out.push_str(&format!("{role}: {content}\n"));
+    /// Apply the model's real chat template to an OpenAI-style messages
+    /// array, returning the exact prompt string the model expects. Falls
+    /// back to a plain concatenation only if the model has no template.
+    ///
+    /// This is what makes an instruct-tuned model actually follow
+    /// instructions: the template wraps each turn with the special tokens
+    /// the model was trained on (e.g. `<|im_start|>user\n…<|im_end|>`).
+    pub fn apply_messages(&self, messages: &serde_json::Value) -> Result<String, String> {
+        // Flatten each message into (role, content) pairs, then build
+        // LlamaChatMessages. content may be a plain string or an array of
+        // {text} parts (OpenAI multimodal format).
+        let pairs: Vec<(String, String)> = messages
+            .as_array()
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|msg| {
+                        let role = msg
+                            .get("role")
+                            .and_then(|v| v.as_str())
+                            .unwrap_or("user")
+                            .to_string();
+                        let content = extract_content(msg.get("content"));
+                        Some((role, content))
+                    })
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        // Build the typed chat message vec. LlamaChatMessage::new owns its
+        // strings, so we pass them in by value.
+        let chat: Vec<LlamaChatMessage> = pairs
+            .iter()
+            .filter_map(|(role, content)| {
+                LlamaChatMessage::new(role.clone(), content.clone()).ok()
+            })
+            .collect();
+
+        if let Some(tmpl) = &self.chat_template {
+            // add_ass=true appends the assistant header so the model
+            // continues from there (standard for single-turn completion).
+            self.model
+                .apply_chat_template(tmpl, &chat, true)
+                .map_err(|e| format!("apply_chat_template failed: {e:?}"))
+        } else {
+            // Last-resort fallback: naive "role: content" (only when the GGUF
+            // shipped without any chat template metadata).
+            let mut out = String::new();
+            for (role, content) in &pairs {
+                out.push_str(&format!("{role}: {content}\n"));
+            }
+            out.push_str("assistant: ");
+            Ok(out)
         }
     }
-    out.push_str("assistant: ");
-    out
+}
+
+/// Extract a message's content whether it's a plain string or an array of
+/// {text} parts (the OpenAI multimodal format).
+fn extract_content(content: Option<&serde_json::Value>) -> String {
+    match content {
+        Some(c) if c.is_string() => c.as_str().unwrap_or("").to_string(),
+        Some(c) if c.is_array() => c
+            .as_array()
+            .map(|parts| {
+                parts
+                    .iter()
+                    .filter_map(|p| p.get("text").and_then(|t| t.as_str()))
+                    .collect::<Vec<_>>()
+                    .join("")
+            })
+            .unwrap_or_default(),
+        _ => String::new(),
+    }
 }
 
 // Provide a LlamaContext reference for callers that need lower-level access.

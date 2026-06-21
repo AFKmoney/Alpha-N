@@ -592,7 +592,17 @@ async fn call_backend(
     {
         let outer = state.native_engine.lock().await;
         if let Some(engine) = outer.as_ref() {
-            let prompt = crate::engine::messages_to_prompt(&augmented);
+            // Apply the model's REAL chat template (extracted from the GGUF)
+            // so the prompt is formatted exactly as the model was trained on.
+            // This replaces the naive "role: content" concatenation that made
+            // instruct models ramble off-topic.
+            let prompt = match engine.lock().await.apply_messages(&augmented) {
+                Ok(p) => p,
+                Err(e) => {
+                    eprintln!("[aether-engine] apply_messages failed: {e}");
+                    String::new()
+                }
+            };
             let max_tokens = body
                 .get("max_tokens")
                 .and_then(|v| v.as_u64())
