@@ -56,6 +56,20 @@ npm run dev           # OS boots at http://localhost:3000
 Copy `.env.example` to `.env` if you want to customise the DB location,
 project root, or sandbox directory. Defaults work out of the box.
 
+### Offline AI mode (optional but recommended)
+
+For the AI to run **fully offline** on your own hardware (no cloud), launch
+the native GGUF engine in a second terminal:
+
+```bash
+start-aether.bat        # Windows — loads the first .gguf in models/
+# or:  ./mini-services/aether-engine/target/release/aether-engine
+```
+
+Drop a `.gguf` model in `models/` (see the picker's empty-state guide for
+recommendations), start the engine, then select **Aether** in Model Settings.
+If the engine isn't running, the OS falls back to the cloud automatically.
+
 ### Quality gates
 
 ```bash

@@ -181,7 +181,7 @@ interface EvolutionStore {
   setAutonomyLevel: (level: AutonomyLevel) => void;
   triggerCycle: () => void; // force an immediate real AI cycle
   setAiBusy: (busy: boolean, reasoning?: string | null) => void;
-  sendUserMessage: (content: string) => void;
+  sendUserMessage: (content: string, displayContent?: string) => void;
   applyMutation: (m: Mutation) => void;
   applyMutations: (ms: Mutation[]) => void;
   pushAiMessage: (content: string, reasoning?: string) => void;
@@ -449,11 +449,13 @@ export const useEvolution = create<EvolutionStore>((set, get) => ({
   setAiBusy: (busy, reasoning = null) =>
     set({ aiBusy: busy, aiReasoning: reasoning, aiState: busy ? "self-improving" : "observing" }),
 
-  sendUserMessage: (content) => {
+  sendUserMessage: (content, displayContent) => {
     const msg: ChatMessage = {
       id: nextChatId(),
       role: "user",
       content,
+      // Store the clean text for display if provided; UI falls back to content.
+      displayContent,
       time: Date.now(),
     };
     set((s) => ({ chat: [...s.chat, msg] }));

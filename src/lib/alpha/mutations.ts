@@ -24,6 +24,13 @@ export interface ChatMessage {
   content: string;
   time: number;
   reasoning?: string; // AI's private reasoning, shown collapsed
+  /**
+   * For user messages: the clean text the user typed, WITHOUT any model
+   * steering preamble (e.g. "[Adopt the ARCHITECT persona: ...]"). The chat
+   * UI shows this; the think route still receives the full `content` (with
+   * preamble) so the persona is applied. Falls back to `content` when unset.
+   */
+  displayContent?: string;
 }
 
 export interface AppliedMutation {

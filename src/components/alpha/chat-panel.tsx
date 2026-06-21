@@ -414,13 +414,13 @@ export function ChatPanel() {
           }
         }
 
-        const finalMessage = attachedFile
-          ? `${preamble}\n\n${body}`
-          : body
-          ? `${preamble}\n\n${body}`
-          : "";
-        if (!finalMessage) return;
-        sendUserMessage(finalMessage);
+        // The personality preamble is steering for the MODEL, not for the
+        // chat display. Send it as separate metadata so the user only ever
+        // sees their actual text in the chat — not the "[Adopt the ARCHITECT
+        // persona: ...]" boilerplate that used to appear before every message.
+        const fullMessage = body ? `${preamble}\n\n${body}` : "";
+        if (!fullMessage) return;
+        sendUserMessage(fullMessage, body);
         setInput("");
         setAttachedFile(null);
       } finally {
@@ -710,7 +710,7 @@ export function ChatPanel() {
                   <div className={cn("min-w-0 max-w-[78%]", m.role === "user" && "text-right")}>
                     <div
                       className={cn(
-                        "group relative inline-block rounded-2xl px-3 py-2 text-[0.78rem] leading-snug",
+                        "group relative inline-block rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
                         isAi
                           ? "rounded-tl-sm bg-foreground/[0.06] text-foreground/90"
                           : "rounded-tr-sm bg-[oklch(0.82_0.17_195)]/15 text-foreground"
@@ -718,8 +718,8 @@ export function ChatPanel() {
                     >
                       <div className="whitespace-pre-wrap break-words">
                         {searchLower && matches
-                          ? highlightMatch(m.content, searchLower)
-                          : m.content}
+                          ? highlightMatch(m.displayContent ?? m.content, searchLower)
+                          : (m.displayContent ?? m.content)}
                       </div>
                       {/* AI message action row: pin + speak */}
                       {isAi && (
@@ -866,7 +866,7 @@ export function ChatPanel() {
                 value={input}
                 onChange={(e) => setInput(e.target.value)}
                 placeholder="Tell N-Core what to optimise…"
-                className="min-w-0 flex-1 bg-transparent py-1.5 font-mono-ae text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+                className="min-w-0 flex-1 bg-transparent py-2 font-mono-ae text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
               />
               {/* Feature 1: voice input */}
               {voiceSupported && (
