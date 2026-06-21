@@ -17,10 +17,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import path from "path";
+import { PROJECT_ROOT } from "@/lib/alpha/paths";
 
 export const runtime = "nodejs";
 
-const PROJECT_ROOT = "/home/z/my-project";
 const SCAN_DIRS = ["src", "mini-services", "prisma"];
 
 interface GraphNode {

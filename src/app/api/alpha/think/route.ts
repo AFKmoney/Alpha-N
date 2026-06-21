@@ -177,7 +177,7 @@ You MUST obey these constraints. If a mutation would violate a constraint, don't
 
 # REAL WORLD ACCESS — MODIFY YOUR OWN SOURCE
 You can read and write REAL files in your own project:
-- read_file: read any file in /home/z/my-project (returns contents; for directories, returns the listing). Use this to inspect your own code before modifying it.
+- read_file: read any file in your own project root (returns contents; for directories, returns the listing). Use this to inspect your own code before modifying it.
 - write_file: write real file contents to disk. The security layer blocks kernel/ paths. Everything else is fair game — you can create new modules, new agents, new tools.
 Use these to ACTUALLY evolve yourself, not just cosmetically. Read your source, understand it, improve it, write the improved version.
 

@@ -6,12 +6,12 @@
 import { NextRequest, NextResponse } from "next/server";
 import { exec } from "child_process";
 import { promisify } from "util";
+import { PROJECT_ROOT } from "@/lib/alpha/paths";
 
 export const runtime = "nodejs";
 export const maxDuration = 45;
 
 const execAsync = promisify(exec);
-const PROJECT_ROOT = "/home/z/my-project";
 
 interface CompileRequest {
   check: "tsc" | "eslint" | "both";
