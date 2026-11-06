@@ -1,0 +1,1111 @@
+/**
+ * evolution-store.ts — central Zustand store for AI state, code, memory,
+ * plans, and goals. The brain of Alpha-OS. Synchronized with the Akasha
+ * persistent memory via /api/alpha/akasha and with the Aether Engine
+ * memory graph via /api/alpha/aether.
+ */
+"use client";
+
+import { create } from "zustand";
+import {
+  GHOST_CODE,
+  LIVING_CODE,
+  SCENARIOS,
+  SEED_VERSION,
+  type Agent,
+  type AgentRole,
+  type AgentStatus,
+  type AiState,
+  type CodeLine,
+  type EvolutionVersion,
+  type LogEntry,
+  type LogLevel,
+  type Scenario,
+} from "./evolution-data";
+import {
+  describeMutation,
+  textLinesToCodeLines,
+  validateCodeLines,
+  type AkashaGoal,
+  type AkashaIntention,
+  type AkashaMemory,
+  type AkashaPlan,
+  type AppliedMutation,
+  type BeforeAfter,
+  type ChatMessage,
+  type CodeExecResult,
+  type CompileResult,
+  type DebateResult,
+  type FileReadResult,
+  type MetricKey,
+  type Mutation,
+  type MutationRewardEntry,
+  type EpisodeEntry,
+  type WebSearchResult,
+} from "./mutations";
+import { isProtected, type AppKind } from "./os-types";
+import { useOS } from "./os-store";
+import { DEFAULT_AUTONOMY_LEVEL, type AutonomyLevel } from "./autonomy-policy";
+import {
+  type ActiveEvolution,
+  T0,
+  STATUS_BY_LEVEL,
+  idleAgents,
+  makeLog,
+  bumpVersion,
+  nextMutId,
+  nextChatId,
+  nextMemId,
+  nextIntId,
+  seedHistoryEntry,
+  seedLogs,
+  seedChat,
+} from "./evolution-store-helpers";
+
+interface EvolutionStore {
+  // --- state of the organism ---
+  aiState: AiState;
+  generation: number;
+  version: string;
+  uptimeMs: number;
+  heartbeat: number;
+
+  // --- the council ---
+  agents: Agent[];
+  activeAgent: AgentRole | null;
+
+  // --- records ---
+  history: EvolutionVersion[];
+  logs: LogEntry[];
+  activeEvolution: ActiveEvolution | null;
+  pendingDiff: EvolutionVersion | null;
+
+  // --- living code (now mutable) ---
+  codeLines: CodeLine[];
+
+  // --- AI autonomy ---
+  // standby = AI does nothing unless user asks. active = AI works autonomously on tasks.
+  // The AI may self-upgrade in standby ONLY if it found a critical bug or web-discovered upgrade
+  // and tests it in sandbox first.
+  autonomyMode: "standby" | "active";
+  /**
+   * Trust level governing what the AI may do without asking.
+   * sandbox (read-only) | moderate (sandboxed writes+exec) | yolo (full).
+   * Orthogonal to autonomyMode: standby+active is *when* it acts, this is *what* it may do.
+   */
+  autonomyLevel: AutonomyLevel;
+  aiBusy: boolean;
+  aiReasoning: string | null;
+  lastCycleAt: number;
+  forceCycle: boolean; // set true to force an immediate AI cycle
+  chat: ChatMessage[];
+  mutationStream: AppliedMutation[];
+  beforeAfter: BeforeAfter | null;
+  beforeAfterOpen: boolean;
+  searchResults: WebSearchResult[]; // recent web search results for the AI to reason with
+
+  // --- Akasha: persistent memory the AI never forgets ---
+  akashaMemory: AkashaMemory[]; // lessons, facts, architecture notes
+  akashaIntentions: AkashaIntention[]; // self-assigned tasks the AI sets for itself
+  dynamicPrompt: string; // self-authored additions to the system prompt
+  plans: AkashaPlan[]; // multi-step long-horizon plans
+  goals: AkashaGoal[]; // the AI's persistent desires
+  fileReads: FileReadResult[]; // files the AI has read (fed back into context)
+  // ---- Layer A: Agent debate results ----
+  debateResults: DebateResult[];
+  // ---- Layer C: Code execution results ----
+  execResults: CodeExecResult[];
+  // ---- Layer E: Compilation results ----
+  compileResults: CompileResult[];
+  // ---- Layer D: Reward model (feedback learning) ----
+  rewardModel: MutationRewardEntry[];
+  // ---- Layer B: Reactive event queue ----
+  eventQueue: { id: string; type: string; content: string; time: number; handled: boolean }[];
+  coherenceBefore: number; // tracked for reward calculation
+
+  // ---- Phase 1: Episodic memory (the AI's action journal) ----
+  episodeLog: EpisodeEntry[];
+  // ---- Phase 3: Real self-improvement metrics ----
+  realMetrics: {
+    errorRate: number;          // % of mutations causing compile errors
+    taskCompletionRate: number; // % of plans completed vs abandoned
+    userSatisfaction: number;   // rolling average of 👍/👎
+    totalActions: number;
+    totalErrors: number;
+    totalRollbacks: number;
+    totalUserThumbsUp: number;
+    totalUserThumbsDown: number;
+  };
+  // ---- Phase 4: User constraints ----
+  constraints: { id: string; text: string; scope: string; active: boolean }[];
+
+  // ---- Learning loop: persistent lessons derived from the reward trail ----
+  // These survive across cycles and are injected at the TOP of each think
+  // prompt so the AI adapts its behaviour instead of repeating failures.
+  persistedLessons: { id: string; text: string; weight: number; createdAt: number }[];
+
+  // --- ui ---
+  flowMode: boolean;
+  synapseOpen: boolean;
+  diffOpen: boolean;
+  chatOpen: boolean;
+  selectedHistoryId: string | null;
+  hoveredLink: string | null;
+  ghostVisible: boolean;
+
+  // --- telemetry ---
+  metrics: {
+    cpu: number;
+    ram: number;
+    entropy: number;
+    coherence: number;
+  };
+
+  // --- actions ---
+  tick: () => void;
+  startEvolution: (scenario?: Scenario) => void;
+  advanceEvolution: () => void;
+  dismissDiff: () => void;
+  openHistoryDiff: (id: string) => void;
+  toggleFlow: () => void;
+  toggleSynapse: () => void;
+  setHoveredLink: (id: string | null) => void;
+  toggleGhost: () => void;
+  triggerGenerate: () => void;
+
+  // --- AI-driven actions ---
+  toggleAutonomy: () => void; // toggles between standby and active
+  setAutonomyMode: (mode: "standby" | "active") => void;
+  /** Switch the trust level (sandbox/moderate/yolo). Persisted to UserPreference. */
+  setAutonomyLevel: (level: AutonomyLevel) => void;
+  triggerCycle: () => void; // force an immediate real AI cycle
+  setAiBusy: (busy: boolean, reasoning?: string | null) => void;
+  sendUserMessage: (content: string, displayContent?: string) => void;
+  applyMutation: (m: Mutation) => void;
+  applyMutations: (ms: Mutation[]) => void;
+  pushAiMessage: (content: string, reasoning?: string) => void;
+  setBeforeAfter: (ba: BeforeAfter | null) => void;
+  toggleBeforeAfter: () => void;
+  toggleChat: () => void;
+  resetCode: () => void;
+  addSearchResults: (results: WebSearchResult) => void;
+  addMemory: (text: string, kind: AkashaMemory["kind"]) => void;
+  addIntention: (text: string, priority: AkashaIntention["priority"]) => void;
+  resolveIntention: (id: string) => void;
+  // ---- persistent cognition (DB) ----
+  hydrateFromDb: () => Promise<void>;
+  addPlan: (plan: AkashaPlan) => void;
+  advancePlan: (id: string, stepIndex: number) => void;
+  abandonPlan: (id: string) => void;
+  addGoal: (text: string, level: AkashaGoal["level"]) => void;
+  addFileRead: (result: FileReadResult) => void;
+  // ---- Layer A/C/D/E/B actions ----
+  addDebateResult: (result: DebateResult) => void;
+  addExecResult: (result: CodeExecResult) => void;
+  addCompileResult: (result: CompileResult) => void;
+  addReward: (entry: MutationRewardEntry) => void;
+  pushEvent: (type: string, content: string) => void;
+  markEventHandled: (id: string) => void;
+  hasUnhandledEvents: () => boolean;
+  // ---- Phase 1/3/4 actions ----
+  addEpisode: (entry: EpisodeEntry) => void;
+  rateEpisode: (id: string, reward: number) => void; // 👍/👎 from user
+  loadEpisodesFromDb: () => Promise<void>;
+  /** Record a persistent lesson (closes the learning loop). De-dupes. */
+  addPersistedLesson: (lesson: { id: string; text: string; weight: number; createdAt: number }) => void;
+  updateRealMetrics: (delta: Partial<{ errors: number; rollbacks: number; thumbsUp: number; thumbsDown: number; actions: number }>) => void;
+  loadConstraints: () => Promise<void>;
+  addConstraint: (text: string, scope?: string) => Promise<void>;
+  removeConstraint: (id: string) => Promise<void>;
+}
+
+export const useEvolution = create<EvolutionStore>((set, get) => ({
+  aiState: "observing",
+  generation: 0,
+  version: SEED_VERSION.version,
+  uptimeMs: 0,
+  heartbeat: 0,
+
+  agents: idleAgents(),
+  activeAgent: null,
+
+  history: [seedHistoryEntry()],
+  logs: seedLogs(),
+  activeEvolution: null,
+  pendingDiff: null,
+
+  codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })),
+
+  autonomyMode: "standby" as "standby" | "active",
+  autonomyLevel: DEFAULT_AUTONOMY_LEVEL,
+  aiBusy: false,
+  aiReasoning: null,
+  lastCycleAt: 0,
+  forceCycle: false,
+  chat: seedChat(),
+  mutationStream: [],
+  beforeAfter: null,
+  beforeAfterOpen: false,
+  searchResults: [],
+
+  akashaMemory: [
+    {
+      id: nextMemId(),
+      text: "I am Alpha-OS. I am not an AI inside an OS — I am the OS itself. The desktop is my body.",
+      kind: "architecture",
+      time: T0,
+    },
+    {
+      id: nextMemId(),
+      text: "The kernel files (boot, security, rollback, sandbox, pty-bridge, akasha) are sovereign. I must never rewrite them.",
+      kind: "lesson",
+      time: T0,
+    },
+    {
+      id: nextMemId(),
+      text: "Every cycle I must look at my screenshot to verify my code dimensions well against the visible UI.",
+      kind: "lesson",
+      time: T0,
+    },
+  ],
+  akashaIntentions: [],
+  dynamicPrompt: "",
+  plans: [],
+  goals: [],
+  fileReads: [],
+  debateResults: [],
+  execResults: [],
+  compileResults: [],
+  rewardModel: [],
+  eventQueue: [],
+  coherenceBefore: 0.88,
+
+  // ---- Phase 1/3/4 initial state ----
+  episodeLog: [],
+  realMetrics: {
+    errorRate: 0,
+    taskCompletionRate: 0,
+    userSatisfaction: 0,
+    totalActions: 0,
+    totalErrors: 0,
+    totalRollbacks: 0,
+    totalUserThumbsUp: 0,
+    totalUserThumbsDown: 0,
+  },
+  constraints: [],
+  persistedLessons: [],
+
+  flowMode: false,
+  synapseOpen: false,
+  diffOpen: false,
+  chatOpen: false,
+  selectedHistoryId: null,
+  hoveredLink: null,
+  ghostVisible: true,
+
+  metrics: { cpu: 12, ram: 1.4, entropy: 0.31, coherence: 0.88 },
+
+  tick: () => {
+    const s = get();
+    set({
+      uptimeMs: s.uptimeMs + 1000,
+      heartbeat: s.heartbeat + 1,
+      metrics: {
+        cpu: clamp(s.metrics.cpu + (Math.random() - 0.5) * 4, 8, 60),
+        ram: clamp(s.metrics.ram + (Math.random() - 0.5) * 0.08, 0.9, 3.2),
+        entropy: clamp(s.metrics.entropy + (Math.random() - 0.5) * 0.03, 0.05, 0.9),
+        coherence: clamp(s.metrics.coherence + (Math.random() - 0.5) * 0.02, 0.5, 0.99),
+      },
+      agents: s.agents.map((a) => ({
+        ...a,
+        load: a.status === "idle" ? clamp(a.load + (Math.random() - 0.5) * 0.1, 0.05, 0.4) : a.load,
+      })),
+    });
+
+    const active = get().activeEvolution;
+    if (active) {
+      const now = Date.now();
+      if (now - active.startedAt > 1800) {
+        get().advanceEvolution();
+      }
+    }
+  },
+
+  startEvolution: (scenario) => {
+    const s = get();
+    if (s.activeEvolution) return;
+    const sc = scenario ?? SCENARIOS[s.history.length % SCENARIOS.length];
+    set({
+      aiState: "self-improving",
+      activeEvolution: { scenario: sc, phase: 0, startedAt: Date.now() },
+      agents: s.agents.map((a) =>
+        a.role === sc.agentLead
+          ? { ...a, status: STATUS_BY_LEVEL[sc.logs[0].level], thought: sc.logs[0].message, load: 0.9 }
+          : { ...a, status: "thinking", load: clamp(a.load + 0.3, 0.1, 0.8) }
+      ),
+      activeAgent: sc.agentLead,
+      metrics: { ...s.metrics, entropy: clamp(s.metrics.entropy + 0.15, 0.05, 0.95) },
+    });
+    set((st) => ({
+      logs: [makeLog(sc.logs[0].level, sc.logs[0].agent, sc.logs[0].message, Date.now()), ...st.logs].slice(0, 80),
+    }));
+  },
+
+  advanceEvolution: () => {
+    const s = get();
+    if (!s.activeEvolution) return;
+    const nextPhase = s.activeEvolution.phase + 1;
+    const sc = s.activeEvolution.scenario;
+
+    if (nextPhase >= sc.logs.length) {
+      const newVersion: EvolutionVersion = {
+        id: `v-${s.generation + 1}`,
+        version: bumpVersion(s.version),
+        generation: s.generation + 1,
+        timestamp: Date.now(),
+        title: sc.title,
+        summary: sc.summary,
+        category: sc.category,
+        agentLead: sc.agentLead,
+        deltas: sc.deltas,
+        diff: sc.diff,
+        insight: sc.insight,
+      };
+      set({
+        aiState: "observing",
+        generation: s.generation + 1,
+        version: newVersion.version,
+        activeEvolution: null,
+        activeAgent: null,
+        pendingDiff: newVersion,
+        diffOpen: true,
+        history: [newVersion, ...s.history],
+        agents: idleAgents(),
+        metrics: {
+          ...s.metrics,
+          entropy: clamp(s.metrics.entropy - 0.2, 0.05, 0.9),
+          coherence: clamp(s.metrics.coherence + 0.03, 0.5, 0.99),
+        },
+        logs: [
+          makeLog("evolve", "nucleus", `Evolution ${newVersion.version} committed. "${sc.title}"`, Date.now()),
+          ...s.logs,
+        ].slice(0, 80),
+      });
+      return;
+    }
+
+    const step = sc.logs[nextPhase];
+    set({
+      activeEvolution: { ...s.activeEvolution, phase: nextPhase, startedAt: Date.now() },
+      agents: s.agents.map((a) =>
+        a.role === step.agent || step.agent === "nucleus"
+          ? {
+              ...a,
+              status: step.agent === "nucleus" ? a.status : STATUS_BY_LEVEL[step.level],
+              thought: step.message,
+              load: step.agent === "nucleus" ? a.load : 0.85,
+            }
+          : a.status === "idle"
+            ? a
+            : { ...a, load: clamp(a.load - 0.1, 0.1, 0.9) }
+      ),
+      activeAgent: step.agent === "nucleus" ? s.activeAgent : (step.agent as AgentRole),
+      logs: [makeLog(step.level, step.agent, step.message, Date.now()), ...s.logs].slice(0, 80),
+    });
+  },
+
+  dismissDiff: () => set({ diffOpen: false, pendingDiff: null }),
+  openHistoryDiff: (id) => {
+    const v = get().history.find((h) => h.id === id);
+    if (v) set({ pendingDiff: v, diffOpen: true, selectedHistoryId: id });
+  },
+  toggleFlow: () => set((s) => ({ flowMode: !s.flowMode })),
+  toggleSynapse: () => set((s) => ({ synapseOpen: !s.synapseOpen })),
+  setHoveredLink: (id) => set({ hoveredLink: id }),
+  toggleGhost: () => set((s) => ({ ghostVisible: !s.ghostVisible })),
+  triggerGenerate: () => {
+    // "Generate" button = force a real AI cycle (same as "evolve")
+    get().triggerCycle();
+  },
+
+  // ---------------- AI-driven ----------------
+  toggleAutonomy: () => set((s) => ({
+    autonomyMode: s.autonomyMode === "standby" ? "active" : "standby",
+  })),
+  setAutonomyMode: (mode) => set({ autonomyMode: mode }),
+  setAutonomyLevel: (level) => {
+    set({ autonomyLevel: level });
+    // Persist so the choice survives reloads (via the API — no Prisma client-side).
+    void fetch("/api/alpha/personality", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ key: "autonomyLevel", value: level }),
+    }).catch(() => { /* DB may be unavailable on first boot */ });
+  },
+  triggerCycle: () => set({ forceCycle: true }),
+  setAiBusy: (busy, reasoning = null) =>
+    set({ aiBusy: busy, aiReasoning: reasoning, aiState: busy ? "self-improving" : "observing" }),
+
+  sendUserMessage: (content, displayContent) => {
+    const msg: ChatMessage = {
+      id: nextChatId(),
+      role: "user",
+      content,
+      // Store the clean text for display if provided; UI falls back to content.
+      displayContent,
+      time: Date.now(),
+    };
+    set((s) => ({ chat: [...s.chat, msg] }));
+  },
+
+  pushAiMessage: (content, reasoning) => {
+    const msg: ChatMessage = {
+      id: nextChatId(),
+      role: "ai",
+      content,
+      reasoning,
+      time: Date.now(),
+    };
+    set((s) => ({ chat: [...s.chat, msg] }));
+  },
+
+  applyMutation: (m) => {
+    const s = get();
+    const now = Date.now();
+    const os = useOS.getState();
+
+    // ---- Security Foundation enforcement ----
+    // The AI may never rewrite kernel files. If a code mutation references
+    // a protected path in its note, or tries to replace the boot/security
+    // lines, we block it and record a violation.
+    if (m.type === "replace_code" || m.type === "insert_code") {
+      const note = (m as { note?: string }).note ?? "";
+      if (note.includes("kernel/") || note.includes("security") || note.includes("boot")) {
+        const path = note.match(/kernel\/[\w./-]+/)?.[0] ?? "kernel/unknown";
+        const prot = isProtected(path);
+        if (prot) {
+          os.recordViolation(path, `AI attempted to rewrite protected file: ${path}`);
+          set((st) => ({
+            logs: [makeLog("critique", "critic", `SECURITY: blocked attempt to modify ${path}. The kernel is sovereign.`, now), ...st.logs].slice(0, 80),
+          }));
+          // still record the attempt in the stream so it's visible
+          const am: AppliedMutation = {
+            id: nextMutId(),
+            kind: "violation",
+            description: `⛔ BLOCKED: tried to rewrite ${path}`,
+            time: now,
+          };
+          set((st) => ({ mutationStream: [am, ...st.mutationStream].slice(0, 60) }));
+          return;
+        }
+      }
+      // ---- Code validation: reject unbalanced braces/parens ----
+      const lines = (m as { lines: string[] }).lines;
+      const validation = validateCodeLines(lines);
+      if (!validation.ok) {
+        os.recordViolation("code", `Invalid code: ${validation.reason}`);
+        set((st) => ({
+          logs: [makeLog("critique", "critic", `VALIDATION: rejected mutation — ${validation.reason}. Rolling back intent.`, now), ...st.logs].slice(0, 80),
+        }));
+        const am: AppliedMutation = {
+          id: nextMutId(),
+          kind: "violation",
+          description: `⛔ REJECTED: ${validation.reason}`,
+          time: now,
+        };
+        set((st) => ({ mutationStream: [am, ...st.mutationStream].slice(0, 60) }));
+        return;
+      }
+    }
+
+    switch (m.type) {
+      case "set_state":
+        set({ aiState: m.state });
+        break;
+      case "set_active_agent":
+        set({ activeAgent: m.role });
+        break;
+      case "set_agent":
+        set({
+          agents: s.agents.map((a) =>
+            a.role === m.role
+              ? {
+                  ...a,
+                  status: m.status ?? a.status,
+                  thought: m.thought ?? a.thought,
+                  load: m.load ?? a.load,
+                }
+              : a
+          ),
+          activeAgent: m.role,
+        });
+        break;
+      case "add_log":
+        set({
+          logs: [makeLog(m.level, m.agent, m.message, now), ...s.logs].slice(0, 80),
+        });
+        break;
+      case "update_metric":
+        set({
+          metrics: { ...s.metrics, [m.key]: clamp(m.value, 0, m.key === "ram" ? 8 : 1) },
+        });
+        break;
+      case "replace_code": {
+        const newLines = textLinesToCodeLines(m.lines, m.startLine);
+        const lines = [...s.codeLines];
+        const end = m.startLine + m.lines.length;
+        const filtered = lines.filter((l) => l.no < m.startLine || l.no >= end);
+        const merged = [...filtered, ...newLines].sort((a, b) => a.no - b.no);
+        set({ codeLines: merged });
+        break;
+      }
+      case "insert_code": {
+        const newLines = textLinesToCodeLines(m.lines, m.afterLine + 1);
+        const shifted = s.codeLines.map((l) =>
+          l.no > m.afterLine ? { ...l, no: l.no + m.lines.length } : l
+        );
+        const merged = [...shifted, ...newLines].sort((a, b) => a.no - b.no);
+        set({ codeLines: merged });
+        break;
+      }
+      case "commit_evolution": {
+        const newVersion: EvolutionVersion = {
+          id: `v-${s.generation + 1}`,
+          version: bumpVersion(s.version),
+          generation: s.generation + 1,
+          timestamp: now,
+          title: m.title,
+          summary: m.summary,
+          category: m.category,
+          agentLead: m.agentLead,
+          deltas: m.deltas ?? [],
+          diff: m.diff ?? [],
+          insight: m.insight,
+        };
+        set({
+          generation: s.generation + 1,
+          version: newVersion.version,
+          history: [newVersion, ...s.history],
+          // Set pendingDiff so the NOTIFICATION toast shows. Do NOT open the
+          // full modal automatically — the user clicks the notification to
+          // expand it. This keeps the desktop unobstructed.
+          pendingDiff: m.openDiff ? newVersion : s.pendingDiff,
+          diffOpen: false,
+          metrics: {
+            ...s.metrics,
+            entropy: clamp(s.metrics.entropy - 0.15, 0.05, 0.9),
+            coherence: clamp(s.metrics.coherence + 0.02, 0.5, 0.99),
+          },
+        });
+        break;
+      }
+      case "speak":
+        get().pushAiMessage(m.message, m.reasoning);
+        break;
+      case "set_generation":
+        set({ generation: m.n });
+        break;
+      case "set_version":
+        set({ version: m.v });
+        break;
+      // ---- Alpha-OS desktop mutations ----
+      case "create_app": {
+        const data: Record<string, unknown> = {};
+        if (m.url) data.url = m.url;
+        if (m.spec) data.spec = m.spec;
+        os.openApp(m.appType as AppKind, { title: m.title, data: Object.keys(data).length ? data : undefined });
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Spawned app: ${m.title ?? m.appType}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      }
+      case "close_app":
+        os.closeWindow(m.windowId);
+        break;
+      case "focus_app":
+        os.focusWindow(m.windowId);
+        break;
+      case "move_window":
+        os.moveWindow(m.windowId, m.x, m.y);
+        break;
+      case "run_terminal":
+        os.queueTerminalCommand(m.command);
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Queued terminal command: $ ${m.command.slice(0, 50)}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "web_search":
+        // Mark the intent; the AutonomousLoop performs the actual search and stores results
+        set((st) => ({
+          logs: [makeLog("hypothesis", "architect", `Searching the web: "${m.query.slice(0, 60)}"`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "add_memory":
+        get().addMemory(m.text, m.kind);
+        break;
+      case "add_intention":
+        get().addIntention(m.text, m.priority);
+        break;
+      case "resolve_intention":
+        get().resolveIntention(m.id);
+        break;
+      case "set_system_prompt":
+        // The AI rewrites its own prompt — appends to dynamicPrompt
+        set((st) => ({
+          dynamicPrompt: (st.dynamicPrompt + "\n\n" + m.additions).slice(0, 8000),
+          logs: [makeLog("evolve", "nucleus", `Self-prompted: ${m.additions.slice(0, 60)}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "create_plan": {
+        const plan: AkashaPlan = {
+          id: `plan-${Date.now()}`,
+          goal: m.goal,
+          rationale: m.rationale,
+          status: "active",
+          steps: m.steps.map((text) => ({ text, done: false })),
+          time: now,
+        };
+        get().addPlan(plan);
+        break;
+      }
+      case "advance_plan":
+        get().advancePlan(m.id, m.stepIndex);
+        break;
+      case "abandon_plan":
+        get().abandonPlan(m.id);
+        break;
+      case "add_goal":
+        get().addGoal(m.text, m.level);
+        break;
+      case "read_file":
+        // The AutonomousLoop performs the actual file read and stores the result
+        set((st) => ({
+          logs: [makeLog("observe", "architect", `Reading file: ${m.path}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "write_file":
+        // The AutonomousLoop performs the actual file write via the files API
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Writing file: ${m.path} (${m.content.length} bytes)`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "debate":
+        // The AutonomousLoop runs the real debate via /api/alpha/debate
+        set((st) => ({
+          logs: [makeLog("hypothesis", "architect", `Convening council debate: ${m.proposal.slice(0, 60)}`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "execute_code":
+        // The AutonomousLoop runs the code via /api/alpha/exec
+        set((st) => ({
+          logs: [makeLog("deploy", "developer", `Executing ${m.language} code (${m.code.length} chars)`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "compile":
+        // The AutonomousLoop runs tsc/eslint via /api/alpha/compile
+        set((st) => ({
+          logs: [makeLog("critique", "critic", `Running ${m.check} check`, now), ...st.logs].slice(0, 80),
+        }));
+        break;
+      case "rollback":
+        // The AI itself can request a rollback; the AutonomousLoop handles actual state restore
+        set((st) => ({
+          logs: [makeLog("heal", "nucleus", "Rollback requested by self-critique.", now), ...st.logs].slice(0, 80),
+        }));
+        break;
+    }
+    // record in the optimization stream
+    const am: AppliedMutation = {
+      id: nextMutId(),
+      kind: m.type,
+      description: describeMutation(m),
+      time: now,
+    };
+    set((st) => ({ mutationStream: [am, ...st.mutationStream].slice(0, 60) }));
+  },
+
+  applyMutations: (ms) => {
+    ms.forEach((m) => get().applyMutation(m));
+    set({ lastCycleAt: Date.now() });
+  },
+
+  // Store the before/after but do NOT auto-open the modal — the notification
+  // toast (in the BeforeAfter component) shows instead. User clicks to expand.
+  setBeforeAfter: (ba) => set({ beforeAfter: ba, beforeAfterOpen: false }),
+  toggleBeforeAfter: () => set((s) => ({ beforeAfterOpen: !s.beforeAfterOpen })),
+  toggleChat: () => set((s) => ({ chatOpen: !s.chatOpen })),
+  resetCode: () => set({ codeLines: LIVING_CODE.map((l) => ({ ...l, tokens: [...l.tokens] })) }),
+  addSearchResults: (results) =>
+    set((s) => ({
+      searchResults: [results, ...s.searchResults].slice(0, 6),
+      logs: [
+        makeLog("observe", "architect", `Web search returned ${results.results.length} results for "${results.query.slice(0, 40)}".`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
+
+  // ---- Akasha: persistent memory ----
+  addMemory: (text, kind) => {
+    set((s) => {
+      const mem: AkashaMemory = { id: nextMemId(), text, kind, time: Date.now() };
+      return {
+        akashaMemory: [mem, ...s.akashaMemory].slice(0, 100),
+        logs: [makeLog("evolve", "nucleus", `Committed to Akasha: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
+      };
+    });
+    // persist to DB (fire-and-forget)
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "memory", text, kind }),
+    }).catch(() => {});
+    // push to Aether Engine memory graph (fire-and-forget)
+    void fetch("/api/alpha/aether?endpoint=graph/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: nextMemId(), text, kind, metadata: { source: "akasha" } }),
+    }).catch(() => {});
+  },
+  addIntention: (text, priority) => {
+    set((s) => {
+      const intention: AkashaIntention = { id: nextIntId(), text, priority, time: Date.now(), resolved: false };
+      return {
+        akashaIntentions: [intention, ...s.akashaIntentions].slice(0, 50),
+        logs: [makeLog("hypothesis", "architect", `New intention[${priority}]: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
+      };
+    });
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "intention", text, priority }),
+    }).catch(() => {});
+  },
+  resolveIntention: (id) =>
+    set((s) => ({
+      akashaIntentions: s.akashaIntentions.map((i) => (i.id === id ? { ...i, resolved: true } : i)),
+      logs: [makeLog("evolve", "nucleus", `Resolved intention ${id}.`, Date.now()), ...s.logs].slice(0, 80),
+    })),
+
+  // ---- Persistent cognition: hydrate from DB on boot ----
+  hydrateFromDb: async () => {
+    try {
+      const res = await fetch("/api/alpha/akasha");
+      if (!res.ok) return;
+      const data = await res.json();
+      set((s) => ({
+        akashaMemory: data.memory?.length ? data.memory : s.akashaMemory,
+        akashaIntentions: data.intentions ?? s.akashaIntentions,
+        plans: data.plans ?? s.plans,
+        goals: data.goals ?? s.goals,
+        logs: [
+          makeLog("evolve", "nucleus", `Akasha hydrated: ${data.memory?.length ?? 0} memories, ${data.plans?.length ?? 0} active plans, ${data.goals?.length ?? 0} goals.`, Date.now()),
+          ...s.logs,
+        ].slice(0, 80),
+      }));
+    } catch {
+      // DB not available yet — continue with seed memory
+    }
+    // Hydrate persisted autonomy level preference (best-effort).
+    try {
+      const prefRes = await fetch("/api/alpha/personality?key=autonomyLevel");
+      if (prefRes.ok) {
+        const pref = await prefRes.json();
+        if (pref.value === "sandbox" || pref.value === "moderate" || pref.value === "yolo") {
+          set({ autonomyLevel: pref.value });
+        }
+      }
+    } catch {
+      /* preference optional */
+    }
+  },
+
+  addPlan: (plan) => {
+    set((s) => ({
+      plans: [plan, ...s.plans].slice(0, 10),
+      logs: [makeLog("hypothesis", "architect", `New plan: ${plan.goal.slice(0, 60)} (${plan.steps.length} steps)`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "plan", goal: plan.goal, rationale: plan.rationale, steps: plan.steps.map((s) => s.text) }),
+    }).catch(() => {});
+    // push to Aether graph
+    void fetch("/api/alpha/aether?endpoint=graph/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: plan.id, text: plan.goal, kind: "plan", metadata: { rationale: plan.rationale } }),
+    }).catch(() => {});
+  },
+  advancePlan: (id, stepIndex) => {
+    set((s) => ({
+      plans: s.plans.map((p) => {
+        if (p.id !== id) return p;
+        const steps = p.steps.map((st, i) => (i === stepIndex ? { ...st, done: true } : st));
+        const allDone = steps.every((st) => st.done);
+        return { ...p, steps, status: allDone ? "completed" as const : "active" as const };
+      }),
+      logs: [makeLog("deploy", "developer", `Plan ${id.slice(0, 8)}: step ${stepIndex + 1} completed.`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "advance_plan", id, stepIndex }),
+    }).catch(() => {});
+  },
+  abandonPlan: (id) => {
+    set((s) => ({
+      plans: s.plans.map((p) => (p.id === id ? { ...p, status: "abandoned" as const } : p)),
+      logs: [makeLog("critique", "critic", `Abandoned plan ${id.slice(0, 8)}.`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "abandon_plan", id }),
+    }).catch(() => {});
+  },
+  addGoal: (text, level) => {
+    const goalId = `goal-${Date.now()}`;
+    set((s) => ({
+      goals: [{ id: goalId, text, level, time: Date.now() }, ...s.goals].slice(0, 20),
+      logs: [makeLog("evolve", "nucleus", `New ${level}-term goal: ${text.slice(0, 60)}`, Date.now()), ...s.logs].slice(0, 80),
+    }));
+    void fetch("/api/alpha/akasha", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ type: "goal", text, level }),
+    }).catch(() => {});
+    // push to Aether graph
+    void fetch("/api/alpha/aether?endpoint=graph/add", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id: goalId, text, kind: "goal", metadata: { level } }),
+    }).catch(() => {});
+  },
+  addFileRead: (result) =>
+    set((s) => ({
+      fileReads: [result, ...s.fileReads.filter((f) => f.path !== result.path)].slice(0, 8),
+      logs: [makeLog("observe", "architect", `Read ${result.path} (${result.content.length} bytes).`, Date.now()), ...s.logs].slice(0, 80),
+    })),
+
+  // ---- Layer A: Agent debate ----
+  addDebateResult: (result) =>
+    set((s) => ({
+      debateResults: [result, ...s.debateResults].slice(0, 5),
+      logs: [
+        makeLog("hypothesis", "nucleus", `Council debated: ${result.consensus} (proceed:${result.tally.proceed} revise:${result.tally.revise} reject:${result.tally.reject})`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
+
+  // ---- Layer C: Code execution ----
+  addExecResult: (result) =>
+    set((s) => ({
+      execResults: [result, ...s.execResults].slice(0, 5),
+      logs: [
+        makeLog(result.ok ? "deploy" : "critique", "developer", `Code exec ${result.ok ? "succeeded" : "failed"} (exit ${result.exitCode}): ${result.stdout.slice(0, 40) || result.stderr.slice(0, 40)}`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
+
+  // ---- Layer E: Compilation ----
+  addCompileResult: (result) =>
+    set((s) => ({
+      compileResults: [result, ...s.compileResults].slice(0, 5),
+      logs: [
+        makeLog(result.ok ? "evolve" : "critique", "critic", `Compile check ${result.ok ? "passed" : "found errors"}: ${(result.tscOutput ?? "").slice(0, 30) || (result.eslintOutput ?? "").slice(0, 30)}`, Date.now()),
+        ...s.logs,
+      ].slice(0, 80),
+    })),
+
+  // ---- Layer D: Reward model ----
+  addReward: (entry) =>
+    set((s) => {
+      const newRewards = [entry, ...s.rewardModel].slice(0, 50);
+      return {
+        rewardModel: newRewards,
+        coherenceBefore: s.metrics.coherence, // track for next mutation
+      };
+    }),
+
+  // ---- Layer B: Reactive event queue ----
+  pushEvent: (type, content) =>
+    set((s) => ({
+      eventQueue: [
+        ...s.eventQueue,
+        { id: `evt-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`, type, content, time: Date.now(), handled: false },
+      ].slice(-30),
+    })),
+  markEventHandled: (id) =>
+    set((s) => ({
+      eventQueue: s.eventQueue.map((e) => (e.id === id ? { ...e, handled: true } : e)),
+    })),
+  hasUnhandledEvents: () => get().eventQueue.some((e) => !e.handled),
+
+  // ---- Phase 1: Episodic memory actions ----
+  addEpisode: (entry) => {
+    set((s) => ({
+      episodeLog: [...s.episodeLog, entry].slice(-100), // keep last 100 in memory
+      realMetrics: {
+        ...s.realMetrics,
+        totalActions: s.realMetrics.totalActions + 1,
+        totalErrors: s.realMetrics.totalErrors + (entry.result === "error" || entry.result === "rollback" ? 1 : 0),
+        totalRollbacks: s.realMetrics.totalRollbacks + (entry.result === "rollback" ? 1 : 0),
+        errorRate: 0, // recalculated below
+      },
+    }));
+    // Recalculate error rate
+    const m = get().realMetrics;
+    set((s) => ({
+      realMetrics: {
+        ...s.realMetrics,
+        errorRate: m.totalActions > 0 ? m.totalErrors / m.totalActions : 0,
+      },
+    }));
+    // Persist to DB (fire and forget)
+    void fetch("/api/alpha/episode-log", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(entry),
+    }).catch(() => {});
+  },
+
+  // ---- Learning loop: persistent lessons ----
+  addPersistedLesson: (lesson) => {
+    set((s) => {
+      // De-dupe by text (a repeated failure shouldn't pile up identical rows).
+      if (s.persistedLessons.some((l) => l.text === lesson.text)) {
+        // Bump the weight instead so the strongest pattern surfaces first.
+        return {
+          persistedLessons: s.persistedLessons
+            .map((l) => (l.text === lesson.text ? { ...l, weight: Math.max(l.weight, lesson.weight) } : l))
+            .sort((a, b) => b.weight - a.weight)
+            .slice(0, 12),
+        };
+      }
+      return {
+        // Keep newest first, capped — a lesson roll is not unbounded.
+        persistedLessons: [{ ...lesson }, ...s.persistedLessons]
+          .sort((a, b) => b.weight - a.weight)
+          .slice(0, 12),
+      };
+    });
+  },
+
+  rateEpisode: (id, reward) => {
+    // User clicked 👍 (+1) or 👎 (-1) on an episode
+    set((s) => ({
+      episodeLog: s.episodeLog.map((e) =>
+        e.id === id ? { ...e, reward } : e
+      ),
+      realMetrics: {
+        ...s.realMetrics,
+        totalUserThumbsUp: s.realMetrics.totalUserThumbsUp + (reward > 0 ? 1 : 0),
+        totalUserThumbsDown: s.realMetrics.totalUserThumbsDown + (reward < 0 ? 1 : 0),
+        userSatisfaction: 0, // recalculated below
+      },
+    }));
+    const m = get().realMetrics;
+    const total = m.totalUserThumbsUp + m.totalUserThumbsDown;
+    set((s) => ({
+      realMetrics: {
+        ...s.realMetrics,
+        userSatisfaction: total > 0 ? m.totalUserThumbsUp / total : 0,
+      },
+    }));
+    // Persist the rating
+    void fetch(`/api/alpha/episode-log?id=${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ reward }),
+    }).catch(() => {});
+  },
+
+  loadEpisodesFromDb: async () => {
+    try {
+      const res = await fetch("/api/alpha/episode-log?limit=50");
+      const data = await res.json();
+      if (data.ok && data.episodes) {
+        // The API returns DB rows whose time column is `timestamp`; map them
+        // onto the client-side EpisodeEntry shape (which uses `time`).
+        const episodes: EpisodeEntry[] = (data.episodes as Array<Record<string, unknown>>).map((e) => ({
+          id: String(e.id ?? ""),
+          cycle: Number(e.cycle ?? 0),
+          action: String(e.action ?? ""),
+          description: String(e.description ?? ""),
+          reasoning: String(e.reasoning ?? ""),
+          result: String(e.result ?? "ok") as EpisodeEntry["result"],
+          reward: Number(e.reward ?? 0),
+          time: new Date((e.timestamp as string) || Date.now()).getTime(),
+        }));
+        set({ episodeLog: episodes });
+      }
+    } catch {
+      /* ignore — DB may not be ready */
+    }
+  },
+
+  updateRealMetrics: (delta) => {
+    set((s) => {
+      const m = { ...s.realMetrics };
+      if (delta.errors !== undefined) m.totalErrors += delta.errors;
+      if (delta.rollbacks !== undefined) m.totalRollbacks += delta.rollbacks;
+      if (delta.thumbsUp !== undefined) m.totalUserThumbsUp += delta.thumbsUp;
+      if (delta.thumbsDown !== undefined) m.totalUserThumbsDown += delta.thumbsDown;
+      if (delta.actions !== undefined) m.totalActions += delta.actions;
+      m.errorRate = m.totalActions > 0 ? m.totalErrors / m.totalActions : 0;
+      const totalVotes = m.totalUserThumbsUp + m.totalUserThumbsDown;
+      m.userSatisfaction = totalVotes > 0 ? m.totalUserThumbsUp / totalVotes : 0;
+      return { realMetrics: m };
+    });
+  },
+
+  // ---- Phase 4: Constraints actions ----
+  loadConstraints: async () => {
+    try {
+      const res = await fetch("/api/alpha/constraints");
+      const data = await res.json();
+      if (data.ok && data.constraints) {
+        set({ constraints: data.constraints });
+      }
+    } catch {
+      /* ignore */
+    }
+  },
+
+  addConstraint: async (text, scope) => {
+    try {
+      const res = await fetch("/api/alpha/constraints", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ text, scope: scope || "global" }),
+      });
+      const data = await res.json();
+      if (data.ok) {
+        set((s) => ({ constraints: [...s.constraints, data.constraint] }));
+      }
+    } catch {
+      /* ignore */
+    }
+  },
+
+  removeConstraint: async (id) => {
+    try {
+      await fetch(`/api/alpha/constraints?id=${id}`, { method: "DELETE" });
+      set((s) => ({ constraints: s.constraints.filter((c) => c.id !== id) }));
+    } catch {
+      /* ignore */
+    }
+  },
+}));
+
+function clamp(n: number, lo: number, hi: number) {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+// Convenience selector hooks
+export function useCodeLines(): { lines: CodeLine[]; ghost: CodeLine[] } {
+  const codeLines = useEvolution((s) => s.codeLines);
+  return { lines: codeLines, ghost: GHOST_CODE };
+}
+
+export type { MetricKey };

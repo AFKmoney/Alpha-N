@@ -1,8 +1,7 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Looking for ways to speed up your queries, or scale easily with your serverless or edge functions?
-// Try Prisma Accelerate: https://pris.ly/cli/accelerate-init
+// Alpha-OS — Prisma schema (restored from db/custom.db DDL).
+// Akasha persistent cognition: memory, intentions, plans, goals, events,
+// mutation rewards, user preferences, wallpapers, AI-generated apps,
+// episode log and sovereignty constraints.
 
 generator client {
   provider = "prisma-client-js"
@@ -13,20 +12,99 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-model User {
+model AkashaMemory {
   id        String   @id @default(cuid())
-  email     String   @unique
-  name      String?
+  text      String
+  kind      String   @default("lesson")
+  createdAt DateTime @default(now())
+}
+
+model AkashaIntention {
+  id        String   @id @default(cuid())
+  text      String
+  priority  String   @default("normal")
+  resolved  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model Plan {
+  id        String   @id @default(cuid())
+  goal      String
+  rationale String
+  status    String   @default("active")
+  stepsJson String   @default("[]")
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 }
 
-model Post {
+model Goal {
   id        String   @id @default(cuid())
-  title     String
-  content   String?
-  published Boolean  @default(false)
-  authorId  String
+  text      String
+  level     String   @default("long")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
+}
+
+model SystemEvent {
+  id        String   @id @default(cuid())
+  type      String
+  content   String
+  createdAt DateTime @default(now())
+}
+
+model MutationReward {
+  id              String   @id @default(cuid())
+  mutationKind    String
+  description     String
+  coherenceBefore Float
+  coherenceAfter  Float
+  delta           Float
+  helpful         Boolean
+  createdAt       DateTime @default(now())
+}
+
+model UserPreference {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
+}
+
+model Wallpaper {
+  id        String   @id @default(cuid())
+  name      String
+  presetId  String
+  config    String   @default("{}")
+  isCustom  Boolean  @default(false)
+  createdAt DateTime @default(now())
+}
+
+model GeneratedApp {
+  id          String   @id @default(cuid())
+  name        String
+  description String
+  category    String   @default("Productivity")
+  code        String
+  createdAt   DateTime @default(now())
+}
+
+model EpisodeLog {
+  id          String   @id @default(cuid())
+  cycle       Int
+  action      String
+  description String
+  reasoning   String   @default("")
+  result      String   @default("")
+  reward      Float    @default(0)
+  screenshot  String   @default("")
+  timestamp   DateTime @default(now())
+}
+
+model Constraint {
+  id        String   @id @default(cuid())
+  text      String
+  scope     String   @default("global")
+  active    Boolean  @default(true)
+  createdAt DateTime @default(now())
 }

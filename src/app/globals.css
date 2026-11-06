@@ -120,3 +120,186 @@
     @apply bg-background text-foreground;
   }
 }
+
+/* ==========================================================================
+   ALPHA-OS — Liquid Obsidian & Neural Glow theme
+   oklch accents only: cyan 195 · amethyst 300 · gold 85 · emerald 145 · red 25
+   NO indigo, NO blue.
+   ========================================================================== */
+
+:root {
+  --ae-cyan: oklch(0.82 0.17 195);
+  --ae-amethyst: oklch(0.74 0.22 300);
+  --ae-gold: oklch(0.85 0.16 85);
+  --ae-emerald: oklch(0.7 0.18 145);
+  --ae-rose: oklch(0.65 0.24 25);
+  --ae-obsidian: oklch(0.13 0.02 280);
+  --ae-obsidian-deep: oklch(0.09 0.02 280);
+  --ae-font-mono: "Geist Mono", "SF Mono", "JetBrains Mono", "Fira Code", "Cascadia Code", Consolas, monospace;
+}
+
+html,
+body {
+  height: 100%;
+  background: var(--ae-obsidian-deep);
+  color-scheme: dark;
+}
+
+/* light-theme override (dock toggle) */
+:root[data-theme="light"] {
+  --ae-obsidian: oklch(0.93 0.01 280);
+  --ae-obsidian-deep: oklch(0.97 0.005 280);
+  color-scheme: light;
+}
+:root[data-theme="light"] body {
+  background: oklch(0.94 0.01 280);
+  color: oklch(0.2 0.02 280);
+}
+:root[data-theme="light"] .glass {
+  background: oklch(1 0 0 / 72%);
+  border-color: oklch(0.5 0.02 280 / 18%);
+}
+:root[data-theme="light"] .glass-strong {
+  background: oklch(1 0 0 / 88%);
+  border-color: oklch(0.5 0.02 280 / 22%);
+}
+
+/* ---------- typography & surfaces ---------- */
+
+.font-mono-ae {
+  font-family: var(--ae-font-mono);
+  font-feature-settings: "ss01", "zero";
+}
+
+.eyebrow {
+  text-transform: uppercase;
+  letter-spacing: 0.28em;
+  font-size: 0.6rem;
+  color: oklch(0.65 0.03 280);
+  font-family: var(--ae-font-mono);
+}
+
+.glass {
+  background: oklch(0.16 0.02 280 / 62%);
+  border: 1px solid oklch(0.7 0.05 280 / 12%);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.glass-strong {
+  background: oklch(0.14 0.02 280 / 82%);
+  border: 1px solid oklch(0.7 0.06 280 / 16%);
+  backdrop-filter: blur(22px) saturate(1.3);
+  -webkit-backdrop-filter: blur(22px) saturate(1.3);
+  box-shadow: 0 12px 48px oklch(0 0 0 / 45%);
+}
+
+/* ---------- neural glows ---------- */
+
+.glow-cyan {
+  box-shadow: 0 0 18px oklch(0.82 0.17 195 / 35%), 0 0 2px oklch(0.82 0.17 195 / 60%);
+}
+.glow-amethyst {
+  box-shadow: 0 0 18px oklch(0.74 0.22 300 / 38%), 0 0 2px oklch(0.74 0.22 300 / 60%);
+}
+.glow-gold {
+  box-shadow: 0 0 18px oklch(0.85 0.16 85 / 35%), 0 0 2px oklch(0.85 0.16 85 / 60%);
+}
+
+.text-glow-cyan {
+  text-shadow: 0 0 12px oklch(0.82 0.17 195 / 55%);
+}
+.text-glow-amethyst {
+  text-shadow: 0 0 12px oklch(0.74 0.22 300 / 55%);
+}
+.text-glow-gold {
+  text-shadow: 0 0 12px oklch(0.85 0.16 85 / 55%);
+}
+
+/* ---------- living elements ---------- */
+
+.neural-dot {
+  position: relative;
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 9999px;
+  background: var(--ae-cyan);
+  box-shadow: 0 0 8px var(--ae-cyan);
+}
+.neural-dot::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 9999px;
+  border: 1px solid var(--ae-cyan);
+  opacity: 0;
+  animation: neural-ping 2.2s cubic-bezier(0, 0, 0.2, 1) infinite;
+}
+@keyframes neural-ping {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  80%, 100% { transform: scale(1.9); opacity: 0; }
+}
+
+/* lifeline compile pulse (the Loom) */
+@keyframes lifeline {
+  0% { opacity: 0.15; transform: translateX(-100%); }
+  50% { opacity: 0.7; }
+  100% { opacity: 0.15; transform: translateX(100%); }
+}
+.lifeline-pulse {
+  animation: lifeline 2.8s ease-in-out infinite;
+}
+
+@keyframes ghost-write {
+  from { opacity: 0; transform: translateY(2px); }
+  to { opacity: 0.55; transform: translateY(0); }
+}
+.ghost-line {
+  animation: ghost-write 1.4s ease both;
+  opacity: 0.55;
+}
+
+/* ---------- scrollbars ---------- */
+
+.scroll-ae {
+  scrollbar-width: thin;
+  scrollbar-color: oklch(0.6 0.06 195 / 30%) transparent;
+}
+.scroll-ae::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-ae::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-ae::-webkit-scrollbar-thumb {
+  background: oklch(0.6 0.06 195 / 30%);
+  border-radius: 9999px;
+}
+.scroll-ae::-webkit-scrollbar-thumb:hover {
+  background: oklch(0.7 0.1 195 / 50%);
+}
+
+/* ---------- xterm surface ---------- */
+
+.xterm-ae .xterm-viewport {
+  background-color: transparent !important;
+}
+.xterm-ae .xterm {
+  padding: 8px;
+}
+
+/* ---------- misc ---------- */
+
+::selection {
+  background: oklch(0.74 0.22 300 / 35%);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .neural-dot::after,
+  .lifeline-pulse,
+  .ghost-line {
+    animation: none;
+  }
+}
