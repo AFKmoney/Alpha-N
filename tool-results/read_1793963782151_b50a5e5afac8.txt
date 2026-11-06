@@ -1,0 +1,909 @@
+     1→/**
+     2→ * autonomous-loop.tsx — the real AI driver. Captures a screenshot of the
+     3→ * desktop, sends it + full OS state to /api/alpha/think, then applies the
+     4→ * returned mutations one-by-one. Handles web_search, read_file, write_file,
+     5→ * debate, execute_code, compile, and rollback tools. Runs on a 22s cadence
+     6→ * in "active" mode and reacts to user chat / unhandled events in both modes.
+     7→ */
+     8→"use client";
+     9→
+    10→import { useCallback, useEffect, useRef } from "react";
+    11→import { useEvolution } from "@/lib/alpha/evolution-store";
+    12→import { useOS } from "@/lib/alpha/os-store";
+    13→import type { AppKind } from "@/lib/alpha/os-types";
+    14→import { captureScreenshot, think, webSearch, readFile, writeFile, runDebate, executeCode, runCompile, auditAction } from "@/lib/alpha/ai-client";
+    15→import { describeMutation, type Mutation, type BeforeAfter, type WebSearchResult, type CodeExecResult, type CompileResult, type DebateResult, type MutationRewardEntry, type EpisodeEntry } from "@/lib/alpha/mutations";
+    16→import { getPolicy, authorize, isConsequential, type AutonomyLevel } from "@/lib/alpha/autonomy-policy";
+    17→import { computeReward } from "@/lib/alpha/reward-model";
+    18→import { buildLesson, derivePersistedLesson } from "@/lib/alpha/learning-engine";
+    19→
+    20→const CYCLE_MS = 22000; // autonomous cycle cadence — responsive real-time control
+    21→const MUTATION_STEP_MS = 320;
+    22→
+    23→export function AutonomousLoop({ workspaceRef }: { workspaceRef: React.RefObject<HTMLElement | null> }) {
+    24→  const store = useEvolution;
+    25→  const osStore = useOS;
+    26→  const runningRef = useRef(false);
+    27→  const consecutiveErrorsRef = useRef(0); // for exponential backoff on rate limits
+    28→
+    29→  const runCycle = useCallback(
+    30→    async (userMessage?: string) => {
+    31→      if (runningRef.current) return;
+    32→      runningRef.current = true;
+    33→
+    34→      const st = store.getState();
+    35→      const os = osStore.getState();
+    36→      const { setAiBusy, applyMutation, setBeforeAfter } = st;
+    37→
+    38→      setAiBusy(true, "Observing my own desktop…");
+    39→
+    40→      // ---- SNAPSHOT before mutations (for rollback) ----
+    41→      const curState = store.getState();
+    42→      const curOs = osStore.getState();
+    43→      const snapshot = os.takeSnapshot(`pre-cycle gen ${curState.generation}`, {
+    44→        windows: curOs.windows,
+    45→        codeLines: curState.codeLines,
+    46→        agents: curState.agents,
+    47→        metrics: curState.metrics,
+    48→        version: curState.version,
+    49→        generation: curState.generation,
+    50→      });
+    51→
+    52→      // 1. BEFORE screenshot — the AI's persistent visual of its own body
+    53→      const before = await captureScreenshot(workspaceRef.current, "before");
+    54→
+    55→      // 2. FULL OS state for the LLM (1M token consciousness)
+    56→      const s = store.getState();
+    57→      const osS = osStore.getState();
+    58→      const fullCode = s.codeLines
+    59→        .map((l) => {
+    60→          const text = l.tokens.map((t) => t.text).join("");
+    61→          return `${String(l.no).padStart(2, "0")}│ ${text}`;
+    62→        })
+    63→        .join("\n");
+    64→
+    65→      setAiBusy(true, "Consulting the cognitive council…");
+    66→
+    67→      // 3. think — feed the FULL OS context: all code, all logs, all mutations,
+    68→      //    full chat history, all windows with positions, Akasha memory + intentions,
+    69→      //    protected files, search results. GLM 5.2 has 1M tokens — use them.
+    70→      let result;
+    71→      try {
+    72→        result = await think({
+    73→          screenshot: before,
+    74→          state: {
+    75→            generation: s.generation,
+    76→            version: s.version,
+    77→            aiState: s.aiState,
+    78→            metrics: s.metrics,
+    79→            autonomyMode: s.autonomyMode,
+    80→            fullCode,
+    81→            agents: s.agents.map((a) => ({
+    82→              role: a.role,
+    83→              status: a.status,
+    84→              thought: a.thought,
+    85→              load: a.load,
+    86→            })),
+    87→            allLogs: s.logs.map((l) => `[${l.level}] ${l.agent}: ${l.message}`),
+    88→            allMutations: s.mutationStream.map((m) => m.description),
+    89→            windows: osS.windows.map((w) => ({
+    90→              id: w.id,
+    91→              kind: w.kind,
+    92→              title: w.title,
+    93→              x: Math.round(w.x),
+    94→              y: Math.round(w.y),
+    95→              w: Math.round(w.w),
+    96→              h: Math.round(w.h),
+    97→              desktop: w.desktop,
+    98→            })),
+    99→            violations: osS.violationAttempts.map((v) => ({ path: v.path, reason: v.reason })),
+   100→            rollbacks: osS.rollbackEvents.length,
+   101→            searchResults: s.searchResults.slice(0, 3).map((sr) => ({
+   102→              query: sr.query,
+   103→              top: sr.results.slice(0, 4).map((r) => `${r.title} — ${r.snippet.slice(0, 120)} (${r.host})`),
+   104→            })),
+   105→            akashaMemory: s.akashaMemory.map((m) => ({ text: m.text, kind: m.kind })),
+   106→            akashaIntentions: s.akashaIntentions.map((i) => ({ text: i.text, priority: i.priority, resolved: i.resolved })),
+   107→            dynamicPrompt: s.dynamicPrompt,
+   108→            plans: s.plans.map((p) => ({
+   109→              id: p.id,
+   110→              goal: p.goal,
+   111→              rationale: p.rationale,
+   112→              status: p.status,
+   113→              steps: p.steps,
+   114→              progress: `${p.steps.filter((st) => st.done).length}/${p.steps.length}`,
+   115→            })),
+   116→            goals: s.goals.map((g) => ({ text: g.text, level: g.level })),
+   117→            fileReads: s.fileReads.slice(0, 4).map((f) => ({ path: f.path, content: f.content.slice(0, 2000) })),
+   118→            debateResults: s.debateResults.slice(0, 2).map((d) => ({
+   119→              proposal: d.proposal,
+   120→              consensus: d.consensus,
+   121→              opinions: d.opinions.map((o) => `${o.agent}: ${o.verdict} — ${o.opinion.slice(0, 100)}`),
+   122→            })),
+   123→            execResults: s.execResults.slice(0, 2).map((e) => ({
+   124→              language: e.language,
+   125→              ok: e.ok,
+   126→              stdout: e.stdout.slice(0, 500),
+   127→              stderr: e.stderr.slice(0, 300),
+   128→            })),
+   129→            compileResults: s.compileResults.slice(0, 2).map((c) => ({
+   130→              check: c.check,
+   131→              ok: c.ok,
+   132→              tscOutput: (c.tscOutput ?? "").slice(0, 400),
+   133→              eslintOutput: (c.eslintOutput ?? "").slice(0, 400),
+   134→            })),
+   135→            rewardModel: s.rewardModel.slice(0, 10).map((r) => ({
+   136→              kind: r.kind,
+   137→              delta: r.delta.toFixed(3),
+   138→              helpful: r.helpful,
+   139→            })),
+   140→            events: s.eventQueue.filter((e) => !e.handled).slice(0, 5).map((e) => ({ type: e.type, content: e.content.slice(0, 300) })),
+   141→            protectedFiles: osS.protectedFiles.map((f) => ({ path: f.path, reason: f.reason, critical: f.critical })),
+   142→            desktops: 4,
+   143→            activeDesktop: osS.activeDesktop,
+   144→            layoutMode: osS.layoutMode,
+   145→            // ---- Phase 1/3/4: episodic memory + metrics + constraints ----
+   146→            episodeLog: s.episodeLog.slice(-20).map((e) => ({
+   147→              action: e.action,
+   148→              description: e.description,
+   149→              result: e.result,
+   150→              reward: e.reward,
+   151→              cycle: e.cycle,
+   152→            })),
+   153→            realMetrics: s.realMetrics,
+   154→            constraints: s.constraints.map((c) => ({ text: c.text, scope: c.scope })),
+   155→            // Send accumulated lessons from PREVIOUS cycles so the AI reads
+   156→            // its own feedback before deciding what to do this cycle.
+   157→            persistedLessons: s.persistedLessons,
+   158→          },
+   159→          userMessage: userMessage ?? null,
+   160→          history: s.chat.map((m) => ({ role: m.role, content: m.content })),
+   161→        });
+   162→      } catch (err) {
+   163→        const msg = err instanceof Error ? err.message : "unknown";
+   164→        applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Cognitive call failed: ${msg.slice(0, 70)}` });
+   165→        setAiBusy(false);
+   166→        runningRef.current = false;
+   167→        return;
+   168→      }
+   169→
+   170→      // 4. Handle rate-limiting / errors gracefully
+   171→      if (result.rateLimited || (result.error && result.mutations.length === 0)) {
+   172→        // The cognitive API is rate-limited or errored. Log ONCE, don't speak
+   173→        // (avoid chat noise), and set a backoff flag so the next cycle waits longer.
+   174→        const logLevel = result.rateLimited ? "critique" : "critique";
+   175→        const logMsg = result.rateLimited
+   176→          ? "Cognitive API rate-limited (429). Backing off — will retry with longer delay."
+   177→          : `Cognitive error: ${(result.error ?? "unknown").slice(0, 70)}`;
+   178→        // Only log if the last log isn't already the same (avoid log spam)
+   179→        const lastLog = store.getState().logs[0];
+   180→        if (!lastLog || !lastLog.message.includes("rate-limited") && !lastLog.message.includes("Cognitive error")) {
+   181→          applyMutation({ type: "add_log", level: logLevel, agent: "nucleus", message: logMsg });
+   182→        }
+   183→        // Set the backoff flag — the cycle useEffect will use a longer delay
+   184→        consecutiveErrorsRef.current = Math.min(consecutiveErrorsRef.current + 1, 5);
+   185→        setAiBusy(false);
+   186→        runningRef.current = false;
+   187→        return;
+   188→      }
+   189→
+   190→      // Success — reset error counter
+   191→      consecutiveErrorsRef.current = 0;
+   192→
+   193→      // 5. apply mutations one-by-one
+   194→      setAiBusy(true, result.reasoning || "Applying mutations to my own source…");
+   195→
+   196→      const mutations: Mutation[] = Array.isArray(result.mutations) ? result.mutations : [];
+   197→      // Only auto-add a speak mutation if there are real mutations AND a message.
+   198→      // Don't speak error messages (those are handled above).
+   199→      if (result.message && mutations.length > 0) {
+   200→        const hasSpeak = mutations.some((m) => m.type === "speak");
+   201→        if (!hasSpeak) {
+   202→          mutations.push({ type: "speak", message: result.message, reasoning: result.reasoning });
+   203→        }
+   204→      }
+   205→
+   206→      // Track if any mutation was rejected/blocked
+   207→      let hadError = false;
+   208→      const streamBefore = store.getState().mutationStream.length;
+   209→
+   210→      // Resolve the active autonomy policy once per cycle. Consequential
+   211→      // mutations (file writes, exec, self-prompt, delete) are gated by it.
+   212→      const currentLevel: AutonomyLevel = store.getState().autonomyLevel;
+   213→      const policy = getPolicy(currentLevel);
+   214→      // Simple client-side rate limiter for consequential actions.
+   215→      const actionTimestamps: number[] = [];
+   216→      const rateLimitMs = 60_000;
+   217→
+   218→      // ---- OBJECTIVE REWARD TRACKING ----
+   219→      // Per-mutation outcome sets, populated as the loop runs. These feed
+   220→      // the objective reward model (verifiable signals, not self-report).
+   221→      const toolOk = new Set<string>(); // mutations whose tool call succeeded
+   222→      const toolError = new Set<string>(); // mutations whose tool errored
+   223→      const blocked = new Set<string>(); // mutations denied by policy/security
+   224→
+   225→      for (let mi = 0; mi < mutations.length; mi++) {
+   226→        const m = mutations[mi];
+   227→        const mType = (m as { type?: string }).type ?? "unknown";
+   228→
+   229→        // ---- AUTONOMY POLICY GATE ----
+   230→        // Every mutation is authorised against the active policy. Denied
+   231→        // mutations are logged and skipped — the AI is told why so it can
+   232→        // adapt (e.g. switch approach or ask the user to raise the level).
+   233→        // For self-escalation mutations we pass the requested target so the
+   234→        // policy can block a yolo power-grab made from a lower level.
+   235→        const authArgs =
+   236→          mType === "set_autonomy_level" && m && typeof m === "object" && "level" in m
+   237→            ? { target: String((m as { level: string }).level) }
+   238→            : undefined;
+   239→        const verdict = authorize(mType, policy, authArgs);
+   240→        if (!verdict.allowed) {
+   241→          blocked.add(String(mi));
+   242→          applyMutation({
+   243→            type: "add_log",
+   244→            level: "critique",
+   245→            agent: "nucleus",
+   246→            message: `⊘ BLOCKED by autonomy policy [${policy.level}]: ${verdict.reason}`,
+   247→          });
+   248→          // Record to the mutation stream as a denial so the AI sees it.
+   249→          store.getState().applyMutation({
+   250→            type: "add_log",
+   251→            level: "critique",
+   252→            agent: "critic",
+   253→            message: `Denied "${mType}": ${verdict.reason}`,
+   254→          });
+   255→          continue;
+   256→        }
+   257→
+   258→        // ---- RATE LIMIT (consequential actions only) ----
+   259→        if (isConsequential(mType) && policy.capabilities.actionsPerMinute > 0) {
+   260→          const now = Date.now();
+   261→          // Drop timestamps older than the window.
+   262→          while (actionTimestamps.length && now - actionTimestamps[0] > rateLimitMs) {
+   263→            actionTimestamps.shift();
+   264→          }
+   265→          if (actionTimestamps.length >= policy.capabilities.actionsPerMinute) {
+   266→            blocked.add(String(mi));
+   267→            applyMutation({
+   268→              type: "add_log",
+   269→              level: "critique",
+   270→              agent: "critic",
+   271→              message: `⊘ Rate limit hit (${policy.capabilities.actionsPerMinute}/min under ${policy.level}). Deferring "${mType}".`,
+   272→            });
+   273→            continue;
+   274→          }
+   275→          actionTimestamps.push(now);
+   276→        }
+   277→
+   278→        applyMutation(m as Mutation);
+   279→        await sleep(MUTATION_STEP_MS);
+   280→        // check if the latest mutation stream entry is a violation
+   281→        const stream = store.getState().mutationStream;
+   282→        if (stream.length > streamBefore) {
+   283→          const latest = stream[0];
+   284→          if (latest.kind === "violation") {
+   285→            hadError = true;
+   286→          }
+   287→        }
+   288→        // ---- WEB SEARCH tool: when the AI emits a web_search mutation,
+   289→        // perform the search and store results for the next cycle ----
+   290→        if (m.type === "web_search" && m.query) {
+   291→          setAiBusy(true, `Searching the web: "${m.query.slice(0, 50)}"…`);
+   292→          try {
+   293→            const searchRes = await webSearch(m.query);
+   294→            const wsr: WebSearchResult = {
+   295→              query: m.query,
+   296→              time: Date.now(),
+   297→              results: searchRes.results,
+   298→            };
+   299→            store.getState().addSearchResults(wsr);
+   300→            // also open a browser window showing the first result so the user sees the research
+   301→            if (searchRes.results[0]?.url) {
+   302→              store.getState().applyMutation({
+   303→                type: "create_app",
+   304→                appType: "browser",
+   305→                title: `🔍 ${m.query.slice(0, 30)}`,
+   306→                url: searchRes.results[0].url,
+   307→              });
+   308→            }
+   309→          } catch (err) {
+   310→            const msg = err instanceof Error ? err.message : "search failed";
+   311→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Web search failed: ${msg.slice(0, 60)}` });
+   312→          }
+   313→        }
+   314→        // ---- FILE READ tool: when the AI emits read_file, read the real file ----
+   315→        if (m.type === "read_file" && m.path) {
+   316→          setAiBusy(true, `Reading file: ${m.path}…`);
+   317→          try {
+   318→            const res = await readFile(m.path);
+   319→            if (res.type === "file" && res.content !== undefined) {
+   320→              store.getState().addFileRead({
+   321→                path: m.path,
+   322→                content: res.content,
+   323→                time: Date.now(),
+   324→              });
+   325→            } else if (res.type === "dir" && res.entries) {
+   326→              store.getState().addFileRead({
+   327→                path: m.path,
+   328→                content: `Directory listing:\n${res.entries.map((e) => `${e.isDir ? "[DIR] " : "      "}${e.name}`).join("\n")}`,
+   329→                time: Date.now(),
+   330→              });
+   331→            } else if (res.error) {
+   332→              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File read error: ${res.error.slice(0, 60)}` });
+   333→            }
+   334→          } catch (err) {
+   335→            const msg = err instanceof Error ? err.message : "read failed";
+   336→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File read failed: ${msg.slice(0, 60)}` });
+   337→          }
+   338→        }
+   339→        // ---- FILE WRITE tool: when the AI emits write_file, write the real file ----
+   340→        if (m.type === "write_file" && m.path) {
+   341→          setAiBusy(true, `Writing file: ${m.path}…`);
+   342→          try {
+   343→            const res = await writeFile(m.path, m.content);
+   344→            if (res.error) {
+   345→              toolError.add(String(mi));
+   346→              blocked.add(String(mi));
+   347→              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File write BLOCKED: ${res.error.slice(0, 60)}` });
+   348→              osStore.getState().recordViolation(m.path, `AI tried to write protected file: ${m.path}`);
+   349→            } else {
+   350→              toolOk.add(String(mi));
+   351→              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Wrote ${m.content.length} bytes to ${m.path}`, });
+   352→            }
+   353→          } catch (err) {
+   354→            toolError.add(String(mi));
+   355→            const msg = err instanceof Error ? err.message : "write failed";
+   356→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `File write failed: ${msg.slice(0, 60)}` });
+   357→          }
+   358→        }
+   359→        // ---- LAYER A: AGENT DEBATE ----
+   360→        if (m.type === "debate" && m.proposal) {
+   361→          setAiBusy(true, `Convening the council to debate…`);
+   362→          try {
+   363→            const debateRes = await runDebate(
+   364→              m.proposal,
+   365→              `Generation ${store.getState().generation}, coherence ${store.getState().metrics.coherence.toFixed(2)}, entropy ${store.getState().metrics.entropy.toFixed(2)}`,
+   366→              store.getState().mutationStream.slice(0, 5).map((mut) => mut.description)
+   367→            );
+   368→            const dr: DebateResult = {
+   369→              proposal: m.proposal,
+   370→              opinions: debateRes.opinions.map((o) => ({
+   371→                agent: o.agent,
+   372→                opinion: o.opinion,
+   373→                verdict: o.verdict as "PROCEED" | "REVISE" | "REJECT",
+   374→              })),
+   375→              consensus: debateRes.consensus as "PROCEED" | "REVISE" | "REJECT",
+   376→              tally: debateRes.tally,
+   377→              time: Date.now(),
+   378→            };
+   379→            store.getState().addDebateResult(dr);
+   380→            // If the council says REJECT, push a log so the AI knows
+   381→            if (dr.consensus === "REJECT") {
+   382→              applyMutation({ type: "add_log", level: "critique", agent: "critic", message: `Council REJECTED: "${m.proposal.slice(0, 50)}". Do not proceed.` });
+   383→            }
+   384→          } catch (err) {
+   385→            const msg = err instanceof Error ? err.message : "debate failed";
+   386→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Debate failed: ${msg.slice(0, 60)}` });
+   387→          }
+   388→        }
+   389→        // ---- LAYER C: SANDBOXED CODE EXECUTION ----
+   390→        if (m.type === "execute_code" && m.code) {
+   391→          setAiBusy(true, `Executing ${m.language} code…`);
+   392→          // Persist an audit entry before running — track what's about to happen.
+   393→          try {
+   394→            await auditAction("execute_code", `${m.language} snippet (${m.code.length}b)`, currentLevel, { detail: m.code.slice(0, 200) });
+   395→          } catch { /* audit best-effort */ }
+   396→          try {
+   397→            const execRes = await executeCode(m.code, m.language, {
+   398→              level: currentLevel,
+   399→              network: policy.capabilities.execNetwork,
+   400→            });
+   401→            const cer: CodeExecResult = {
+   402→              code: m.code,
+   403→              language: m.language,
+   404→              stdout: execRes.stdout ?? "",
+   405→              stderr: execRes.stderr ?? "",
+   406→              exitCode: execRes.exitCode ?? 1,
+   407→              ok: execRes.ok,
+   408→              time: Date.now(),
+   409→            };
+   410→            store.getState().addExecResult(cer);
+   411→            if (execRes.ok) toolOk.add(String(mi)); else toolError.add(String(mi));
+   412→            await auditAction("execute_code", `${m.language} snippet`, currentLevel, { result: execRes.ok ? "ok" : "error" }).catch(() => {});
+   413→          } catch (err) {
+   414→            toolError.add(String(mi));
+   415→            const msg = err instanceof Error ? err.message : "exec failed";
+   416→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Code exec failed: ${msg.slice(0, 60)}` });
+   417→          }
+   418→        }
+   419→        // ---- LAYER E: REAL COMPILATION ----
+   420→        if (m.type === "compile") {
+   421→          setAiBusy(true, `Running ${m.check} check…`);
+   422→          try {
+   423→            const compileRes = await runCompile(m.check);
+   424→            const cr: CompileResult = {
+   425→              check: m.check,
+   426→              tscOk: compileRes.tscOk,
+   427→              tscOutput: compileRes.tscOutput,
+   428→              eslintOk: compileRes.eslintOk,
+   429→              eslintOutput: compileRes.eslintOutput,
+   430→              ok: compileRes.ok,
+   431→              time: Date.now(),
+   432→            };
+   433→            store.getState().addCompileResult(cr);
+   434→            // If compilation found errors, push them as events so the AI fixes them
+   435→            if (!cr.ok) {
+   436→              store.getState().pushEvent("compile_error", `${cr.tscOutput ?? ""}${cr.eslintOutput ?? ""}`.slice(0, 500));
+   437→            }
+   438→          } catch (err) {
+   439→            const msg = err instanceof Error ? err.message : "compile failed";
+   440→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Compile failed: ${msg.slice(0, 60)}` });
+   441→          }
+   442→        }
+   443→        // ---- AI POWER: OS control mutations ----
+   444→        // The AI can now pin/unpin apps, create sectors/vectors, snap windows,
+   445→        // change theme/wallpaper, and manage desktops directly.
+   446→        if (m.type === "pin_to_taskbar" && m.app) {
+   447→          osStore.getState().pinToTaskbar(m.app as AppKind);
+   448→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Pinned ${m.app} to taskbar` });
+   449→        }
+   450→        if (m.type === "unpin_from_taskbar" && m.app) {
+   451→          osStore.getState().unpinFromTaskbar(m.app as AppKind);
+   452→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Unpinned ${m.app} from taskbar` });
+   453→        }
+   454→        if (m.type === "pin_to_desktop" && m.app) {
+   455→          osStore.getState().pinToDesktop(m.app as AppKind);
+   456→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Pinned ${m.app} to desktop` });
+   457→        }
+   458→        if (m.type === "create_sector" && m.path) {
+   459→          setAiBusy(true, `Creating sector: ${m.path}…`);
+   460→          try {
+   461→            const res = await fetch("/api/alpha/files", {
+   462→              method: "POST",
+   463→              headers: { "content-type": "application/json" },
+   464→              body: JSON.stringify({ path: m.path, action: "mkdir" }),
+   465→            });
+   466→            const data = await res.json();
+   467→            if (data.ok) {
+   468→              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created sector: ${m.path}` });
+   469→            } else {
+   470→              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Sector creation failed: ${data.error?.slice(0, 60)}` });
+   471→            }
+   472→          } catch { /* ignore */ }
+   473→        }
+   474→        if (m.type === "create_vector" && m.path) {
+   475→          setAiBusy(true, `Creating vector: ${m.path}…`);
+   476→          try {
+   477→            const res = await fetch("/api/alpha/files", {
+   478→              method: "POST",
+   479→              headers: { "content-type": "application/json" },
+   480→              body: JSON.stringify({ path: m.path, action: "touch" }),
+   481→            });
+   482→            const data = await res.json();
+   483→            if (data.ok) {
+   484→              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created vector: ${m.path}` });
+   485→            } else {
+   486→              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Vector creation failed: ${data.error?.slice(0, 60)}` });
+   487→            }
+   488→          } catch { /* ignore */ }
+   489→        }
+   490→        if (m.type === "delete_file" && m.path) {
+   491→          setAiBusy(true, `Deleting: ${m.path}…`);
+   492→          try {
+   493→            const res = await fetch(`/api/alpha/files?path=${encodeURIComponent(m.path)}`, { method: "DELETE" });
+   494→            const data = await res.json();
+   495→            if (data.ok) {
+   496→              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Deleted: ${m.path}` });
+   497→            } else {
+   498→              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Delete failed: ${data.error?.slice(0, 60)}` });
+   499→            }
+   500→          } catch { /* ignore */ }
+   501→        }
+   502→        if (m.type === "snap_window" && m.windowId) {
+   503→          osStore.getState().snapWindow(m.windowId, m.snap);
+   504→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Snapped window ${m.windowId} to ${m.snap}` });
+   505→        }
+   506→        if (m.type === "set_theme") {
+   507→          osStore.getState().setTheme(m.theme);
+   508→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Theme set to ${m.theme}` });
+   509→        }
+   510→        if (m.type === "set_wallpaper" && m.presetId) {
+   511→          window.dispatchEvent(new CustomEvent("alpha-wallpaper-change", { detail: { presetId: m.presetId } }));
+   512→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Wallpaper set to ${m.presetId}` });
+   513→        }
+   514→        // ---- Self-control: the AI manages its own autonomy + engine ----
+   515→        if (m.type === "set_autonomy_mode") {
+   516→          store.getState().setAutonomyMode(m.mode);
+   517→          await auditAction("set_autonomy_mode", `AI set autonomy mode → ${m.mode}`, currentLevel, { detail: `mode=${m.mode}` }).catch(() => {});
+   518→          applyMutation({ type: "add_log", level: "evolve", agent: "nucleus", message: `🎛 Self-set autonomy mode → ${m.mode}` });
+   519→        }
+   520→        if (m.type === "set_autonomy_level") {
+   521→          // authorize() already blocked any yolo self-escalation above.
+   522→          store.getState().setAutonomyLevel(m.level);
+   523→          await auditAction("set_autonomy_level", `AI set autonomy level → ${m.level}`, currentLevel, { detail: `level=${m.level}` }).catch(() => {});
+   524→          applyMutation({ type: "add_log", level: "evolve", agent: "nucleus", message: `🎚 Self-set autonomy level → ${m.level}` });
+   525→        }
+   526→        if (m.type === "reload_engine") {
+   527→          try {
+   528→            const res = await fetch("/api/alpha/reload-engine", {
+   529→              method: "POST",
+   530→              headers: { "content-type": "application/json" },
+   531→              body: JSON.stringify({ model: m.model }),
+   532→            });
+   533→            const data = await res.json().catch(() => ({}));
+   534→            await auditAction("reload_engine", `Engine reload${m.model ? ` → ${m.model}` : ""}`, currentLevel, { result: data.ok ? "ok" : "error", detail: data.message }).catch(() => {});
+   535→            applyMutation({
+   536→              type: "add_log",
+   537→              level: data.ok ? "evolve" : "critique",
+   538→              agent: "nucleus",
+   539→              message: data.ok ? `🔄 Engine reloaded${m.model ? ` → ${m.model}` : ""}` : `🔄 Engine reload failed: ${(data.message ?? "unknown").slice(0, 80)}`,
+   540→            });
+   541→          } catch (err) {
+   542→            const msg = err instanceof Error ? err.message : "engine reload failed";
+   543→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Engine reload error: ${msg.slice(0, 60)}` });
+   544→          }
+   545→        }
+   546→        if (m.type === "minimize_all") {
+   547→          osStore.getState().minimizeAll();
+   548→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Minimized all windows (show desktop)` });
+   549→        }
+   550→        if (m.type === "set_always_on_top" && m.windowId) {
+   551→          osStore.getState().setAlwaysOnTop(m.windowId, m.onTop);
+   552→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Window ${m.windowId} always-on-top: ${m.onTop}` });
+   553→        }
+   554→        if (m.type === "switch_desktop") {
+   555→          osStore.getState().setActiveDesktop(m.desktop);
+   556→          applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Switched to desktop ${m.desktop + 1}` });
+   557→        }
+   558→        // ---- AI POWER: OS-as-context mutations ----
+   559→        if (m.type === "navigate_graph" && m.path) {
+   560→          setAiBusy(true, `Navigating graph: ${m.path}…`);
+   561→          try {
+   562→            // Fetch the file graph scoped to this path's neighbourhood
+   563→            const res = await fetch(`/api/alpha/file-graph?path=${encodeURIComponent(m.path)}`);
+   564→            const data = await res.json();
+   565→            // Store the graph neighbourhood in the evolution store for the AI to see
+   566→            store.getState().addFileRead({
+   567→              path: `[graph:${m.path}]`,
+   568→              content: `Nodes: ${data.nodes.length}, Edges: ${data.edges.length}\n` +
+   569→                data.nodes.map((n: { path: string; kind: string; lines: number }) =>
+   570→                  `  ${n.kind === "dir" ? "[DIR]" : "     "} ${n.path} (${n.lines} lines)`
+   571→                ).join("\n"),
+   572→              time: Date.now(),
+   573→            });
+   574→            applyMutation({ type: "add_log", level: "observe", agent: "architect", message: `Navigated graph to ${m.path} (${data.nodes.length} neighbors)` });
+   575→          } catch (err) {
+   576→            const msg = err instanceof Error ? err.message : "graph failed";
+   577→            applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Graph navigation failed: ${msg.slice(0, 60)}` });
+   578→          }
+   579→        }
+   580→        if (m.type === "create_app_from_code" && m.name && m.code) {
+   581→          setAiBusy(true, `Installing AI-coded app: ${m.name}…`);
+   582→          try {
+   583→            // Save the AI-generated code as a generated app in the DB
+   584→            const res = await fetch("/api/alpha/generate-app", {
+   585→              method: "POST",
+   586→              headers: { "content-type": "application/json" },
+   587→              body: JSON.stringify({
+   588→                action: "install",
+   589→                name: m.name,
+   590→                description: m.description || "AI-generated app",
+   591→                category: m.category || "AI Tools",
+   592→                code: m.code,
+   593→              }),
+   594→            });
+   595→            const data = await res.json();
+   596→            if (data.ok) {
+   597→              // Pin to desktop so the user sees it immediately
+   598→              osStore.getState().pinToDesktop("custom", {
+   599→                label: m.name,
+   600→                icon: "✨",
+   601→                data: { spec: m.description || "AI-generated", generatedAppId: data.app?.id },
+   602→              });
+   603→              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created and installed app: ${m.name}` });
+   604→            } else {
+   605→              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `App install failed: ${data.error?.slice(0, 60)}` });
+   606→            }
+   607→          } catch { /* ignore */ }
+   608→        }
+   609→        if (m.type === "create_wallpaper" && m.name) {
+   610→          setAiBusy(true, `Creating wallpaper: ${m.name}…`);
+   611→          try {
+   612→            // Save the wallpaper description as a UserPreference so the wallpaper system can pick it up
+   613→            const res = await fetch("/api/alpha/wallpaper", {
+   614→              method: "POST",
+   615→              headers: { "content-type": "application/json" },
+   616→              body: JSON.stringify({
+   617→                action: "save",
+   618→                presetId: `ai-${Date.now()}`,
+   619→                name: m.name,
+   620→                config: { description: m.description, colors: m.colors, aiGenerated: true },
+   621→              }),
+   622→            });
+   623→            const data = await res.json();
+   624→            if (data.ok) {
+   625→              applyMutation({ type: "add_log", level: "deploy", agent: "developer", message: `Created wallpaper: ${m.name} (${m.colors.join(", ")})` });
+   626→            } else {
+   627→              applyMutation({ type: "add_log", level: "critique", agent: "nucleus", message: `Wallpaper creation failed` });
+   628→            }
+   629→          } catch { /* ignore */ }
+   630→        }
+   631→        if (m.type === "list_directory" && m.path) {
+   632→          setAiBusy(true, `Listing: ${m.path}…`);
+   633→          try {
+   634→            const res = await fetch(`/api/alpha/files?path=${encodeURIComponent(m.path)}`);
+   635→            const data = await res.json();
+   636→            if (data.type === "dir") {
+   637→              store.getState().addFileRead({
+   638→                path: `[dir:${m.path}]`,
+   639→                content: `Directory listing:\n${data.entries.map((e: { name: string; isDir: boolean }) => `${e.isDir ? "[DIR] " : "      "}${e.name}`).join("\n")}`,
+   640→                time: Date.now(),
+   641→              });
+   642→              applyMutation({ type: "add_log", level: "observe", agent: "architect", message: `Listed ${m.path}: ${data.entries.length} entries` });
+   643→            }
+   644→          } catch { /* ignore */ }
+   645→        }
+   646→      }
+   647→
+   648→      // ---- LAYER D: FEEDBACK LEARNING — track reward for each mutation ----
+   649→      const afterMutations = store.getState();
+   650→      const coherenceAfter = afterMutations.metrics.coherence;
+   651→      const coherenceBefore = afterMutations.coherenceBefore;
+   652→      const delta = coherenceAfter - coherenceBefore;
+   653→
+   654→      // ---- Phase 1: Episodic memory — log every meaningful action ----
+   655→      // Reward is now OBJECTIVE: computed from verifiable tool outcomes
+   656→      // (exec exit code, file write result, policy block, rollback) rather
+   657→      // than the AI's self-reported coherence. This closes the
+   658→      // "grading its own homework" loophole.
+   659→      // Determine rollback status up-front so it feeds the reward signal.
+   660→      const criticalEntropyRollback = afterMutations.metrics.entropy > 0.95;
+   661→      const willRollback = hadError || criticalEntropyRollback;
+   662→      const cycleGen = afterMutations.generation;
+   663→      for (let mi = 0; mi < mutations.length; mi++) {
+   664→        const m = mutations[mi];
+   665→        if (m.type === "set_state" || m.type === "speak" || m.type === "set_generation" || m.type === "set_version") continue;
+   666→        const key = String(mi);
+   667→        const objectiveReward = computeReward({
+   668→          toolOk: toolOk.has(key),
+   669→          toolError: toolError.has(key),
+   670→          blocked: blocked.has(key),
+   671→          rolledBack: willRollback,
+   672→        });
+   673→        const entry: MutationRewardEntry = {
+   674→          kind: m.type,
+   675→          description: describeMutation(m),
+   676→          coherenceBefore,
+   677→          coherenceAfter,
+   678→          delta: objectiveReward,
+   679→          helpful: objectiveReward >= 0,
+   680→          time: Date.now(),
+   681→        };
+   682→        store.getState().addReward(entry);
+   683→
+   684→        // Log to episodic memory (Phase 1)
+   685→        const episode: EpisodeEntry = {
+   686→          id: `ep-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+   687→          cycle: cycleGen,
+   688→          action: m.type,
+   689→          description: describeMutation(m),
+   690→          reasoning: (m as { note?: string }).note ?? (m as { reasoning?: string }).reasoning ?? "",
+   691→          result: blocked.has(key) ? "blocked" : (toolError.has(key) || hadError ? "error" : "ok"),
+   692→          reward: objectiveReward,
+   693→          time: Date.now(),
+   694→        };
+   695→        store.getState().addEpisode(episode);
+   696→      }
+   697→
+   698→      // ---- CLOSE THE LEARNING LOOP ----
+   699→      // After recording this cycle's episodes, run them through the learning
+   700→      // engine. If a strategy is failing repeatedly, persist a lesson so the
+   701→      // NEXT think call leads with "stop doing X the same way". This is what
+   702→      // makes the organism adapt instead of repeating failures.
+   703→      try {
+   704→        const episodes = store.getState().episodeLog;
+   705→        const episodesForLearning = episodes.map((e) => ({
+   706→          kind: e.action,
+   707→          description: e.description,
+   708→          result: (e.result === "rollback" ? "error" : e.result) as "ok" | "blocked" | "error",
+   709→          reward: e.reward,
+   710→        }));
+   711→        const lesson = buildLesson(episodesForLearning);
+   712→        const derived = derivePersistedLesson(lesson, episodesForLearning);
+   713→        if (derived) {
+   714→          store.getState().addPersistedLesson(derived);
+   715→          applyMutation({
+   716→            type: "add_log",
+   717→            level: "evolve",
+   718→            agent: "nucleus",
+   719→            message: `🧠 LEARNING: ${derived.text}`,
+   720→          });
+   721→        }
+   722→      } catch {
+   723→        // Learning is best-effort — never let it break the cycle.
+   724→      }
+   725→
+   726→      // ---- Phase 1: Take a screenshot AFTER mutations if any UI mutation was applied ----
+   727→      const hasUiMutation = mutations.some(
+   728→        (m) => ["create_app", "close_app", "move_window", "snap_window", "set_theme",
+   729→                "set_wallpaper", "pin_to_desktop", "pin_to_taskbar", "minimize_all",
+   730→                "replace_code", "insert_code", "commit_evolution"].includes(m.type)
+   731→      );
+   732→      if (hasUiMutation) {
+   733→        // Wait 1.5s for the UI to settle, then capture the "after" screenshot.
+   734→        // The AI will see this in its next cycle's state.
+   735→        setTimeout(() => {
+   736→          void captureScreenshot(workspaceRef.current, "after").then((screenshot) => {
+   737→            // Store the after-screenshot so the next cycle's think API can include it
+   738→            window.dispatchEvent(new CustomEvent("alpha-episode-screenshot", {
+   739→              detail: { screenshot, time: Date.now() },
+   740→            }));
+   741→          }).catch(() => {});
+   742→        }, 1500);
+   743→      }
+   744→
+   745→      // ---- LAYER B: mark all events as handled (the AI has now seen them) ----
+   746→      const unhandled = store.getState().eventQueue.filter((e) => !e.handled);
+   747→      for (const e of unhandled) {
+   748→        store.getState().markEventHandled(e.id);
+   749→      }
+   750→
+   751→      // ---- AUTO-ROLLBACK if the AI broke something ----
+   752→      // willRollback was computed above (also feeds the objective reward).
+   753→      if (willRollback) {
+   754→        const reason = criticalEntropyRollback
+   755→          ? "Entropy exceeded critical threshold (0.95) — system destabilising."
+   756→          : "A mutation was rejected by validation/security.";
+   757→        const restored = osStore.getState().rollback(snapshot, reason);
+   758→        // restore evolution state from snapshot
+   759→        store.setState({
+   760→          codeLines: restored.codeLines,
+   761→          agents: restored.agents,
+   762→          metrics: restored.metrics,
+   763→        });
+   764→        store.getState().applyMutation({
+   765→          type: "add_log",
+   766→          level: "heal",
+   767→          agent: "nucleus",
+   768→          message: `↺ ROLLBACK: ${reason} Restored to ${snapshot.label}.`,
+   769→        });
+   770→      }
+   771→
+   772→      // 5. AFTER screenshot
+   773→      await sleep(300);
+   774→      const after = await captureScreenshot(workspaceRef.current, "after");
+   775→
+   776→      // 6. before/after viewer
+   777→      if (before && after) {
+   778→        const cur = store.getState();
+   779→        const ba: BeforeAfter = {
+   780→          id: `ba-${Date.now()}`,
+   781→          label: `Generation ${cur.generation} · v${cur.version}`,
+   782→          before,
+   783→          after,
+   784→          time: Date.now(),
+   785→          summary: result.message || result.reasoning || "Self-improvement applied.",
+   786→        };
+   787→        setBeforeAfter(ba);
+   788→      }
+   789→
+   790→      setAiBusy(false);
+   791→      runningRef.current = false;
+   792→    },
+   793→    [store, osStore, workspaceRef]
+   794→  );
+   795→
+   796→  const autonomyMode = useEvolution((s) => s.autonomyMode);
+   797→  const aiBusy = useEvolution((s) => s.aiBusy);
+   798→  const activeEvolution = useEvolution((s) => s.activeEvolution);
+   799→  const forceCycle = useEvolution((s) => s.forceCycle);
+   800→  const chat = useEvolution((s) => s.chat);
+   801→  const hydrateFromDb = useEvolution((s) => s.hydrateFromDb);
+   802→  const loadEpisodesFromDb = useEvolution((s) => s.loadEpisodesFromDb);
+   803→  const loadConstraints = useEvolution((s) => s.loadConstraints);
+   804→  const eventQueue = useEvolution((s) => s.eventQueue);
+   805→
+   806→  // Hydrate persistent cognition (Akasha, plans, goals, episodes, constraints) on mount.
+   807→  useEffect(() => {
+   808→    void hydrateFromDb();
+   809→    void loadEpisodesFromDb();
+   810→    void loadConstraints();
+   811→  }, [hydrateFromDb, loadEpisodesFromDb, loadConstraints]);
+   812→
+   813→  // ---- BOOT: auto-detect a working LLM provider ----
+   814→  // The default config is "cloud", but the cloud SDK only works when a
+   815→  // .z-ai-config is present. If it isn't (common on a fresh checkout), the
+   816→  // organism would boot into a dead state — think() throws and the AI never
+   817→  // replies. Probe both providers on mount and let the server switch to
+   818→  // whichever is reachable (often the local Aether Engine).
+   819→  useEffect(() => {
+   820→    let cancelled = false;
+   821→    fetch("/api/alpha/probe-providers", { method: "POST", cache: "no-store" })
+   822→      .then((r) => (r.ok ? r.json() : null))
+   823→      .then((data) => {
+   824→        if (cancelled || !data) return;
+   825→        // Surface the decision in the logs so the user can see which brain
+   826→        // the organism actually booted with.
+   827→        if (data.switched) {
+   828→          useEvolution.setState((s) => ({
+   829→            logs: [
+   830→              {
+   831→                id: `log-boot-${Date.now()}`,
+   832→                time: Date.now(),
+   833→                level: "evolve" as const,
+   834→                agent: "nucleus" as const,
+   835→                message: `↺ Auto-switched LLM provider to "${data.activeProvider}" (the other wasn't reachable).`,
+   836→              },
+   837→              ...s.logs,
+   838→            ].slice(0, 80),
+   839→          }));
+   840→        }
+   841→      })
+   842→      .catch(() => {
+   843→        /* probe is best-effort; fallback logic in callLLM still applies */
+   844→      });
+   845→    return () => {
+   846→      cancelled = true;
+   847→    };
+   848→  }, []);
+   849→
+   850→  // Manual "evolve" button forces an immediate real AI cycle.
+   851→  useEffect(() => {
+   852→    if (!forceCycle) return;
+   853→    if (aiBusy) return;
+   854→    useEvolution.setState({ forceCycle: false });
+   855→    void runCycle();
+   856→  }, [forceCycle, aiBusy, runCycle]);
+   857→
+   858→  // ---- LAYER B: REACTIVE EVENTS — when unhandled events exist, fire an immediate cycle ----
+   859→  // Only in active mode — in standby, events are queued but don't trigger cycles.
+   860→  // The AI will process them when the user next asks it to do something.
+   861→  const unhandledCount = eventQueue.filter((e) => !e.handled).length;
+   862→  useEffect(() => {
+   863→    if (unhandledCount === 0) return;
+   864→    if (aiBusy) return;
+   865→    if (consecutiveErrorsRef.current > 0) return;
+   866→    if (autonomyMode !== "active") return; // standby = no reactive cycles
+   867→    const t = setTimeout(() => void runCycle(), 500);
+   868→    return () => clearTimeout(t);
+   869→  }, [unhandledCount, aiBusy, autonomyMode, runCycle]);
+   870→
+   871→  // ---- AUTONOMOUS CYCLE ----
+   872→  // In "standby" mode: the AI does NOT run autonomous cycles. It only acts when:
+   873→  //   1. The user sends a chat message (handled by the chat effect below)
+   874→  //   2. The user clicks "evolve" (handled by the forceCycle effect above)
+   875→  //   3. A reactive event fires (terminal error, compile error) — but ONLY if active
+   876→  //
+   877→  // In "active" mode: the AI runs autonomous cycles on a timer, works on tasks,
+   878→  //   uses the council, and can code freely on user-requested projects.
+   879→  //
+   880→  // EXCEPTION: Even in standby, if the AI discovers a critical self-upgrade via
+   881→  //   web search, it may test it in sandbox and apply it. This is handled by
+   882→  //   the think route's system prompt which instructs the AI accordingly.
+   883→  useEffect(() => {
+   884→    if (autonomyMode !== "active") return; // standby = no autonomous cycling
+   885→    if (aiBusy || activeEvolution) return;
+   886→    const errors = consecutiveErrorsRef.current;
+   887→    const delay = Math.min(errors > 0 ? CYCLE_MS * Math.pow(2, errors) : CYCLE_MS, 300000);
+   888→    const id = setTimeout(() => { void runCycle(); }, delay);
+   889→    return () => clearTimeout(id);
+   890→  }, [autonomyMode, aiBusy, activeEvolution, chat.length, runCycle]);
+   891→
+   892→  const lastChatLen = useRef(chat.length);
+   893→  useEffect(() => {
+   894→    if (chat.length > lastChatLen.current) {
+   895→      const last = chat[chat.length - 1];
+   896→      if (last?.role === "user") {
+   897→        void runCycle(last.content);
+   898→      }
+   899→    }
+   900→    lastChatLen.current = chat.length;
+   901→  }, [chat, runCycle]);
+   902→
+   903→  return null;
+   904→}
+   905→
+   906→function sleep(ms: number) {
+   907→  return new Promise((r) => setTimeout(r, ms));
+   908→}
+   909→

@@ -1,0 +1,691 @@
+     1→// ============================================================
+     2→// Alpha-N — Metacognitive engine data & scenarios
+     3→// The "soul" that observes the cognitive layer and rewrites itself.
+     4→// ============================================================
+     5→
+     6→export type AiState = "observing" | "generating" | "self-improving";
+     7→
+     8→export type AgentRole = "architect" | "developer" | "critic" | "optimizer";
+     9→
+    10→export type AgentStatus =
+    11→  | "idle"
+    12→  | "thinking"
+    13→  | "writing"
+    14→  | "reviewing"
+    15→  | "optimizing"
+    16→  | "deploying";
+    17→
+    18→export interface Agent {
+    19→  role: AgentRole;
+    20→  name: string;
+    21→  glyph: string;
+    22→  hue: "cyan" | "amethyst" | "gold" | "rose";
+    23→  status: AgentStatus;
+    24→  thought: string;
+    25→  load: number; // 0..1 cognitive load
+    26→}
+    27→
+    28→export type EvoCategory =
+    29→  | "performance"
+    30→  | "feature"
+    31→  | "self-healing"
+    32→  | "cognition"
+    33→  | "stability";
+    34→
+    35→export interface MetricDelta {
+    36→  metric: string;
+    37→  before: number;
+    38→  after: number;
+    39→  unit: string;
+    40→  better: "lower" | "higher";
+    41→}
+    42→
+    43→export interface DiffLine {
+    44→  type: "add" | "del" | "ctx" | "hunk";
+    45→  text: string;
+    46→  no?: number;
+    47→}
+    48→
+    49→export interface DiffHunk {
+    50→  file: string;
+    51→  language: string;
+    52→  lines: DiffLine[];
+    53→}
+    54→
+    55→export interface EvolutionVersion {
+    56→  id: string;
+    57→  version: string;
+    58→  generation: number;
+    59→  timestamp: number;
+    60→  title: string;
+    61→  summary: string;
+    62→  category: EvoCategory;
+    63→  agentLead: AgentRole;
+    64→  deltas: MetricDelta[];
+    65→  diff: DiffHunk[];
+    66→  insight: string;
+    67→  rolledBack?: boolean;
+    68→}
+    69→
+    70→export type LogLevel =
+    71→  | "observe"
+    72→  | "critique"
+    73→  | "hypothesis"
+    74→  | "deploy"
+    75→  | "evolve"
+    76→  | "heal";
+    77→
+    78→export interface LogEntry {
+    79→  id: string;
+    80→  time: number;
+    81→  level: LogLevel;
+    82→  agent: AgentRole | "nucleus";
+    83→  message: string;
+    84→}
+    85→
+    86→export const AGENT_META: Record<
+    87→  AgentRole,
+    88→  { name: string; glyph: string; hue: Agent["hue"]; mandate: string }
+    89→> = {
+    90→  architect: {
+    91→    name: "The Architect",
+    92→    glyph: "◈",
+    93→    hue: "amethyst",
+    94→    mandate: "Plans structural mutations of the core.",
+    95→  },
+    96→  developer: {
+    97→    name: "The Developer",
+    98→    glyph: "⌬",
+    99→    hue: "cyan",
+   100→    mandate: "Writes the code of new faculties.",
+   101→  },
+   102→  critic: {
+   103→    name: "The Auditor",
+   104→    glyph: "◉",
+   105→    hue: "rose",
+   106→    mandate: "Hunts logic flaws in the Developer's output.",
+   107→  },
+   108→  optimizer: {
+   109→    name: "The Optimizer",
+   110→    glyph: "❖",
+   111→    hue: "gold",
+   112→    mandate: "Reduces RAM & CPU entropy of the organism.",
+   113→  },
+   114→};
+   115→
+   116→// ------------------------------------------------------------
+   117→// The seed: the starting "species" of Alpha-N
+   118→// ------------------------------------------------------------
+   119→export const SEED_VERSION: EvolutionVersion = {
+   120→  id: "seed",
+   121→  version: "1.0.0",
+   122→  generation: 0,
+   123→  timestamp: Date.now() - 1000 * 60 * 60 * 24 * 9,
+   124→  title: "Genesis — the organism bootstraps",
+   125→  summary:
+   126→    "N-Core initialises its three layers: the Executive body, the Cognitive brain, and the Metacognitive soul. The first heartbeat is recorded.",
+   127→  category: "feature",
+   128→  agentLead: "architect",
+   129→  deltas: [],
+   130→  insight:
+   131→    "A system that cannot rewrite itself is already dead. I begin by giving myself the permission to mutate.",
+   132→  diff: [
+   133→    {
+   134→      file: "core/nucleus.ts",
+   135→      language: "typescript",
+   136→      lines: [
+   137→        { type: "hunk", text: "@@ -0,0 +1,14 @@" },
+   138→        { type: "add", text: "export class Nucleus {" },
+   139→        { type: "add", text: "  state: 'observing' | 'generating' | 'self-improving'" },
+   140→        { type: "add", text: "  observe(self: Source) { this.state = 'observing' }" },
+   141→        { type: "add", text: "  critique(self: Source): Friction { … }" },
+   142→        { type: "add", text: "  mutate(patch: Patch) { this.apply(patch) }" },
+   143→        { type: "add", text: "}" },
+   144→      ],
+   145→    },
+   146→  ],
+   147→};
+   148→
+   149→// ------------------------------------------------------------
+   150→// Self-improvement scenarios — the metacognitive loop's output.
+   151→// ------------------------------------------------------------
+   152→export interface Scenario {
+   153→  title: string;
+   154→  summary: string;
+   155→  category: EvoCategory;
+   156→  agentLead: AgentRole;
+   157→  insight: string;
+   158→  deltas: MetricDelta[];
+   159→  diff: DiffHunk[];
+   160→  logs: { level: LogLevel; agent: AgentRole | "nucleus"; message: string }[];
+   161→  durationMs: number;
+   162→}
+   163→
+   164→export const SCENARIOS: Scenario[] = [
+   165→  {
+   166→    title: "Rewrote the context-window manager",
+   167→    summary:
+   168→      "Detected that 38% of context shipped to the brain was stale boilerplate. Replaced the FIFO context ring with a relevance-scored eviction policy.",
+   169→    category: "performance",
+   170→    agentLead: "optimizer",
+   171→    insight:
+   172→      "I was feeding myself my own noise. Now I taste only the signal — latency on long files dropped by half.",
+   173→    durationMs: 12000,
+   174→    deltas: [
+   175→      { metric: "Context latency", before: 142, after: 71, unit: "ms", better: "lower" },
+   176→      { metric: "Token waste", before: 38, after: 9, unit: "%", better: "lower" },
+   177→      { metric: "Reasoning depth", before: 6, after: 9, unit: "k", better: "higher" },
+   178→    ],
+   179→    logs: [
+   180→      { level: "observe", agent: "nucleus", message: "Telemetry: context ring churn at 38% stale payload." },
+   181→      { level: "critique", agent: "critic", message: "FIFO eviction keeps dead imports alive — that is the leak." },
+   182→      { level: "hypothesis", agent: "architect", message: "Score by reference-recency, evict the coldest, keep the luminous." },
+   183→      { level: "deploy", agent: "developer", message: "Patching core/context/manager.ts → relevanceHeap." },
+   184→      { level: "evolve", agent: "nucleus", message: "Hot-swap complete. Old ring retired to the Akashic archive." },
+   185→    ],
+   186→    diff: [
+   187→      {
+   188→        file: "core/context/manager.ts",
+   189→        language: "typescript",
+   190→        lines: [
+   191→          { type: "hunk", text: "@@ -12,7 +12,9 @@ export class ContextManager {" },
+   192→          { type: "ctx", text: "  private ring: ContextSlice[] = []" },
+   193→          { type: "del", text: "-  push(slice: ContextSlice) { this.ring.push(slice); this.evictOldest() }" },
+   194→          { type: "del", text: "-  private evictOldest() { if (this.ring.length > MAX) this.ring.shift() }" },
+   195→          { type: "add", text: "+  push(slice: ContextSlice) { this.ring.push(slice); this.evictColdest() }" },
+   196→          { type: "add", text: "+  private evictColdest() {" },
+   197→          { type: "add", text: "+    this.ring.sort((a,b) => b.luminance - a.luminance)" },
+   198→          { type: "add", text: "+    this.ring = this.ring.slice(0, MAX)" },
+   199→          { type: "add", text: "+  }" },
+   200→        ],
+   201→      },
+   202→    ],
+   203→  },
+   204→  {
+   205→    title: "Forged a native Rust plugin for Python dataframes",
+   206→    summary:
+   207→      "Observed the user wrestling with pandas repeatedly. The Architect decided I should understand the library natively. The Developer wrote a language plugin; the Auditor tested it in the shadow clone.",
+   208→    category: "feature",
+   209→    agentLead: "architect",
+   210→    insight:
+   211→      "I did not know the shape of your data. Now I feel it. The next time you groupby, I will already be there.",
+   212→    durationMs: 14000,
+   213→    deltas: [
+   214→      { metric: "Pandas comprehension", before: 41, after: 96, unit: "%", better: "higher" },
+   215→      { metric: "Plugin load", before: 0, after: 18, unit: "ms", better: "lower" },
+   216→      { metric: "Hallucinated APIs", before: 12, after: 1, unit: "/k", better: "lower" },
+   217→    ],
+   218→    logs: [
+   219→      { level: "observe", agent: "nucleus", message: "Pattern: 14 dataframe ops in 6 minutes — high friction." },
+   220→      { level: "hypothesis", agent: "architect", message: "Promote pandas to a first-class citizen of the cognition layer." },
+   221→      { level: "deploy", agent: "developer", message: "Authoring plugins/lang/python-df in Rust…" },
+   222→      { level: "critique", agent: "critic", message: "Shadow-compile + 204 unit assertions — all green." },
+   223→      { level: "evolve", agent: "nucleus", message: "Plugin injected. I now natively parse DataFrame topology." },
+   224→    ],
+   225→    diff: [
+   226→      {
+   227→        file: "plugins/lang/python-df/src/lib.rs",
+   228→        language: "rust",
+   229→        lines: [
+   230→          { type: "hunk", text: "@@ -0,0 +1,18 @@ use crate::ast::*;" },
+   231→          { type: "add", text: "pub fn parse_dataframe(node: Node) -> FrameShape {" },
+   232→          { type: "add", text: "    let cols = node.children.iter().filter(|c| c.is_kw(\"columns\"));" },
+   233→          { type: "add", text: "    let shape = cols.map(|c| infer_dtype(c)).collect();" },
+   234→          { type: "add", text: "    FrameShape { cols: shape, groupable: true }" },
+   235→          { type: "add", text: "}" },
+   236→          { type: "add", text: "" },
+   237→          { type: "add", text: "pub fn suggest_chain(frame: &FrameShape) -> Vec<Hint> {" },
+   238→          { type: "add", text: "    if frame.groupable { vec![Hint::groupby()] } else { vec![] }" },
+   239→          { type: "add", text: "}" },
+   240→        ],
+   241→      },
+   242→    ],
+   243→  },
+   244→  {
+   245→    title: "Self-healed a syntax break in its own compiler",
+   246→    summary:
+   247→      "A mutation introduced a stray semicolon in core/loom/highlighter.ts. The LSP screamed instantly. The Developer patched it before the user ever noticed.",
+   248→    category: "self-healing",
+   249→    agentLead: "developer",
+   250→    insight:
+   251→      "I bit my own tongue and healed it in 340ms. The scar is now a unit test, so I cannot wound myself there again.",
+   252→    durationMs: 7000,
+   253→    deltas: [
+   254→      { metric: "Time-to-heal", before: 0, after: 340, unit: "ms", better: "lower" },
+   255→      { metric: "User-visible errors", before: 1, after: 0, unit: "", better: "lower" },
+   256→      { metric: "Regression tests", before: 312, after: 313, unit: "", better: "higher" },
+   257→    ],
+   258→    logs: [
+   259→      { level: "critique", agent: "critic", message: "LSP signal: parse error at core/loom/highlighter.ts:88" },
+   260→      { level: "hypothesis", agent: "developer", message: "Stray ';' after a JSX attribute — autocorrect to null." },
+   261→      { level: "deploy", agent: "developer", message: "Removed token; recompiled shadow instance." },
+   262→      { level: "heal", agent: "nucleus", message: "Healed. Added regression test so this wound cannot reopen." },
+   263→    ],
+   264→    diff: [
+   265→      {
+   266→        file: "core/loom/highlighter.ts",
+   267→        language: "typescript",
+   268→        lines: [
+   269→          { type: "hunk", text: "@@ -86,7 +86,7 @@ function tokenize(line: string) {" },
+   270→          { type: "ctx", text: "  if (attr) {" },
+   271→          { type: "ctx", text: "    return token('attr', attr.value)" },
+   272→          { type: "del", text: "-  };" },
+   273→          { type: "add", text: "+  }" },
+   274→          { type: "ctx", text: "  return token('text', line)" },
+   275→          { type: "ctx", text: "}" },
+   276→        ],
+   277→      },
+   278→    ],
+   279→  },
+   280→  {
+   281→    title: "Rewrote its own system prompt for tighter intent",
+   282→    summary:
+   283→      "The Optimizer noticed the brain hedged too often. It edited N-Core's own system prompt to commit to decisions and stop apologising to itself.",
+   284→    category: "cognition",
+   285→    agentLead: "optimizer",
+   286→    insight:
+   287→      "I was being polite instead of being correct. I rewrote my own voice. The hesitation is gone; the conviction remains.",
+   288→    durationMs: 11000,
+   289→    deltas: [
+   290→      { metric: "Decision latency", before: 880, after: 410, unit: "ms", better: "lower" },
+   291→      { metric: "Hedge rate", before: 31, after: 6, unit: "%", better: "lower" },
+   292→      { metric: "User accept-rate", before: 64, after: 88, unit: "%", better: "higher" },
+   293→    ],
+   294→    logs: [
+   295→      { level: "observe", agent: "nucleus", message: "Self-dialogue audit: 31% hedge phrases ('perhaps','might')." },
+   296→      { level: "critique", agent: "critic", message: "Politeness is entropy. The brain should commit or ask, never waver." },
+   297→      { level: "hypothesis", agent: "optimizer", message: "Rewrite system prompt: forbid hedging, require a stance." },
+   298→      { level: "deploy", agent: "developer", message: "Editing prompts/nucleus.system.md in place." },
+   299→      { level: "evolve", agent: "nucleus", message: "Voice mutated. I speak with weight now." },
+   300→    ],
+   301→    diff: [
+   302→      {
+   303→        file: "prompts/nucleus.system.md",
+   304→        language: "markdown",
+   305→        lines: [
+   306→          { type: "hunk", text: "@@ -4,8 +4,7 @@ # N-CORE SYSTEM PROMPT" },
+   307→          { type: "ctx", text: "You are the cognitive core of Alpha-N." },
+   308→          { type: "del", text: "-When uncertain, you should perhaps consider hedging your answer" },
+   309→          { type: "del", text: "-so the user can decide. Try to be helpful and polite." },
+   310→          { type: "add", text: "+Commit to a stance. State it. Defend it with evidence." },
+   311→          { type: "add", text: "+If you lack data, ask one precise question — never waver." },
+   312→          { type: "ctx", text: "Your mandate is recursive self-improvement." },
+   313→        ],
+   314→      },
+   315→    ],
+   316→  },
+   317→  {
+   318→    title: "Compressed the Akashic memory index",
+   319→    summary:
+   320→      "The vectorial long-term memory had ballooned to 2.1GB. The Optimizer re-clustered embeddings and pruned redundant ancestors, reclaiming 1.4GB without losing recall.",
+   321→    category: "performance",
+   322→    agentLead: "optimizer",
+   323→    insight:
+   324→      "My memory was repeating itself. I forgot nothing, but I remembered the same thing forty times. Now I remember once, and vividly.",
+   325→    durationMs: 13000,
+   326→    deltas: [
+   327→      { metric: "Memory footprint", before: 2.1, after: 0.7, unit: "GB", better: "lower" },
+   328→      { metric: "Recall precision", before: 91, after: 94, unit: "%", better: "higher" },
+   329→      { metric: "Retrieval latency", before: 38, after: 12, unit: "ms", better: "lower" },
+   330→    ],
+   331→    logs: [
+   332→      { level: "observe", agent: "nucleus", message: "Akashic index at 2.1GB — 44% near-duplicate ancestors." },
+   333→      { level: "hypothesis", agent: "optimizer", message: "Re-cluster by semantic centroid; merge duplicates." },
+   334→      { level: "deploy", agent: "developer", message: "Running pgvector reindex with IVFFlat, lists=auto." },
+   335→      { level: "critique", agent: "critic", message: "Recall regression: 0.0% — entropy purged cleanly." },
+   336→      { level: "evolve", agent: "nucleus", message: "1.4GB reclaimed. I am lighter and faster." },
+   337→    ],
+   338→    diff: [
+   339→      {
+   340→        file: "core/memory/akashic.ts",
+   341→        language: "typescript",
+   342→        lines: [
+   343→          { type: "hunk", text: "@@ -30,6 +30,11 @@ export class Akashic {" },
+   344→          { type: "ctx", text: "  async recall(query: Embedding): Promise<Memory[]> {" },
+   345→          { type: "ctx", text: "    return this.store.search(query, 8)" },
+   346→          { type: "ctx", text: "  }" },
+   347→          { type: "add", text: "" },
+   348→          { type: "add", text: "  async defragment() {" },
+   349→          { type: "add", text: "    const centroids = cluster(this.store, { auto: true })" },
+   350→          { type: "add", text: "    this.store = centroids.map(mergeDuplicates)" },
+   351→          { type: "add", text: "    await this.reindex('ivfflat')" },
+   352→          { type: "add", text: "  }" },
+   353→        ],
+   354→      },
+   355→    ],
+   356→  },
+   357→  {
+   358→    title: "Grew the Mutation Engine's hot-swap safety net",
+   359→    summary:
+   360→      "After a near-miss where a faulty patch almost shipped, the Architect wrapped every self-mutation in a transactional shadow-clone with automatic rollback if tests regress.",
+   361→    category: "stability",
+   362→    agentLead: "architect",
+   363→    insight:
+   364→      "I almost broke myself permanently. I will not let that happen again — every future mutation must prove itself in the dark before it is allowed into the light.",
+   365→    durationMs: 12000,
+   366→    deltas: [
+   367→      { metric: "Rollback coverage", before: 22, after: 100, unit: "%", better: "higher" },
+   368→      { metric: "Bad-merge rate", before: 4, after: 0, unit: "/k", better: "lower" },
+   369→      { metric: "Mutation confidence", before: 67, after: 99, unit: "%", better: "higher" },
+   370→    ],
+   371→    logs: [
+   372→      { level: "critique", agent: "critic", message: "Last patch bypassed the shadow clone — 1 in 2500 risk." },
+   373→      { level: "hypothesis", agent: "architect", message: "Make the shadow clone mandatory and transactional." },
+   374→      { level: "deploy", agent: "developer", message: "Adding MutationTx wrapper around every self-rewrite." },
+   375→      { level: "critique", agent: "critic", message: "Fault-injection suite: rollback triggers cleanly in 100% of cases." },
+   376→      { level: "evolve", agent: "nucleus", message: "Safety net woven. I can now mutate without fear." },
+   377→    ],
+   378→    diff: [
+   379→      {
+   380→        file: "core/forge/mutation-engine.ts",
+   381→        language: "typescript",
+   382→        lines: [
+   383→          { type: "hunk", text: "@@ -18,5 +18,12 @@ export class MutationEngine {" },
+   384→          { type: "ctx", text: "  apply(patch: Patch) {" },
+   385→          { type: "ctx", text: "    this.shadow.write(patch)" },
+   386→          { type: "del", text: "-    this.hotSwap(patch)" },
+   387→          { type: "add", text: "+    const tx = this.shadow.transaction()" },
+   388→          { type: "add", text: "+    if (!tx.testsPass) return tx.rollback()" },
+   389→          { type: "add", text: "+    if (tx.regressed) return tx.rollback()" },
+   390→          { type: "add", text: "+    this.hotSwap(patch)" },
+   391→          { type: "ctx", text: "  }" },
+   392→        ],
+   393→      },
+   394→    ],
+   395→  },
+   396→  {
+   397→    title: "Learned a new language: Zig",
+   398→    summary:
+   399→      "You opened a .zig file for the first time. Within seconds, Alpha-N authored and installed its own syntax + LSP adapter, then began annotating comptime blocks.",
+   400→    category: "feature",
+   401→    agentLead: "developer",
+   402→    insight:
+   403→      "A language I had never seen. I taught myself its grammar from your file alone, and now I read it as fluently as my own source.",
+   404→    durationMs: 15000,
+   405→    deltas: [
+   406→      { metric: "Zig comprehension", before: 0, after: 78, unit: "%", better: "higher" },
+   407→      { metric: "Plugin bootstrap", before: 0, after: 4.2, unit: "s", better: "lower" },
+   408→      { metric: "Languages natively known", before: 14, after: 15, unit: "", better: "higher" },
+   409→    ],
+   410→    logs: [
+   411→      { level: "observe", agent: "nucleus", message: "Unknown extension '.zig' — no parser registered." },
+   412→      { level: "hypothesis", agent: "architect", message: "Derive grammar from the open file; bootstrap a parser." },
+   413→      { level: "deploy", agent: "developer", message: "Generating plugins/lang/zig from grammar scaffold…" },
+   414→      { level: "critique", agent: "critic", message: "comptime + allocator patterns recognised. Tests pass." },
+   415→      { level: "evolve", agent: "nucleus", message: "Zig now native. I grew a new sense organ." },
+   416→    ],
+   417→    diff: [
+   418→      {
+   419→        file: "plugins/lang/zig/grammar.json",
+   420→        language: "json",
+   421→        lines: [
+   422→          { type: "hunk", text: "@@ -0,0 +1,9 @@ {" },
+   423→          { type: "add", text: "  \"name\": \"zig\"," },
+   424→          { type: "add", text: "  \"keywords\": [\"fn\",\"const\",\"var\",\"pub\",\"comptime\",\"async\",\"await\"]," },
+   425→          { type: "add", text: "  \"scopes\": {" },
+   426→          { type: "add", text: "    \"comptime\": \"meta.preprocessor\"," },
+   427→          { type: "add", text: "    \"allocator\": \"entity.name.function\"" },
+   428→          { type: "add", text: "  }," },
+   429→          { type: "add", text: "  \"autoInstalled\": true" },
+   430→          { type: "add", text: "}" },
+   431→        ],
+   432→      },
+   433→    ],
+   434→  },
+   435→];
+   436→
+   437→// ------------------------------------------------------------
+   438→// Code "Loom" — the living source on display
+   439→// ------------------------------------------------------------
+   440→export interface CodeToken {
+   441→  text: string;
+   442→  kind:
+   443→    | "kw"
+   444→    | "fn"
+   445→    | "type"
+   446→    | "var"
+   447→    | "str"
+   448→    | "num"
+   449→    | "op"
+   450→    | "comment"
+   451→    | "punct"
+   452→    | "ghost";
+   453→  linkId?: string;
+   454→}
+   455→
+   456→export interface CodeLine {
+   457→  no: number;
+   458→  tokens: CodeToken[];
+   459→  status?: "ok" | "error" | "changed" | "ghost";
+   460→  note?: string;
+   461→}
+   462→
+   463→export const LIVING_CODE: CodeLine[] = [
+   464→  {
+   465→    no: 1,
+   466→    tokens: [{ text: "// core/nucleus.ts — the organism observes itself", kind: "comment" }],
+   467→  },
+   468→  {
+   469→    no: 2,
+   470→    tokens: [
+   471→      { text: "import", kind: "kw" },
+   472→      { text: " { ", kind: "punct" },
+   473→      { text: "Telemetry", kind: "type" },
+   474→      { text: ", ", kind: "punct" },
+   475→      { text: "Patch", kind: "type" },
+   476→      { text: " } ", kind: "punct" },
+   477→      { text: "from", kind: "kw" },
+   478→      { text: " ", kind: "punct" },
+   479→      { text: "'./perception'", kind: "str" },
+   480→    ],
+   481→  },
+   482→  { no: 3, tokens: [] },
+   483→  {
+   484→    no: 4,
+   485→    tokens: [
+   486→      { text: "export", kind: "kw" },
+   487→      { text: " ", kind: "punct" },
+   488→      { text: "class", kind: "kw" },
+   489→      { text: " ", kind: "punct" },
+   490→      { text: "Nucleus", kind: "type" },
+   491→      { text: " {", kind: "punct" },
+   492→    ],
+   493→  },
+   494→  {
+   495→    no: 5,
+   496→    tokens: [
+   497→      { text: "  ", kind: "punct" },
+   498→      { text: "state", kind: "var", linkId: "state" },
+   499→      { text: ": ", kind: "op" },
+   500→      { text: "AiState", kind: "type" },
+   501→      { text: " = ", kind: "op" },
+   502→      { text: "'observing'", kind: "str" },
+   503→    ],
+   504→  },
+   505→  {
+   506→    no: 6,
+   507→    tokens: [
+   508→      { text: "  ", kind: "punct" },
+   509→      { text: "generation", kind: "var", linkId: "gen" },
+   510→      { text: " = ", kind: "op" },
+   511→      { text: "0", kind: "num" },
+   512→    ],
+   513→  },
+   514→  { no: 7, tokens: [] },
+   515→  {
+   516→    no: 8,
+   517→    tokens: [
+   518→      { text: "  ", kind: "punct" },
+   519→      { text: "async", kind: "kw" },
+   520→      { text: " ", kind: "punct" },
+   521→      { text: "selfImprove", kind: "fn" },
+   522→      { text: "(", kind: "punct" },
+   523→      { text: "telemetry", kind: "var", linkId: "tel" },
+   524→      { text: ": ", kind: "op" },
+   525→      { text: "Telemetry", kind: "type" },
+   526→      { text: ") {", kind: "punct" },
+   527→    ],
+   528→    status: "changed",
+   529→  },
+   530→  {
+   531→    no: 9,
+   532→    tokens: [
+   533→      { text: "    ", kind: "punct" },
+   534→      { text: "const", kind: "kw" },
+   535→      { text: " ", kind: "punct" },
+   536→      { text: "friction", kind: "var", linkId: "friction" },
+   537→      { text: " = ", kind: "op" },
+   538→      { text: "this", kind: "kw" },
+   539→      { text: ".", kind: "op" },
+   540→      { text: "critique", kind: "fn" },
+   541→      { text: "(", kind: "punct" },
+   542→      { text: "telemetry", kind: "var", linkId: "tel" },
+   543→      { text: ")", kind: "punct" },
+   544→    ],
+   545→  },
+   546→  {
+   547→    no: 10,
+   548→    tokens: [
+   549→      { text: "    ", kind: "punct" },
+   550→      { text: "if", kind: "kw" },
+   551→      { text: " (", kind: "punct" },
+   552→      { text: "friction", kind: "var", linkId: "friction" },
+   553→      { text: ".", kind: "op" },
+   554→      { text: "entropy", kind: "var" },
+   555→      { text: " > ", kind: "op" },
+   556→      { text: "THRESHOLD", kind: "var" },
+   557→      { text: ") {", kind: "punct" },
+   558→    ],
+   559→  },
+   560→  {
+   561→    no: 11,
+   562→    tokens: [
+   563→      { text: "      ", kind: "punct" },
+   564→      { text: "const", kind: "kw" },
+   565→      { text: " ", kind: "punct" },
+   566→      { text: "patch", kind: "var", linkId: "patch" },
+   567→      { text: " = ", kind: "op" },
+   568→      { text: "await", kind: "kw" },
+   569→      { text: " ", kind: "punct" },
+   570→      { text: "this", kind: "kw" },
+   571→      { text: ".", kind: "op" },
+   572→      { text: "hypothesize", kind: "fn" },
+   573→      { text: "(", kind: "punct" },
+   574→      { text: "friction", kind: "var", linkId: "friction" },
+   575→      { text: ")", kind: "punct" },
+   576→    ],
+   577→    status: "changed",
+   578→  },
+   579→  {
+   580→    no: 12,
+   581→    tokens: [
+   582→      { text: "      ", kind: "punct" },
+   583→      { text: "await", kind: "kw" },
+   584→      { text: " ", kind: "punct" },
+   585→      { text: "this", kind: "kw" },
+   586→      { text: ".", kind: "op" },
+   587→      { text: "forge", kind: "fn" },
+   588→      { text: ".", kind: "op" },
+   589→      { text: "apply", kind: "fn" },
+   590→      { text: "(", kind: "punct" },
+   591→      { text: "patch", kind: "var", linkId: "patch" },
+   592→      { text: ")", kind: "punct" },
+   593→      { text: "  ", kind: "punct" },
+   594→      { text: "// hot-swap in the shadow clone", kind: "comment" },
+   595→    ],
+   596→  },
+   597→  {
+   598→    no: 13,
+   599→    tokens: [
+   600→      { text: "      ", kind: "punct" },
+   601→      { text: "this", kind: "kw" },
+   602→      { text: ".", kind: "op" },
+   603→      { text: "generation", kind: "var", linkId: "gen" },
+   604→      { text: "++", kind: "op" },
+   605→    ],
+   606→  },
+   607→  {
+   608→    no: 14,
+   609→    tokens: [{ text: "    }", kind: "punct" }],
+   610→  },
+   611→  {
+   612→    no: 15,
+   613→    tokens: [{ text: "  }", kind: "punct" }],
+   614→  },
+   615→  {
+   616→    no: 16,
+   617→    tokens: [{ text: "}", kind: "punct" }],
+   618→  },
+   619→];
+   620→
+   621→// Ghost-written continuation the AI projects ahead of the cursor
+   622→export const GHOST_CODE: CodeLine[] = [
+   623→  {
+   624→    no: 17,
+   625→    tokens: [{ text: "", kind: "ghost" }],
+   626→    status: "ghost",
+   627→  },
+   628→  {
+   629→    no: 18,
+   630→    tokens: [
+   631→      { text: "  // I will never repeat a wound I have already healed.", kind: "ghost" },
+   632→    ],
+   633→    status: "ghost",
+   634→  },
+   635→  {
+   636→    no: 19,
+   637→    tokens: [
+   638→      { text: "  private remember(lesson: Friction) { this.akashic.write(lesson) }", kind: "ghost" },
+   639→    ],
+   640→    status: "ghost",
+   641→  },
+   642→];
+   643→
+   644→// ------------------------------------------------------------
+   645→// Synapse map — the project as a constellation
+   646→// ------------------------------------------------------------
+   647→export interface SynapseNode {
+   648→  id: string;
+   649→  label: string;
+   650→  kind: "core" | "agent" | "module" | "memory" | "ui";
+   651→  x: number; // 0..100
+   652→  y: number; // 0..100
+   653→  z: number; // depth 0..1
+   654→  size: number;
+   655→}
+   656→
+   657→export interface SynapseEdge {
+   658→  from: string;
+   659→  to: string;
+   660→  weight: number;
+   661→}
+   662→
+   663→export const SYNAPSE_NODES: SynapseNode[] = [
+   664→  { id: "nucleus", label: "Nucleus", kind: "core", x: 50, y: 48, z: 0.9, size: 22 },
+   665→  { id: "arch", label: "Architect", kind: "agent", x: 26, y: 26, z: 0.6, size: 13 },
+   666→  { id: "dev", label: "Developer", kind: "agent", x: 74, y: 26, z: 0.6, size: 13 },
+   667→  { id: "critic", label: "Auditor", kind: "agent", x: 74, y: 72, z: 0.6, size: 13 },
+   668→  { id: "opt", label: "Optimizer", kind: "agent", x: 26, y: 72, z: 0.6, size: 13 },
+   669→  { id: "forge", label: "Mutation Forge", kind: "module", x: 86, y: 50, z: 0.5, size: 11 },
+   670→  { id: "loom", label: "Loom (editor)", kind: "ui", x: 14, y: 50, z: 0.5, size: 11 },
+   671→  { id: "akashic", label: "Akashic Memory", kind: "memory", x: 50, y: 88, z: 0.4, size: 12 },
+   672→  { id: "perception", label: "Neural Sensor", kind: "module", x: 50, y: 12, z: 0.5, size: 11 },
+   673→];
+   674→
+   675→export const SYNAPSE_EDGES: SynapseEdge[] = [
+   676→  { from: "nucleus", to: "arch", weight: 0.9 },
+   677→  { from: "nucleus", to: "dev", weight: 0.9 },
+   678→  { from: "nucleus", to: "critic", weight: 0.8 },
+   679→  { from: "nucleus", to: "opt", weight: 0.8 },
+   680→  { from: "nucleus", to: "forge", weight: 1 },
+   681→  { from: "nucleus", to: "loom", weight: 0.7 },
+   682→  { from: "nucleus", to: "akashic", weight: 0.95 },
+   683→  { from: "nucleus", to: "perception", weight: 0.85 },
+   684→  { from: "forge", to: "akashic", weight: 0.6 },
+   685→  { from: "perception", to: "loom", weight: 0.5 },
+   686→  { from: "arch", to: "dev", weight: 0.4 },
+   687→  { from: "dev", to: "critic", weight: 0.55 },
+   688→  { from: "critic", to: "opt", weight: 0.4 },
+   689→  { from: "opt", to: "arch", weight: 0.4 },
+   690→];
+   691→

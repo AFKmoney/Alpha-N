@@ -1,0 +1,951 @@
+     1→/**
+     2→ * chat-panel.tsx — the floating conversation overlay with N-Core.
+     3→ *
+     4→ * Shows the full message history (with collapsible reasoning), a live
+     5→ * "thinking" indicator, and an autonomy-mode toggle. Also exports
+     6→ * ChatToggle — a standalone floating button that opens the panel.
+     7→ *
+     8→ * AI power-ups (8 features):
+     9→ *   1. Voice input — Web Speech API speech-to-text on a mic button.
+    10→ *   2. Text-to-speech — speechSynthesis speaks new AI responses + per-message speaker.
+    11→ *   3. Personality profiles — Architect / Hacker / Mentor / Rogue, prepended to the prompt.
+    12→ *   4. File upload — images go through /api/alpha/vision, text files are inlined.
+    13→ *   5. Conversation export — downloads the chat as a Markdown file.
+    14→ *   6. Proactive suggestions — 1-3 chips below the latest AI message.
+    15→ *   7. Chat search — live filter + highlight with a match counter.
+    16→ *   8. Pin messages — pinned AI messages persist to localStorage.
+    17→ */
+    18→"use client";
+    19→
+    20→import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+    21→import { motion, AnimatePresence } from "framer-motion";
+    22→import {
+    23→  Bot,
+    24→  Send,
+    25→  Sparkles,
+    26→  User,
+    27→  ChevronDown,
+    28→  X,
+    29→  Mic,
+    30→  MicOff,
+    31→  Volume2,
+    32→  VolumeX,
+    33→  Paperclip,
+    34→  Download,
+    35→  Search,
+    36→  Pin,
+    37→  PinOff,
+    38→  PanelTop,
+    39→  Loader2,
+    40→} from "lucide-react";
+    41→import { useEvolution } from "@/lib/alpha/evolution-store";
+    42→import { useMounted } from "@/lib/alpha/use-mounted";
+    43→import { cn } from "@/lib/utils";
+    44→import type { ChatMessage } from "@/lib/alpha/mutations";
+    45→// Pure helpers, types, and small presentational bits live in chat-helpers so
+    46→// this file stays focused on layout + interaction. See chat-helpers.tsx.
+    47→import {
+    48→  PERSONALITIES,
+    49→  DEFAULT_PERSONALITY,
+    50→  getPersonality,
+    51→  generateSuggestions,
+    52→  IMAGE_EXTENSIONS,
+    53→  TEXT_EXTENSIONS,
+    54→  fileExtension,
+    55→  readFileAsDataUrl,
+    56→  readFileAsText,
+    57→  loadString,
+    58→  loadJson,
+    59→  saveJson,
+    60→  saveString,
+    61→  LS_PERSONALITY,
+    62→  LS_TTS,
+    63→  LS_PINS,
+    64→  highlightMatch,
+    65→  formatBytes,
+    66→  getSpeechRecognitionCtor,
+    67→  type PersonalityKey,
+    68→  type PersonalityProfile,
+    69→  type AttachedFile,
+    70→  type SpeechRecognitionLike,
+    71→} from "./chat-helpers";
+    72→
+    73→// ===========================================================================
+    74→// ChatPanel
+    75→// ===========================================================================
+    76→export function ChatPanel() {
+    77→  const {
+    78→    chat,
+    79→    chatOpen,
+    80→    toggleChat,
+    81→    sendUserMessage,
+    82→    aiBusy,
+    83→    aiReasoning,
+    84→    autonomyMode,
+    85→    toggleAutonomy,
+    86→  } = useEvolution();
+    87→
+    88→  const [input, setInput] = useState("");
+    89→  const scrollRef = useRef<HTMLDivElement>(null);
+    90→  const mounted = useMounted();
+    91→
+    92→  // --- Feature 1: voice input ---
+    93→  const [voiceListening, setVoiceListening] = useState(false);
+    94→  const [voiceSupported] = useState<boolean>(() => getSpeechRecognitionCtor() !== null);
+    95→  const recognitionRef = useRef<SpeechRecognitionLike | null>(null);
+    96→
+    97→  // --- Feature 2: text-to-speech ---
+    98→  const [ttsEnabled, setTtsEnabled] = useState<boolean>(false);
+    99→  const lastSpokenIdRef = useRef<string | null>(null);
+   100→
+   101→  // --- Feature 3: personality ---
+   102→  const [personality, setPersonality] = useState<PersonalityKey>(DEFAULT_PERSONALITY);
+   103→  const [personalityMenuOpen, setPersonalityMenuOpen] = useState(false);
+   104→
+   105→  // --- Feature 4: file upload ---
+   106→  const [attachedFile, setAttachedFile] = useState<AttachedFile | null>(null);
+   107→  const [sending, setSending] = useState(false);
+   108→  const fileInputRef = useRef<HTMLInputElement>(null);
+   109→
+   110→  // --- Feature 6: suggestions ---
+   111→  const [suggestions, setSuggestions] = useState<string[]>([]);
+   112→  const [suggestionsForId, setSuggestionsForId] = useState<string | null>(null);
+   113→
+   114→  // --- Feature 7: search ---
+   115→  const [searchOpen, setSearchOpen] = useState(false);
+   116→  const [searchQuery, setSearchQuery] = useState("");
+   117→
+   118→  // --- Feature 8: pinned messages ---
+   119→  const [pinnedIds, setPinnedIds] = useState<string[]>([]);
+   120→
+   121→  // ---- hydrate persisted settings on mount ----
+   122→  useEffect(() => {
+   123→    const savedTts = loadString(LS_TTS, "false") === "true";
+   124→    setTtsEnabled(savedTts);
+   125→    const savedPersonality = loadString(LS_PERSONALITY, DEFAULT_PERSONALITY);
+   126→    if (
+   127→      savedPersonality === "architect" ||
+   128→      savedPersonality === "hacker" ||
+   129→      savedPersonality === "mentor" ||
+   130→      savedPersonality === "rogue"
+   131→    ) {
+   132→      setPersonality(savedPersonality);
+   133→    }
+   134→    setPinnedIds(loadJson<string[]>(LS_PINS, []));
+   135→  }, []);
+   136→
+   137→  // ---- persist on change ----
+   138→  useEffect(() => {
+   139→    saveString(LS_PERSONALITY, personality);
+   140→  }, [personality]);
+   141→  useEffect(() => {
+   142→    saveString(LS_TTS, String(ttsEnabled));
+   143→  }, [ttsEnabled]);
+   144→  useEffect(() => {
+   145→    saveJson(LS_PINS, pinnedIds);
+   146→  }, [pinnedIds]);
+   147→
+   148→  // ---- auto-scroll to bottom on new messages / busy state ----
+   149→  useEffect(() => {
+   150→    if (scrollRef.current) {
+   151→      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+   152→    }
+   153→  }, [chat, aiBusy]);
+   154→
+   155→  // ---- Feature 1: voice input lifecycle ----
+   156→  const stopListening = useCallback(() => {
+   157→    const rec = recognitionRef.current;
+   158→    if (rec) {
+   159→      try {
+   160→        rec.stop();
+   161→      } catch {
+   162→        /* already stopped */
+   163→      }
+   164→    }
+   165→    recognitionRef.current = null;
+   166→    setVoiceListening(false);
+   167→  }, []);
+   168→
+   169→  const startListening = useCallback(() => {
+   170→    const Ctor = getSpeechRecognitionCtor();
+   171→    if (!Ctor) return;
+   172→    const rec = new Ctor();
+   173→    rec.lang = "en-US";
+   174→    rec.continuous = false;
+   175→    rec.interimResults = true;
+   176→    rec.onresult = (event) => {
+   177→      // Take the transcript of the latest result; interim results update
+   178→      // the input live so the user sees words appear as they speak.
+   179→      let transcript = "";
+   180→      for (let i = event.resultIndex; i < event.results.length; i++) {
+   181→        transcript = event.results[i]?.[0]?.transcript ?? transcript;
+   182→      }
+   183→      setInput((prev) => {
+   184→        const base = prev.replace(/\s*\u2026$/, "");
+   185→        return transcript ? `${base} ${transcript}`.trim() : base;
+   186→      });
+   187→    };
+   188→    rec.onerror = (event) => {
+   189→      if (event.error === "not-allowed" || event.error === "service-not-allowed") {
+   190→        // microphone permission denied — stop silently
+   191→      }
+   192→      setVoiceListening(false);
+   193→    };
+   194→    rec.onend = () => {
+   195→      setVoiceListening(false);
+   196→      recognitionRef.current = null;
+   197→    };
+   198→    rec.onstart = () => setVoiceListening(true);
+   199→    recognitionRef.current = rec;
+   200→    try {
+   201→      rec.start();
+   202→    } catch {
+   203→      setVoiceListening(false);
+   204→    }
+   205→  }, []);
+   206→
+   207→  const toggleVoice = useCallback(() => {
+   208→    if (voiceListening) {
+   209→      stopListening();
+   210→    } else {
+   211→      startListening();
+   212→    }
+   213→  }, [voiceListening, startListening, stopListening]);
+   214→
+   215→  // cleanup recognition on unmount
+   216→  useEffect(() => {
+   217→    return () => {
+   218→      if (recognitionRef.current) {
+   219→        try {
+   220→          recognitionRef.current.abort();
+   221→        } catch {
+   222→          /* ignore */
+   223→        }
+   224→      }
+   225→      if (typeof window !== "undefined" && "speechSynthesis" in window) {
+   226→        window.speechSynthesis.cancel();
+   227→      }
+   228→    };
+   229→  }, []);
+   230→
+   231→  // ---- Feature 2: speak helper ----
+   232→  const speakText = useCallback((text: string) => {
+   233→    if (typeof window === "undefined" || !("speechSynthesis" in window)) return;
+   234→    window.speechSynthesis.cancel();
+   235→    const utter = new SpeechSynthesisUtterance(text);
+   236→    utter.rate = 1.02;
+   237→    utter.pitch = 1.0;
+   238→    window.speechSynthesis.speak(utter);
+   239→  }, []);
+   240→
+   241→  // ---- Feature 2 + 6: react to new AI messages ----
+   242→  // Find the latest AI message. When it changes, generate suggestions and
+   243→  // speak it (if TTS is enabled).
+   244→  const lastAiMessage = useMemo<ChatMessage | null>(() => {
+   245→    for (let i = chat.length - 1; i >= 0; i--) {
+   246→      if (chat[i].role === "ai") return chat[i];
+   247→    }
+   248→    return null;
+   249→  }, [chat]);
+   250→
+   251→  useEffect(() => {
+   252→    if (!lastAiMessage) {
+   253→      setSuggestions([]);
+   254→      setSuggestionsForId(null);
+   255→      return;
+   256→    }
+   257→    // Only act when the latest AI message id changes (not on every chat tick).
+   258→    if (lastAiMessage.id === suggestionsForId) return;
+   259→    setSuggestionsForId(lastAiMessage.id);
+   260→    setSuggestions(generateSuggestions(lastAiMessage.content));
+   261→    // Speak only the new AI message, once.
+   262→    if (ttsEnabled && lastAiMessage.id !== lastSpokenIdRef.current) {
+   263→      lastSpokenIdRef.current = lastAiMessage.id;
+   264→      speakText(lastAiMessage.content);
+   265→    }
+   266→  }, [lastAiMessage, suggestionsForId, ttsEnabled, speakText]);
+   267→
+   268→  const toggleTts = useCallback(() => {
+   269→    setTtsEnabled((prev) => {
+   270→      const next = !prev;
+   271→      if (!next && typeof window !== "undefined" && "speechSynthesis" in window) {
+   272→        window.speechSynthesis.cancel();
+   273→      }
+   274→      return next;
+   275→    });
+   276→  }, []);
+   277→
+   278→  // ---- Feature 3: personality selector ----
+   279→  const currentPersonality = getPersonality(personality);
+   280→  const selectPersonality = useCallback((key: PersonalityKey) => {
+   281→    setPersonality(key);
+   282→    setPersonalityMenuOpen(false);
+   283→  }, []);
+   284→
+   285→  // close personality menu on outside click
+   286→  useEffect(() => {
+   287→    if (!personalityMenuOpen) return;
+   288→    const handler = (e: MouseEvent) => {
+   289→      const target = e.target as HTMLElement | null;
+   290→      if (target && !target.closest("[data-personality-menu]")) {
+   291→        setPersonalityMenuOpen(false);
+   292→      }
+   293→    };
+   294→    window.addEventListener("mousedown", handler);
+   295→    return () => window.removeEventListener("mousedown", handler);
+   296→  }, [personalityMenuOpen]);
+   297→
+   298→  // ---- Feature 4: file upload ----
+   299→  const handleFileSelect = useCallback(async (e: React.ChangeEvent<HTMLInputElement>) => {
+   300→    const file = e.target.files?.[0];
+   301→    e.target.value = ""; // reset so the same file can be re-selected
+   302→    if (!file) return;
+   303→    const ext = fileExtension(file.name);
+   304→    try {
+   305→      if (IMAGE_EXTENSIONS.includes(ext)) {
+   306→        const dataUrl = await readFileAsDataUrl(file);
+   307→        setAttachedFile({ name: file.name, kind: "image", data: dataUrl, size: file.size });
+   308→      } else if (TEXT_EXTENSIONS.includes(ext)) {
+   309→        const text = await readFileAsText(file);
+   310→        setAttachedFile({ name: file.name, kind: "text", data: text, size: file.size });
+   311→      }
+   312→      // unsupported types are silently ignored
+   313→    } catch {
+   314→      // ignore read errors — the chip just won't appear
+   315→    }
+   316→  }, []);
+   317→
+   318→  const removeAttachment = useCallback(() => setAttachedFile(null), []);
+   319→
+   320→  // ---- Feature 5: conversation export ----
+   321→  const exportConversation = useCallback(() => {
+   322→    const date = new Date().toISOString();
+   323→    const lines: string[] = [`# Alpha-N Conversation`, ``, `**Date:** ${date}`, ``, `---`, ``];
+   324→    for (const m of chat) {
+   325→      const role = m.role === "ai" ? "N-Core" : "User";
+   326→      lines.push(`## ${role}`, ``, m.content, ``);
+   327→      if (m.reasoning) {
+   328→        lines.push(`> _reasoning:_ ${m.reasoning}`, ``);
+   329→      }
+   330→    }
+   331→    const blob = new Blob([lines.join("\n")], { type: "text/markdown" });
+   332→    const url = URL.createObjectURL(blob);
+   333→    const a = document.createElement("a");
+   334→    a.href = url;
+   335→    a.download = `alpha-conversation-${Date.now()}.md`;
+   336→    document.body.appendChild(a);
+   337→    a.click();
+   338→    document.body.removeChild(a);
+   339→    URL.revokeObjectURL(url);
+   340→  }, [chat]);
+   341→
+   342→  // ---- Feature 7: search ----
+   343→  const toggleSearch = useCallback(() => {
+   344→    setSearchOpen((prev) => {
+   345→      const next = !prev;
+   346→      if (!next) setSearchQuery("");
+   347→      return next;
+   348→    });
+   349→  }, []);
+   350→  const clearSearch = useCallback(() => {
+   351→    setSearchQuery("");
+   352→  }, []);
+   353→
+   354→  const searchLower = searchQuery.trim().toLowerCase();
+   355→  const matchCount = useMemo(() => {
+   356→    if (!searchLower) return 0;
+   357→    return chat.filter((m) => m.content.toLowerCase().includes(searchLower)).length;
+   358→  }, [chat, searchLower]);
+   359→
+   360→  // ---- Feature 8: pin / unpin ----
+   361→  const togglePin = useCallback((id: string) => {
+   362→    setPinnedIds((prev) =>
+   363→      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+   364→    );
+   365→  }, []);
+   366→  const isPinned = useCallback((id: string) => pinnedIds.includes(id), [pinnedIds]);
+   367→
+   368→  const pinnedMessages = useMemo<ChatMessage[]>(() => {
+   369→    if (pinnedIds.length === 0) return [];
+   370→    return chat
+   371→      .filter((m) => pinnedIds.includes(m.id))
+   372→      .sort((a, b) => pinnedIds.indexOf(a.id) - pinnedIds.indexOf(b.id));
+   373→  }, [chat, pinnedIds]);
+   374→
+   375→  // ---- submit: builds the final message, processes attachments, sends ----
+   376→  const submit = useCallback(
+   377→    async (e?: React.FormEvent) => {
+   378→      e?.preventDefault();
+   379→      const text = input.trim();
+   380→      if (!text && !attachedFile) return;
+   381→      if (sending) return;
+   382→
+   383→      setSending(true);
+   384→      try {
+   385→        const preamble = currentPersonality.preamble;
+   386→        let body = text;
+   387→
+   388→        if (attachedFile) {
+   389→          if (attachedFile.kind === "image") {
+   390→            // Send the image through the vision route and fold the description in.
+   391→            try {
+   392→              const res = await fetch("/api/alpha/vision", {
+   393→                method: "POST",
+   394→                headers: { "content-type": "application/json" },
+   395→                body: JSON.stringify({
+   396→                  image: attachedFile.data,
+   397→                  prompt: text || "Describe this image in detail.",
+   398→                }),
+   399→              });
+   400→              const data: { description?: string; error?: string } = await res.json();
+   401→              const desc = data.description ?? "(no description)";
+   402→              body = `${text}\n\n[Attached image: ${attachedFile.name}]\nVision analysis: ${desc}`.trim();
+   403→            } catch {
+   404→              body = `${text}\n\n[Attached image: ${attachedFile.name} — vision analysis failed]`.trim();
+   405→            }
+   406→          } else {
+   407→            // Text file: inline the content (capped to keep payload reasonable).
+   408→            const cap = 4000;
+   409→            const content =
+   410→              attachedFile.data.length > cap
+   411→                ? `${attachedFile.data.slice(0, cap)}\n…(truncated, ${attachedFile.data.length - cap} more chars)`
+   412→                : attachedFile.data;
+   413→            body = `${text}\n\n[Attached file: ${attachedFile.name}]\n\`\`\`\n${content}\n\`\`\``.trim();
+   414→          }
+   415→        }
+   416→
+   417→        // The personality preamble is steering for the MODEL, not for the
+   418→        // chat display. Send it as separate metadata so the user only ever
+   419→        // sees their actual text in the chat — not the "[Adopt the ARCHITECT
+   420→        // persona: ...]" boilerplate that used to appear before every message.
+   421→        const fullMessage = body ? `${preamble}\n\n${body}` : "";
+   422→        if (!fullMessage) return;
+   423→        sendUserMessage(fullMessage, body);
+   424→        setInput("");
+   425→        setAttachedFile(null);
+   426→      } finally {
+   427→        setSending(false);
+   428→      }
+   429→    },
+   430→    [input, attachedFile, sending, currentPersonality, sendUserMessage]
+   431→  );
+   432→
+   433→  // ---- suggestion click: send as next message ----
+   434→  const sendSuggestion = useCallback(
+   435→    (suggestion: string) => {
+   436→      const preamble = currentPersonality.preamble;
+   437→      sendUserMessage(`${preamble}\n\n${suggestion}`);
+   438→    },
+   439→    [currentPersonality, sendUserMessage]
+   440→  );
+   441→
+   442→  // ---- header tool button (compact icon button) ----
+   443→  const HeaderBtn = useCallback(
+   444→    (props: {
+   445→      onClick: () => void;
+   446→      label: string;
+   447→      active?: boolean;
+   448→      children: React.ReactNode;
+   449→    }) => (
+   450→      <button
+   451→        type="button"
+   452→        onClick={props.onClick}
+   453→        aria-label={props.label}
+   454→        title={props.label}
+   455→        className={cn(
+   456→          "flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground",
+   457→          props.active && "bg-foreground/10 text-foreground"
+   458→        )}
+   459→      >
+   460→        {props.children}
+   461→      </button>
+   462→    ),
+   463→    []
+   464→  );
+   465→
+   466→  return (
+   467→    <AnimatePresence>
+   468→      {chatOpen && (
+   469→        <motion.div
+   470→          initial={{ opacity: 0, x: 24 }}
+   471→          animate={{ opacity: 1, x: 0 }}
+   472→          exit={{ opacity: 0, x: 24 }}
+   473→          transition={{ type: "spring", stiffness: 280, damping: 28 }}
+   474→          className="glass-strong pointer-events-auto fixed bottom-16 right-3 z-40 flex h-[42vh] w-[min(90vw,360px)] flex-col overflow-hidden rounded-2xl glow-amethyst sm:bottom-20 sm:right-4"
+   475→          data-ai-skip="true"
+   476→        >
+   477→          {/* header */}
+   478→          <div className="border-b border-border/50 px-3 py-2">
+   479→            <div className="flex items-center justify-between gap-1">
+   480→              <div className="flex min-w-0 items-center gap-1.5">
+   481→                <div className="relative shrink-0">
+   482→                  <Bot className="h-4 w-4 text-[oklch(0.74_0.22_300)]" />
+   483→                  {aiBusy && (
+   484→                    <motion.span
+   485→                      animate={{ scale: [1, 1.6, 1], opacity: [0.6, 0, 0.6] }}
+   486→                      transition={{ duration: 1.6, repeat: Infinity }}
+   487→                      className="absolute inset-0 rounded-full bg-[oklch(0.74_0.22_300)]"
+   488→                    />
+   489→                  )}
+   490→                </div>
+   491→                <h3 className="font-mono-ae shrink-0 text-sm font-semibold">N-Core</h3>
+   492→                <span className="eyebrow truncate text-muted-foreground">
+   493→                  {aiBusy ? "thinking…" : "listening"}
+   494→                </span>
+   495→              </div>
+   496→              <div className="flex shrink-0 items-center gap-0.5">
+   497→                {/* Feature 3: personality selector */}
+   498→                <div className="relative" data-personality-menu>
+   499→                  <button
+   500→                    type="button"
+   501→                    onClick={() => setPersonalityMenuOpen((v) => !v)}
+   502→                    className="flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono-ae text-[0.58rem] transition-all"
+   503→                    style={{
+   504→                      borderColor: `${currentPersonality.accent}66`,
+   505→                      color: currentPersonality.accent,
+   506→                      backgroundColor: `${currentPersonality.accent}14`,
+   507→                    }}
+   508→                    title={`Personality: ${currentPersonality.name} — ${currentPersonality.tagline}`}
+   509→                    aria-label="Select AI personality"
+   510→                  >
+   511→                    <span
+   512→                      className="h-1.5 w-1.5 rounded-full"
+   513→                      style={{ backgroundColor: currentPersonality.accent }}
+   514→                    />
+   515→                    {currentPersonality.name}
+   516→                    <ChevronDown className="h-2.5 w-2.5 opacity-70" />
+   517→                  </button>
+   518→                  <AnimatePresence>
+   519→                    {personalityMenuOpen && (
+   520→                      <motion.div
+   521→                        initial={{ opacity: 0, y: -4 }}
+   522→                        animate={{ opacity: 1, y: 0 }}
+   523→                        exit={{ opacity: 0, y: -4 }}
+   524→                        className="glass-strong absolute right-0 top-7 z-50 w-52 rounded-xl border border-border/60 p-1 shadow-xl"
+   525→                      >
+   526→                        {PERSONALITIES.map((p) => (
+   527→                          <button
+   528→                            key={p.key}
+   529→                            type="button"
+   530→                            onClick={() => selectPersonality(p.key)}
+   531→                            className={cn(
+   532→                              "flex w-full flex-col items-start gap-0.5 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-foreground/10",
+   533→                              p.key === personality && "bg-foreground/[0.06]"
+   534→                            )}
+   535→                          >
+   536→                            <span className="flex items-center gap-1.5 font-mono-ae text-[0.7rem] font-semibold">
+   537→                              <span
+   538→                                className="h-1.5 w-1.5 rounded-full"
+   539→                                style={{ backgroundColor: p.accent }}
+   540→                              />
+   541→                              {p.name}
+   542→                            </span>
+   543→                            <span className="pl-3 text-[0.58rem] text-muted-foreground">
+   544→                              {p.tagline}
+   545→                            </span>
+   546→                          </button>
+   547→                        ))}
+   548→                      </motion.div>
+   549→                    )}
+   550→                  </AnimatePresence>
+   551→                </div>
+   552→                {/* Feature 2: TTS toggle */}
+   553→                <HeaderBtn
+   554→                  onClick={toggleTts}
+   555→                  label={ttsEnabled ? "Disable text-to-speech" : "Enable text-to-speech"}
+   556→                  active={ttsEnabled}
+   557→                >
+   558→                  {ttsEnabled ? (
+   559→                    <Volume2 className="h-3 w-3 text-[oklch(0.85_0.16_85)]" />
+   560→                  ) : (
+   561→                    <VolumeX className="h-3 w-3" />
+   562→                  )}
+   563→                </HeaderBtn>
+   564→                {/* Feature 7: search */}
+   565→                <HeaderBtn
+   566→                  onClick={toggleSearch}
+   567→                  label="Search conversation"
+   568→                  active={searchOpen}
+   569→                >
+   570→                  <Search className="h-3 w-3" />
+   571→                </HeaderBtn>
+   572→                {/* Feature 5: export */}
+   573→                <HeaderBtn onClick={exportConversation} label="Export conversation as Markdown">
+   574→                  <Download className="h-3 w-3" />
+   575→                </HeaderBtn>
+   576→                {/* autonomy toggle */}
+   577→                <button
+   578→                  type="button"
+   579→                  onClick={toggleAutonomy}
+   580→                  className={cn(
+   581→                    "ml-0.5 flex items-center gap-1 rounded-full border px-1.5 py-0.5 font-mono-ae text-[0.58rem] transition-all",
+   582→                    autonomyMode === "active"
+   583→                      ? "border-[oklch(0.85_0.16_85)]/40 bg-[oklch(0.85_0.16_85)]/10 text-[oklch(0.85_0.16_85)]"
+   584→                      : "border-border/60 bg-card/40 text-muted-foreground"
+   585→                  )}
+   586→                  title="Toggle autonomous mode"
+   587→                >
+   588→                  <span
+   589→                    className={cn(
+   590→                      "h-1.5 w-1.5 rounded-full",
+   591→                      autonomyMode === "active"
+   592→                        ? "bg-[oklch(0.85_0.16_85)] neural-dot"
+   593→                        : "bg-muted-foreground"
+   594→                    )}
+   595→                  />
+   596→                  {autonomyMode === "active" ? "on" : "off"}
+   597→                </button>
+   598→                <button
+   599→                  type="button"
+   600→                  onClick={toggleChat}
+   601→                  className="rounded-lg p-1 text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+   602→                  aria-label="Close chat"
+   603→                >
+   604→                  <X className="h-3.5 w-3.5" />
+   605→                </button>
+   606→              </div>
+   607→            </div>
+   608→
+   609→            {/* Feature 7: search bar */}
+   610→            <AnimatePresence>
+   611→              {searchOpen && (
+   612→                <motion.div
+   613→                  initial={{ height: 0, opacity: 0 }}
+   614→                  animate={{ height: "auto", opacity: 1 }}
+   615→                  exit={{ height: 0, opacity: 0 }}
+   616→                  className="overflow-hidden"
+   617→                >
+   618→                  <div className="flex items-center gap-1.5 pt-2">
+   619→                    <Search className="h-3 w-3 shrink-0 text-muted-foreground" />
+   620→                    <input
+   621→                      autoFocus
+   622→                      value={searchQuery}
+   623→                      onChange={(e) => setSearchQuery(e.target.value)}
+   624→                      placeholder="Filter messages…"
+   625→                      className="min-w-0 flex-1 bg-transparent font-mono-ae text-xs text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+   626→                    />
+   627→                    {searchQuery && (
+   628→                      <span className="shrink-0 font-mono-ae text-[0.58rem] text-muted-foreground">
+   629→                        {matchCount} match{matchCount === 1 ? "" : "es"}
+   630→                      </span>
+   631→                    )}
+   632→                    {searchQuery && (
+   633→                      <button
+   634→                        type="button"
+   635→                        onClick={clearSearch}
+   636→                        className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+   637→                        aria-label="Clear search"
+   638→                      >
+   639→                        <X className="h-3 w-3" />
+   640→                      </button>
+   641→                    )}
+   642→                  </div>
+   643→                </motion.div>
+   644→              )}
+   645→            </AnimatePresence>
+   646→          </div>
+   647→
+   648→          {/* messages */}
+   649→          <div ref={scrollRef} className="scroll-ae min-h-0 flex-1 space-y-3 overflow-y-auto p-3">
+   650→            {/* Feature 8: pinned messages section */}
+   651→            {pinnedMessages.length > 0 && (
+   652→              <div className="mb-2 rounded-xl border border-[oklch(0.85_0.16_85)]/25 bg-[oklch(0.85_0.16_85)]/[0.06] p-2">
+   653→                <div className="mb-1.5 flex items-center gap-1.5 font-mono-ae text-[0.58rem] uppercase tracking-wide text-[oklch(0.85_0.16_85)]">
+   654→                  <PanelTop className="h-2.5 w-2.5" />
+   655→                  Pinned ({pinnedMessages.length})
+   656→                </div>
+   657→                <div className="space-y-1.5">
+   658→                  {pinnedMessages.map((m) => (
+   659→                    <div
+   660→                      key={`pin-${m.id}`}
+   661→                      className="flex items-start gap-1.5 rounded-lg bg-background/40 px-2 py-1.5"
+   662→                    >
+   663→                      <Bot className="mt-0.5 h-2.5 w-2.5 shrink-0 text-[oklch(0.74_0.22_300)]" />
+   664→                      <p className="min-w-0 flex-1 text-[0.7rem] leading-snug text-foreground/80 line-clamp-3">
+   665→                        {m.content}
+   666→                      </p>
+   667→                      <button
+   668→                        type="button"
+   669→                        onClick={() => togglePin(m.id)}
+   670→                        className="shrink-0 rounded p-0.5 text-[oklch(0.85_0.16_85)] hover:bg-foreground/10"
+   671→                        aria-label="Unpin message"
+   672→                        title="Unpin"
+   673→                      >
+   674→                        <PinOff className="h-2.5 w-2.5" />
+   675→                      </button>
+   676→                    </div>
+   677→                  ))}
+   678→                </div>
+   679→              </div>
+   680→            )}
+   681→
+   682→            {chat.map((m) => {
+   683→              const matches = !searchLower || m.content.toLowerCase().includes(searchLower);
+   684→              const dimmed = searchLower && !matches;
+   685→              const isAi = m.role === "ai";
+   686→              const pinned = isPinned(m.id);
+   687→              const showSuggestions =
+   688→                isAi &&
+   689→                !aiBusy &&
+   690→                lastAiMessage?.id === m.id &&
+   691→                suggestions.length > 0 &&
+   692→                !dimmed;
+   693→              return (
+   694→                <motion.div
+   695→                  key={m.id}
+   696→                  initial={{ opacity: 0, y: 6 }}
+   697→                  animate={{ opacity: dimmed ? 0.25 : 1, y: 0 }}
+   698→                  className={cn("flex gap-2", m.role === "user" && "flex-row-reverse")}
+   699→                >
+   700→                  <div
+   701→                    className={cn(
+   702→                      "flex h-6 w-6 shrink-0 items-center justify-center rounded-full border",
+   703→                      isAi
+   704→                        ? "border-[oklch(0.74_0.22_300)]/40 bg-[oklch(0.74_0.22_300)]/10 text-[oklch(0.74_0.22_300)]"
+   705→                        : "border-[oklch(0.82_0.17_195)]/40 bg-[oklch(0.82_0.17_195)]/10 text-[oklch(0.82_0.17_195)]"
+   706→                    )}
+   707→                  >
+   708→                    {isAi ? <Bot className="h-3 w-3" /> : <User className="h-3 w-3" />}
+   709→                  </div>
+   710→                  <div className={cn("min-w-0 max-w-[78%]", m.role === "user" && "text-right")}>
+   711→                    <div
+   712→                      className={cn(
+   713→                        "group relative inline-block rounded-2xl px-3.5 py-2.5 text-sm leading-relaxed",
+   714→                        isAi
+   715→                          ? "rounded-tl-sm bg-foreground/[0.06] text-foreground/90"
+   716→                          : "rounded-tr-sm bg-[oklch(0.82_0.17_195)]/15 text-foreground"
+   717→                      )}
+   718→                    >
+   719→                      <div className="whitespace-pre-wrap break-words">
+   720→                        {searchLower && matches
+   721→                          ? highlightMatch(m.displayContent ?? m.content, searchLower)
+   722→                          : (m.displayContent ?? m.content)}
+   723→                      </div>
+   724→                      {/* AI message action row: pin + speak */}
+   725→                      {isAi && (
+   726→                        <div className="mt-1 flex items-center gap-1 border-t border-foreground/5 pt-1 opacity-0 transition-opacity group-hover:opacity-100">
+   727→                          <button
+   728→                            type="button"
+   729→                            onClick={() => togglePin(m.id)}
+   730→                            className={cn(
+   731→                              "flex items-center gap-0.5 rounded px-1 py-0.5 font-mono-ae text-[0.55rem] transition-colors hover:bg-foreground/10",
+   732→                              pinned
+   733→                                ? "text-[oklch(0.85_0.16_85)]"
+   734→                                : "text-muted-foreground"
+   735→                            )}
+   736→                            title={pinned ? "Unpin message" : "Pin message"}
+   737→                            aria-label={pinned ? "Unpin message" : "Pin message"}
+   738→                          >
+   739→                            {pinned ? (
+   740→                              <PinOff className="h-2.5 w-2.5" />
+   741→                            ) : (
+   742→                              <Pin className="h-2.5 w-2.5" />
+   743→                            )}
+   744→                            {pinned ? "pinned" : "pin"}
+   745→                          </button>
+   746→                          <button
+   747→                            type="button"
+   748→                            onClick={() => speakText(m.content)}
+   749→                            className="flex items-center gap-0.5 rounded px-1 py-0.5 font-mono-ae text-[0.55rem] text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+   750→                            title="Speak this message"
+   751→                            aria-label="Speak this message"
+   752→                          >
+   753→                            <Volume2 className="h-2.5 w-2.5" />
+   754→                            speak
+   755→                          </button>
+   756→                        </div>
+   757→                      )}
+   758→                    </div>
+   759→                    {m.reasoning && (
+   760→                      <details className="mt-1 group">
+   761→                        <summary className="flex cursor-pointer list-none items-center gap-1 font-mono-ae text-[0.58rem] text-muted-foreground/70 hover:text-muted-foreground">
+   762→                          <ChevronDown className="h-2.5 w-2.5 transition-transform group-open:rotate-180" />
+   763→                          reasoning
+   764→                        </summary>
+   765→                        <p className="mt-1 rounded-lg bg-foreground/[0.03] px-2 py-1.5 text-[0.68rem] italic leading-snug text-muted-foreground">
+   766→                          {m.reasoning}
+   767→                        </p>
+   768→                      </details>
+   769→                    )}
+   770→                    {/* Feature 6: proactive suggestions */}
+   771→                    {showSuggestions && (
+   772→                      <div className="mt-1.5 flex flex-wrap gap-1">
+   773→                        {suggestions.map((s, i) => (
+   774→                          <button
+   775→                            key={i}
+   776→                            type="button"
+   777→                            onClick={() => sendSuggestion(s)}
+   778→                            className="rounded-full border border-[oklch(0.74_0.22_300)]/30 bg-[oklch(0.74_0.22_300)]/[0.08] px-2 py-0.5 font-mono-ae text-[0.58rem] text-[oklch(0.74_0.22_300)] transition-colors hover:bg-[oklch(0.74_0.22_300)]/20"
+   779→                          >
+   780→                            {s}
+   781→                          </button>
+   782→                        ))}
+   783→                      </div>
+   784→                    )}
+   785→                    <div className="mt-0.5 font-mono-ae text-[0.55rem] text-muted-foreground/40">
+   786→                      {mounted ? new Date(m.time).toLocaleTimeString("en-US", { hour12: false }) : "—"}
+   787→                    </div>
+   788→                  </div>
+   789→                </motion.div>
+   790→              );
+   791→            })}
+   792→
+   793→            {aiBusy && (
+   794→              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="flex gap-2">
+   795→                <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full border border-[oklch(0.74_0.22_300)]/40 bg-[oklch(0.74_0.22_300)]/10 text-[oklch(0.74_0.22_300)]">
+   796→                  <Bot className="h-3 w-3" />
+   797→                </div>
+   798→                <div className="flex items-center gap-1 rounded-2xl rounded-tl-sm bg-foreground/[0.06] px-3 py-2.5">
+   799→                  {[0, 1, 2].map((i) => (
+   800→                    <motion.span
+   801→                      key={i}
+   802→                      animate={{ opacity: [0.2, 1, 0.2], y: [0, -2, 0] }}
+   803→                      transition={{ duration: 1, repeat: Infinity, delay: i * 0.2 }}
+   804→                      className="h-1.5 w-1.5 rounded-full bg-[oklch(0.74_0.22_300)]"
+   805→                    />
+   806→                  ))}
+   807→                </div>
+   808→              </motion.div>
+   809→            )}
+   810→          </div>
+   811→
+   812→          {/* reasoning live banner */}
+   813→          {aiBusy && aiReasoning && (
+   814→            <div className="border-t border-border/40 bg-[oklch(0.74_0.22_300)]/[0.05] px-3 py-1.5">
+   815→              <p className="font-mono-ae text-[0.62rem] italic leading-snug text-muted-foreground">
+   816→                {aiReasoning.slice(0, 120)}…
+   817→              </p>
+   818→            </div>
+   819→          )}
+   820→
+   821→          {/* Feature 4: file preview chip */}
+   822→          <AnimatePresence>
+   823→            {attachedFile && (
+   824→              <motion.div
+   825→                initial={{ height: 0, opacity: 0 }}
+   826→                animate={{ height: "auto", opacity: 1 }}
+   827→                exit={{ height: 0, opacity: 0 }}
+   828→                className="overflow-hidden border-t border-border/40 px-2.5"
+   829→              >
+   830→                <div className="flex items-center gap-2 py-1.5">
+   831→                  {attachedFile.kind === "image" ? (
+   832→                    <img
+   833→                      src={attachedFile.data}
+   834→                      alt={attachedFile.name}
+   835→                      className="h-8 w-8 shrink-0 rounded object-cover"
+   836→                    />
+   837→                  ) : (
+   838→                    <Paperclip className="h-3.5 w-3.5 shrink-0 text-[oklch(0.82_0.17_195)]" />
+   839→                  )}
+   840→                  <div className="min-w-0 flex-1">
+   841→                    <p className="truncate font-mono-ae text-[0.62rem] text-foreground">
+   842→                      {attachedFile.name}
+   843→                    </p>
+   844→                    <p className="font-mono-ae text-[0.55rem] text-muted-foreground">
+   845→                      {attachedFile.kind} · {formatBytes(attachedFile.size)}
+   846→                    </p>
+   847→                  </div>
+   848→                  <button
+   849→                    type="button"
+   850→                    onClick={removeAttachment}
+   851→                    className="shrink-0 rounded p-0.5 text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+   852→                    aria-label="Remove attachment"
+   853→                  >
+   854→                    <X className="h-3 w-3" />
+   855→                  </button>
+   856→                </div>
+   857→              </motion.div>
+   858→            )}
+   859→          </AnimatePresence>
+   860→
+   861→          {/* input */}
+   862→          <form onSubmit={submit} className="border-t border-border/50 p-2.5">
+   863→            <div className="flex items-center gap-1.5 rounded-xl border border-border/60 bg-card/50 px-2 py-1 focus-within:border-[oklch(0.74_0.22_300)]/50">
+   864→              <Sparkles className="h-3.5 w-3.5 shrink-0 text-[oklch(0.74_0.22_300)]" />
+   865→              <input
+   866→                value={input}
+   867→                onChange={(e) => setInput(e.target.value)}
+   868→                placeholder="Tell N-Core what to optimise…"
+   869→                className="min-w-0 flex-1 bg-transparent py-2 font-mono-ae text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none"
+   870→              />
+   871→              {/* Feature 1: voice input */}
+   872→              {voiceSupported && (
+   873→                <button
+   874→                  type="button"
+   875→                  onClick={toggleVoice}
+   876→                  className={cn(
+   877→                    "relative flex h-6 w-6 shrink-0 items-center justify-center rounded-md transition-colors",
+   878→                    voiceListening
+   879→                      ? "bg-[oklch(0.65_0.22_25)]/20 text-[oklch(0.65_0.22_25)]"
+   880→                      : "text-muted-foreground hover:bg-foreground/10 hover:text-foreground"
+   881→                  )}
+   882→                  aria-label={voiceListening ? "Stop voice input" : "Start voice input"}
+   883→                  title={voiceListening ? "Stop listening" : "Voice input"}
+   884→                >
+   885→                  {voiceListening ? (
+   886→                    <>
+   887→                      <span className="absolute inset-0 animate-ping rounded-md bg-[oklch(0.65_0.22_25)]/40" />
+   888→                      <MicOff className="relative h-3 w-3" />
+   889→                    </>
+   890→                  ) : (
+   891→                    <Mic className="h-3 w-3" />
+   892→                  )}
+   893→                </button>
+   894→              )}
+   895→              {/* Feature 4: file upload */}
+   896→              <button
+   897→                type="button"
+   898→                onClick={() => fileInputRef.current?.click()}
+   899→                className="flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/10 hover:text-foreground"
+   900→                aria-label="Attach a file"
+   901→                title="Attach image or text file"
+   902→              >
+   903→                <Paperclip className="h-3 w-3" />
+   904→              </button>
+   905→              <input
+   906→                ref={fileInputRef}
+   907→                type="file"
+   908→                accept=".png,.jpg,.jpeg,.gif,.webp,.txt,.md,.json,.ts,.tsx,.js,.jsx,.py"
+   909→                onChange={handleFileSelect}
+   910→                className="hidden"
+   911→                aria-hidden="true"
+   912→              />
+   913→              <button
+   914→                type="submit"
+   915→                disabled={(!input.trim() && !attachedFile) || sending}
+   916→                className="flex h-7 w-7 shrink-0 items-center justify-center rounded-lg bg-[oklch(0.74_0.22_300)]/20 text-[oklch(0.74_0.22_300)] transition-colors hover:bg-[oklch(0.74_0.22_300)]/30 disabled:opacity-30"
+   917→                aria-label="Send"
+   918→              >
+   919→                {sending ? (
+   920→                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+   921→                ) : (
+   922→                  <Send className="h-3.5 w-3.5" />
+   923→                )}
+   924→              </button>
+   925→            </div>
+   926→          </form>
+   927→        </motion.div>
+   928→      )}
+   929→    </AnimatePresence>
+   930→  );
+   931→}
+   932→
+   933→export function ChatToggle() {
+   934→  const { chatOpen, toggleChat } = useEvolution();
+   935→  return (
+   936→    <button
+   937→      onClick={toggleChat}
+   938→      className={cn(
+   939→        "fixed bottom-16 right-3 z-30 flex h-11 w-11 items-center justify-center rounded-full border transition-all sm:bottom-20 sm:right-4",
+   940→        chatOpen
+   941→          ? "border-transparent glow-amethyst bg-card/80"
+   942→          : "border-border/60 bg-card/60 hover:bg-card/80 backdrop-blur"
+   943→      )}
+   944→      aria-label="Toggle chat with N-Core"
+   945→      data-ai-skip="true"
+   946→    >
+   947→      <Bot className={cn("h-5 w-5", chatOpen ? "text-[oklch(0.74_0.22_300)]" : "text-foreground/70")} />
+   948→    </button>
+   949→  );
+   950→}
+   951→
