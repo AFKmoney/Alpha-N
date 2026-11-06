@@ -57,7 +57,7 @@ export function BootSequence(): React.ReactElement {
                   key={line}
                   initial={{ opacity: 0, x: -8 }}
                   animate={{ opacity: 1, x: 0 }}
-                  className={i === BOOT_LINES.length - 1 ? "text-[--ae-amethyst] text-glow-amethyst" : "text-zinc-400"}
+                  className={i === BOOT_LINES.length - 1 ? "text-(--ae-amethyst) text-glow-amethyst" : "text-zinc-400"}
                 >
                   <span className="mr-2 text-zinc-700">{`>`}</span>
                   {line}
@@ -66,7 +66,7 @@ export function BootSequence(): React.ReactElement {
             </div>
             <div className="mt-6 h-px w-full overflow-hidden bg-white/8">
               <motion.div
-                className="h-full bg-gradient-to-r from-[--ae-cyan] via-[--ae-amethyst] to-[--ae-gold]"
+                className="h-full bg-gradient-to-r from-(--ae-cyan) via-(--ae-amethyst) to-(--ae-gold)"
                 initial={{ width: "0%" }}
                 animate={{ width: `${(lineCount / BOOT_LINES.length) * 100}%` }}
                 transition={{ ease: "easeOut" }}

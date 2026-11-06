@@ -171,7 +171,7 @@ export function MemoryNetwork(): React.ReactElement {
   return (
     <div className="flex h-full flex-col">
       <div className="flex items-center gap-2 border-b border-white/8 px-3 py-2" data-ai-skip>
-        <Activity className={cn("h-3.5 w-3.5", offline ? "text-[--ae-rose]" : "text-[--ae-emerald]")} />
+        <Activity className={cn("h-3.5 w-3.5", offline ? "text-(--ae-rose)" : "text-(--ae-emerald)")} />
         <span className="font-mono-ae text-[10px] text-zinc-400">
           {offline ? "aether offline — the OS runs without it" : `${health?.nodes ?? nodes.length} nodes · ${health?.edges ?? edges.length} edges · ${health?.cache_hits ?? 0} cache hits`}
         </span>
@@ -181,9 +181,9 @@ export function MemoryNetwork(): React.ReactElement {
             onChange={(e) => setQuery(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && void runSearch()}
             placeholder="semantic search…"
-            className="font-mono-ae w-40 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-[--ae-cyan]/40"
+            className="font-mono-ae w-40 rounded-md border border-white/10 bg-black/30 px-2 py-1 text-[10px] text-zinc-200 outline-none placeholder:text-zinc-600 focus:border-(--ae-cyan)/40"
           />
-          <button type="button" onClick={() => void runSearch()} className="rounded-md border border-white/10 p-1 text-zinc-400 hover:text-[--ae-cyan]">
+          <button type="button" onClick={() => void runSearch()} className="rounded-md border border-white/10 p-1 text-zinc-400 hover:text-(--ae-cyan)">
             <Search className="h-3 w-3" />
           </button>
         </div>
@@ -218,7 +218,7 @@ export function MemoryNetwork(): React.ReactElement {
               type="button"
               className={cn(
                 "absolute -translate-x-1/2 -translate-y-1/2 rounded-full border",
-                highlighted ? "border-[--ae-gold]" : "border-transparent"
+                highlighted ? "border-(--ae-gold)" : "border-transparent"
               )}
               style={{ left: node.x, top: node.y }}
               onClick={() => setSelected(node)}

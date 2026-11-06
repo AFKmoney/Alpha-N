@@ -37,7 +37,7 @@ export function ModelSettingsButton({ onOpen }: { onOpen: () => void }): React.R
       type="button"
       title="Model settings"
       onClick={onOpen}
-      className="flex h-7 items-center gap-1 rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-[--ae-cyan]"
+      className="flex h-7 items-center gap-1 rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-(--ae-cyan)"
     >
       {provider === "aether" ? <HardDriveDownload className="h-3 w-3" /> : <Cloud className="h-3 w-3" />}
       {provider}
@@ -137,7 +137,7 @@ export function ModelSettings({ open, onClose }: { open: boolean; onClose: () =>
                 className={cn(
                   "font-mono-ae flex items-center justify-center gap-2 rounded-xl border px-3 py-2.5 text-xs capitalize transition-colors",
                   config?.provider === provider
-                    ? "border-[--ae-cyan]/50 bg-[--ae-cyan]/10 text-[--ae-cyan]"
+                    ? "border-(--ae-cyan)/50 bg-(--ae-cyan)/10 text-(--ae-cyan)"
                     : "border-white/10 text-zinc-400 hover:bg-white/6"
                 )}
               >
@@ -155,14 +155,14 @@ export function ModelSettings({ open, onClose }: { open: boolean; onClose: () =>
                   value={config.aetherEndpoint}
                   onChange={(e) => setConfig({ ...config, aetherEndpoint: e.target.value })}
                   onBlur={(e) => void save({ aetherEndpoint: e.target.value })}
-                  className="font-mono-ae w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-[11px] text-zinc-200 outline-none focus:border-[--ae-cyan]/40"
+                  className="font-mono-ae w-full rounded-lg border border-white/10 bg-black/30 px-2.5 py-1.5 text-[11px] text-zinc-200 outline-none focus:border-(--ae-cyan)/40"
                 />
               </label>
               <div>
                 <span className="eyebrow mb-1 block">gguf model (models/ folder)</span>
                 {models.length === 0 ? (
                   <p className="font-mono-ae rounded-lg border border-dashed border-white/12 px-2.5 py-2 text-[10.5px] text-zinc-500">
-                    No .gguf files found — drop a model into the <span className="text-[--ae-cyan]">models/</span> folder and reopen.
+                    No .gguf files found — drop a model into the <span className="text-(--ae-cyan)">models/</span> folder and reopen.
                   </p>
                 ) : (
                   <div className="scroll-ae max-h-32 space-y-1 overflow-y-auto">
@@ -174,7 +174,7 @@ export function ModelSettings({ open, onClose }: { open: boolean; onClose: () =>
                         className={cn(
                           "font-mono-ae flex w-full items-center justify-between rounded-lg border px-2.5 py-1.5 text-[10.5px]",
                           config.aetherModel === model.name
-                            ? "border-[--ae-gold]/50 bg-[--ae-gold]/10 text-[--ae-gold]"
+                            ? "border-(--ae-gold)/50 bg-(--ae-gold)/10 text-(--ae-gold)"
                             : "border-white/10 text-zinc-400 hover:bg-white/6"
                         )}
                       >
@@ -190,7 +190,7 @@ export function ModelSettings({ open, onClose }: { open: boolean; onClose: () =>
                   type="checkbox"
                   checked={config.aetherHasVision}
                   onChange={(e) => void save({ aetherHasVision: e.target.checked })}
-                  className="accent-[--ae-cyan]"
+                  className="accent-(--ae-cyan)"
                 />
                 model supports vision (sees screenshots)
               </label>
@@ -202,7 +202,7 @@ export function ModelSettings({ open, onClose }: { open: boolean; onClose: () =>
               type="button"
               onClick={() => void runTest()}
               disabled={testing}
-              className="font-mono-ae flex items-center gap-1.5 rounded-lg border border-white/12 px-3 py-1.5 text-[11px] text-zinc-300 hover:border-[--ae-cyan]/40 hover:text-[--ae-cyan] disabled:opacity-50"
+              className="font-mono-ae flex items-center gap-1.5 rounded-lg border border-white/12 px-3 py-1.5 text-[11px] text-zinc-300 hover:border-(--ae-cyan)/40 hover:text-(--ae-cyan) disabled:opacity-50"
             >
               {testing ? <Loader2 className="h-3 w-3 animate-spin" /> : <PlugZap className="h-3 w-3" />}
               test connection

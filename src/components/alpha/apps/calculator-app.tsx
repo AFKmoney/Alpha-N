@@ -359,15 +359,15 @@ export function CalculatorApp({ windowId: _windowId }: { windowId?: string }) {
     cn(
       "relative flex h-10 items-center justify-center rounded-lg border font-mono-ae text-sm transition-colors select-none",
       "border-white/10 bg-white/[0.04] text-zinc-200 hover:bg-white/[0.09]",
-      k.kind === "op" && "border-[--ae-cyan]/25 bg-[--ae-cyan]/[0.07] text-[--ae-cyan]",
-      k.kind === "fn" && "border-[--ae-amethyst]/25 bg-[--ae-amethyst]/[0.07] text-[--ae-amethyst] text-xs",
-      k.kind === "eq" && "border-[--ae-cyan]/40 bg-[--ae-cyan]/15 text-[--ae-cyan] text-glow-cyan font-semibold",
-      k.kind === "clr" && "border-[--ae-rose]/25 bg-[--ae-rose]/[0.06] text-[--ae-rose]",
+      k.kind === "op" && "border-(--ae-cyan)/25 bg-(--ae-cyan)/[0.07] text-(--ae-cyan)",
+      k.kind === "fn" && "border-(--ae-amethyst)/25 bg-(--ae-amethyst)/[0.07] text-(--ae-amethyst) text-xs",
+      k.kind === "eq" && "border-(--ae-cyan)/40 bg-(--ae-cyan)/15 text-(--ae-cyan) text-glow-cyan font-semibold",
+      k.kind === "clr" && "border-(--ae-rose)/25 bg-(--ae-rose)/[0.06] text-(--ae-rose)",
       k.span && "col-span-2"
     );
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-[--ae-obsidian-deep] p-2.5">
+    <div className="flex h-full flex-col gap-2 bg-(--ae-obsidian-deep) p-2.5">
       {/* header */}
       <div className="flex items-center justify-between">
         <span className="eyebrow">Calculator</span>
@@ -377,7 +377,7 @@ export function CalculatorApp({ windowId: _windowId }: { windowId?: string }) {
             className={cn(
               "eyebrow rounded-full border px-2.5 py-1 transition-colors",
               sciOpen
-                ? "border-[--ae-amethyst]/40 bg-[--ae-amethyst]/10 text-[--ae-amethyst]"
+                ? "border-(--ae-amethyst)/40 bg-(--ae-amethyst)/10 text-(--ae-amethyst)"
                 : "border-white/10 text-zinc-400 hover:text-zinc-200"
             )}
           >
@@ -388,7 +388,7 @@ export function CalculatorApp({ windowId: _windowId }: { windowId?: string }) {
             className={cn(
               "flex items-center gap-1 rounded-full border px-2.5 py-1 transition-colors",
               historyOpen
-                ? "border-[--ae-gold]/40 bg-[--ae-gold]/10 text-[--ae-gold]"
+                ? "border-(--ae-gold)/40 bg-(--ae-gold)/10 text-(--ae-gold)"
                 : "border-white/10 text-zinc-400 hover:text-zinc-200"
             )}
           >
@@ -403,7 +403,7 @@ export function CalculatorApp({ windowId: _windowId }: { windowId?: string }) {
         <div className="min-h-4 w-full truncate text-right font-mono-ae text-xs text-zinc-400" title={expr}>
           {expr || "\u00A0"}
         </div>
-        <div className="w-full truncate text-right font-mono-ae text-3xl font-semibold text-[--ae-cyan] text-glow-cyan">
+        <div className="w-full truncate text-right font-mono-ae text-3xl font-semibold text-(--ae-cyan) text-glow-cyan">
           {live || "0"}
         </div>
         <div className="flex w-full items-center justify-between text-[10px] text-zinc-500 font-mono-ae">
@@ -470,7 +470,7 @@ export function CalculatorApp({ windowId: _windowId }: { windowId?: string }) {
                 <span className="eyebrow">History</span>
                 <button
                   onClick={() => setHistory([])}
-                  className="text-zinc-500 transition-colors hover:text-[--ae-rose]"
+                  className="text-zinc-500 transition-colors hover:text-(--ae-rose)"
                   aria-label="Clear history"
                 >
                   <Trash2 className="h-3 w-3" />
@@ -492,7 +492,7 @@ export function CalculatorApp({ windowId: _windowId }: { windowId?: string }) {
                       <span className="truncate font-mono-ae text-[10px] text-zinc-400">{h.expr}</span>
                       <X className="h-2.5 w-2.5 shrink-0 text-transparent group-hover:text-zinc-600" />
                     </span>
-                    <span className="block truncate font-mono-ae text-xs text-[--ae-gold]">{h.result}</span>
+                    <span className="block truncate font-mono-ae text-xs text-(--ae-gold)">{h.result}</span>
                   </button>
                 ))}
               </div>

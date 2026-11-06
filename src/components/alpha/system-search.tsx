@@ -207,7 +207,7 @@ export function SystemSearch(): React.ReactElement {
         id: "apps",
         label: "Apps",
         icon: <AppWindow className="h-3.5 w-3.5" />,
-        accent: "text-[--ae-cyan]",
+        accent: "text-(--ae-cyan)",
         items: DOCK_APPS.filter((a) => matches([a.label, a.kind, a.title], q)).slice(0, 8).map((a) => ({
           id: `app-${a.kind}`,
           label: a.label,
@@ -219,7 +219,7 @@ export function SystemSearch(): React.ReactElement {
         id: "windows",
         label: "Windows",
         icon: <Layers className="h-3.5 w-3.5" />,
-        accent: "text-[--ae-amethyst]",
+        accent: "text-(--ae-amethyst)",
         items: windows
           .filter((w) => matches([w.title, w.kind, String(w.desktop)], q))
           .slice(0, 8)
@@ -234,7 +234,7 @@ export function SystemSearch(): React.ReactElement {
         id: "files",
         label: "Files",
         icon: <FileText className="h-3.5 w-3.5" />,
-        accent: "text-[--ae-emerald]",
+        accent: "text-(--ae-emerald)",
         items: files
           .filter((f) => matches([f.name, f.path], q))
           .slice(0, 10)
@@ -249,7 +249,7 @@ export function SystemSearch(): React.ReactElement {
         id: "memories",
         label: "Memories",
         icon: <Brain className="h-3.5 w-3.5" />,
-        accent: "text-[--ae-gold]",
+        accent: "text-(--ae-gold)",
         items: memories
           .filter((m) => matches([m.text, m.kind], q))
           .slice(0, 8)
@@ -264,7 +264,7 @@ export function SystemSearch(): React.ReactElement {
         id: "chat",
         label: "Chat",
         icon: <MessageSquare className="h-3.5 w-3.5" />,
-        accent: "text-[--ae-cyan]",
+        accent: "text-(--ae-cyan)",
         items: chat
           .filter((c) => matches([c.content, c.displayContent, c.reasoning], q))
           .slice(0, 8)
@@ -279,7 +279,7 @@ export function SystemSearch(): React.ReactElement {
         id: "plans",
         label: "Plans",
         icon: <ListChecks className="h-3.5 w-3.5" />,
-        accent: "text-[--ae-amethyst]",
+        accent: "text-(--ae-amethyst)",
         items: plans
           .filter((p) => matches([p.goal, p.rationale], q))
           .slice(0, 8)
@@ -294,7 +294,7 @@ export function SystemSearch(): React.ReactElement {
         id: "goals",
         label: "Goals",
         icon: <Target className="h-3.5 w-3.5" />,
-        accent: "text-[--ae-emerald]",
+        accent: "text-(--ae-emerald)",
         items: goals
           .filter((g) => matches([g.text, g.level], q))
           .slice(0, 8)
@@ -360,7 +360,7 @@ export function SystemSearch(): React.ReactElement {
           onKeyDown={onKeyDown}
         >
           <motion.div
-            className="glass-strong font-mono-ae flex max-h-[72vh] w-[min(680px,94vw)] flex-col overflow-hidden rounded-2xl border-[--ae-cyan]/20 shadow-2xl"
+            className="glass-strong font-mono-ae flex max-h-[72vh] w-[min(680px,94vw)] flex-col overflow-hidden rounded-2xl border-(--ae-cyan)/20 shadow-2xl"
             initial={{ opacity: 0, y: -16, scale: 0.97 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -12, scale: 0.97 }}
@@ -369,7 +369,7 @@ export function SystemSearch(): React.ReactElement {
           >
             {/* input row */}
             <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-              <Search className="h-4 w-4 shrink-0 text-[--ae-cyan]" />
+              <Search className="h-4 w-4 shrink-0 text-(--ae-cyan)" />
               <input
                 ref={inputRef}
                 value={query}
@@ -378,7 +378,7 @@ export function SystemSearch(): React.ReactElement {
                 className="font-mono-ae flex-1 bg-transparent text-sm text-zinc-100 outline-none placeholder:text-zinc-500"
                 spellCheck={false}
               />
-              {loading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-[--ae-cyan]" />}
+              {loading && <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-(--ae-cyan)" />}
               <button
                 type="button"
                 onClick={() => setOpen(false)}
@@ -428,7 +428,7 @@ export function SystemSearch(): React.ReactElement {
                           }}
                           className={cn(
                             "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors",
-                            isActive ? "bg-[--ae-cyan]/10" : "hover:bg-white/5"
+                            isActive ? "bg-(--ae-cyan)/10" : "hover:bg-white/5"
                           )}
                         >
                           <span className={cn("shrink-0", g.accent)}>{g.icon}</span>
@@ -436,7 +436,7 @@ export function SystemSearch(): React.ReactElement {
                             <span className="block truncate text-[13px] text-zinc-200">{item.label}</span>
                             <span className="block truncate text-[10px] text-zinc-500">{item.detail}</span>
                           </span>
-                          {isActive && <CornerDownLeft className="h-3 w-3 shrink-0 text-[--ae-cyan]" />}
+                          {isActive && <CornerDownLeft className="h-3 w-3 shrink-0 text-(--ae-cyan)" />}
                         </button>
                       );
                     })}

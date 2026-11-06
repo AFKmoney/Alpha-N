@@ -70,7 +70,7 @@ export function StartMenu(): React.ReactElement {
                   }}
                   className="flex w-full items-center gap-2.5 rounded-lg px-2.5 py-1.5 text-left hover:bg-white/8"
                 >
-                  <span className="font-mono-ae w-7 text-center text-[11px] text-[--ae-cyan]">{app.icon}</span>
+                  <span className="font-mono-ae w-7 text-center text-[11px] text-(--ae-cyan)">{app.icon}</span>
                   <span className="font-mono-ae flex-1 text-[11px] text-zinc-300">{app.title}</span>
                   {openKinds.has(app.kind) && <span className="neural-dot" />}
                 </button>
@@ -91,8 +91,8 @@ export function StartMenu(): React.ReactElement {
         className={cn(
           "font-mono-ae flex h-9 w-9 items-center justify-center rounded-full border text-sm",
           open
-            ? "border-[--ae-amethyst]/50 bg-[--ae-amethyst]/15 text-[--ae-amethyst] glow-amethyst"
-            : "border-white/12 bg-black/40 text-zinc-300 hover:text-[--ae-amethyst]"
+            ? "border-(--ae-amethyst)/50 bg-(--ae-amethyst)/15 text-(--ae-amethyst) glow-amethyst"
+            : "border-white/12 bg-black/40 text-zinc-300 hover:text-(--ae-amethyst)"
         )}
         aria-label="Start menu"
       >

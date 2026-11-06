@@ -26,7 +26,7 @@ export function LoomApp(): React.ReactElement {
   return (
     <div className="relative flex h-full flex-col">
       {aiBusy && (
-        <div className="lifeline-pulse absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-[--ae-cyan] to-transparent" />
+        <div className="lifeline-pulse absolute inset-x-0 top-0 z-10 h-px bg-gradient-to-r from-transparent via-(--ae-cyan) to-transparent" />
       )}
       <div className="scroll-ae font-mono-ae flex-1 overflow-auto p-4 text-[11.5px] leading-6">
         {lines.lines.map((line) => (
@@ -34,7 +34,7 @@ export function LoomApp(): React.ReactElement {
             key={line.no}
             className={cn(
               "group flex rounded px-1 transition-colors",
-              line.status === "changed" && "cursor-pointer bg-[--ae-amethyst]/8 hover:bg-[--ae-amethyst]/15",
+              line.status === "changed" && "cursor-pointer bg-(--ae-amethyst)/8 hover:bg-(--ae-amethyst)/15",
               line.status === "ghost" && "ghost-line"
             )}
             onClick={() => setExplain(explainFor(line.mutId) ?? (line.status === "changed" ? "Mutation applied here." : null))}
@@ -54,7 +54,7 @@ export function LoomApp(): React.ReactElement {
               ))}
             </span>
             {line.status === "changed" && (
-              <span className="ml-auto pl-3 text-[9px] text-[--ae-amethyst]/70 opacity-0 transition-opacity group-hover:opacity-100">
+              <span className="ml-auto pl-3 text-[9px] text-(--ae-amethyst)/70 opacity-0 transition-opacity group-hover:opacity-100">
                 mutated
               </span>
             )}
@@ -82,7 +82,7 @@ export function LoomApp(): React.ReactElement {
             exit={{ y: 24, opacity: 0 }}
             className="glass font-mono-ae absolute inset-x-3 bottom-3 flex items-start gap-2 rounded-lg p-3 text-[11px] text-zinc-300"
           >
-            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[--ae-amethyst]" />
+            <Sparkles className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--ae-amethyst)" />
             <p className="flex-1">{explain}</p>
             <button type="button" className="text-zinc-500 hover:text-zinc-300" onClick={() => setExplain(null)}>
               ✕

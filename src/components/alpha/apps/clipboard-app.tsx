@@ -177,7 +177,7 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
   const pinnedCount = entries.filter((e) => e.pinned).length;
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-[--ae-obsidian-deep] p-2.5">
+    <div className="flex h-full flex-col gap-2 bg-(--ae-obsidian-deep) p-2.5">
       {/* header */}
       <div className="flex items-center justify-between gap-2">
         <span className="eyebrow">Clipboard History</span>
@@ -185,7 +185,7 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
           <motion.button
             whileTap={{ scale: 0.94 }}
             onClick={capture}
-            className="flex items-center gap-1.5 rounded-full border border-[--ae-cyan]/30 bg-[--ae-cyan]/10 px-3 py-1 text-[11px] text-[--ae-cyan] transition-colors hover:bg-[--ae-cyan]/20"
+            className="flex items-center gap-1.5 rounded-full border border-(--ae-cyan)/30 bg-(--ae-cyan)/10 px-3 py-1 text-[11px] text-(--ae-cyan) transition-colors hover:bg-(--ae-cyan)/20"
           >
             <ClipboardPaste className="h-3 w-3" /> Capture
           </motion.button>
@@ -193,7 +193,7 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
             whileTap={{ scale: 0.94 }}
             onClick={clearUnpinned}
             disabled={entries.length === pinnedCount}
-            className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1 text-[11px] text-zinc-400 transition-colors hover:border-[--ae-rose]/40 hover:text-[--ae-rose] disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:text-zinc-400"
+            className="flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1 text-[11px] text-zinc-400 transition-colors hover:border-(--ae-rose)/40 hover:text-(--ae-rose) disabled:opacity-40 disabled:hover:border-white/10 disabled:hover:text-zinc-400"
           >
             <Trash2 className="h-3 w-3" /> Clear
           </motion.button>
@@ -210,7 +210,7 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="flex items-start gap-2 rounded-lg border border-[--ae-gold]/30 bg-[--ae-gold]/10 px-3 py-2 text-[11px] leading-relaxed text-[--ae-gold]">
+            <div className="flex items-start gap-2 rounded-lg border border-(--ae-gold)/30 bg-(--ae-gold)/10 px-3 py-2 text-[11px] leading-relaxed text-(--ae-gold)">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
                 This browser does not expose <code className="font-mono-ae">navigator.clipboard.readText()</code>. Copy as
@@ -227,7 +227,7 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
             exit={{ opacity: 0, height: 0 }}
             className="overflow-hidden"
           >
-            <div className="flex items-start gap-2 rounded-lg border border-[--ae-rose]/30 bg-[--ae-rose]/10 px-3 py-2 text-[11px] leading-relaxed text-[--ae-rose]">
+            <div className="flex items-start gap-2 rounded-lg border border-(--ae-rose)/30 bg-(--ae-rose)/10 px-3 py-2 text-[11px] leading-relaxed text-(--ae-rose)">
               <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
               <span>
                 Clipboard read was blocked. Browsers require the page to be focused and the clipboard-read permission —
@@ -283,8 +283,8 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
             className={cn(
               "group relative cursor-pointer rounded-lg border px-2.5 py-2 transition-colors",
               e.pinned
-                ? "border-[--ae-gold]/30 bg-[--ae-gold]/[0.06]"
-                : "border-white/10 bg-white/[0.03] hover:border-[--ae-cyan]/30 hover:bg-[--ae-cyan]/[0.05]"
+                ? "border-(--ae-gold)/30 bg-(--ae-gold)/[0.06]"
+                : "border-white/10 bg-white/[0.03] hover:border-(--ae-cyan)/30 hover:bg-(--ae-cyan)/[0.05]"
             )}
             onClick={() => copyBack(e)}
           >
@@ -300,7 +300,7 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
                       initial={{ opacity: 0, scale: 0.8 }}
                       animate={{ opacity: 1, scale: 1 }}
                       exit={{ opacity: 0 }}
-                      className="flex items-center gap-0.5 text-[9px] text-[--ae-emerald]"
+                      className="flex items-center gap-0.5 text-[9px] text-(--ae-emerald)"
                     >
                       <ClipboardCheck className="h-3 w-3" /> copied
                     </motion.span>
@@ -314,7 +314,7 @@ export function ClipboardApp({ windowId: _windowId }: { windowId?: string }) {
                   aria-label={e.pinned ? "Unpin" : "Pin"}
                   className={cn(
                     "rounded p-0.5 transition-colors",
-                    e.pinned ? "text-[--ae-gold]" : "text-zinc-600 opacity-0 group-hover:opacity-100 hover:text-[--ae-gold]"
+                    e.pinned ? "text-(--ae-gold)" : "text-zinc-600 opacity-0 group-hover:opacity-100 hover:text-(--ae-gold)"
                   )}
                 >
                   {e.pinned ? <Pin className="h-3 w-3" /> : <PinOff className="h-3 w-3" />}

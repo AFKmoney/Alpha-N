@@ -48,17 +48,17 @@ export function AuditTrail({ max = 30 }: { max?: number }): React.ReactElement {
             key={entry.id}
             className={cn(
               "flex items-start gap-2.5 rounded-lg border px-2.5 py-2",
-              entry.result === "ok" && "border-[--ae-emerald]/25 bg-[--ae-emerald]/5",
-              entry.result === "error" && "border-[--ae-rose]/25 bg-[--ae-rose]/5",
-              entry.result === "blocked" && "border-[--ae-gold]/25 bg-[--ae-gold]/5"
+              entry.result === "ok" && "border-(--ae-emerald)/25 bg-(--ae-emerald)/5",
+              entry.result === "error" && "border-(--ae-rose)/25 bg-(--ae-rose)/5",
+              entry.result === "blocked" && "border-(--ae-gold)/25 bg-(--ae-gold)/5"
             )}
           >
             {entry.result === "ok" ? (
-              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[--ae-emerald]" />
+              <ShieldCheck className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--ae-emerald)" />
             ) : entry.result === "blocked" ? (
-              <ShieldX className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[--ae-gold]" />
+              <ShieldX className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--ae-gold)" />
             ) : (
-              <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-[--ae-rose]" />
+              <ShieldAlert className="mt-0.5 h-3.5 w-3.5 shrink-0 text-(--ae-rose)" />
             )}
             <div className="min-w-0 flex-1">
               <div className="flex items-baseline justify-between gap-2">

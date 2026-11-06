@@ -162,8 +162,10 @@ export function WindowFrame({
         className={cn(
           "glass-strong absolute flex flex-col overflow-hidden rounded-xl",
           dragging || resizing ? "select-none" : "",
-          win.onTop ? "ring-1 ring-[--ae-amethyst]/40" : ""
+          win.onTop ? "ring-1 ring-(--ae-amethyst)/40" : ""
         )}
+        data-window-id={win.id}
+        data-app-kind={win.kind}
         style={{
           left: rect.x,
           top: rect.y,
@@ -186,24 +188,24 @@ export function WindowFrame({
           onPointerUp={onDragEnd}
           onDoubleClick={() => !tiled && toggleMaximize(win.id)}
         >
-          <span className="text-xs text-[--ae-cyan]">{win.icon}</span>
+          <span className="text-xs text-(--ae-cyan)">{win.icon}</span>
           <span className="flex-1 truncate text-[11px] tracking-wide text-zinc-300">{win.title}</span>
           {!tiled && (
             <>
               {win.snapState !== "none" && (
-                <span className="rounded bg-[--ae-cyan]/15 px-1 text-[9px] text-[--ae-cyan]">{win.snapState}</span>
+                <span className="rounded bg-(--ae-cyan)/15 px-1 text-[9px] text-(--ae-cyan)">{win.snapState}</span>
               )}
               {win.opacity < 1 && <span className="text-[9px] text-zinc-500">{Math.round(win.opacity * 100)}%</span>}
-              {win.onTop && <span className="text-[9px] text-[--ae-amethyst]">on top</span>}
+              {win.onTop && <span className="text-[9px] text-(--ae-amethyst)">on top</span>}
             </>
           )}
-          {tiled && <Columns2 className="h-3 w-3 text-[--ae-cyan]/70" />}
+          {tiled && <Columns2 className="h-3 w-3 text-(--ae-cyan)/70" />}
           <span className="rounded bg-white/5 px-1 text-[9px] text-zinc-500">d{win.desktop}</span>
           <div className="ml-1 flex items-center gap-1.5" data-ai-skip>
             <button
               type="button"
               aria-label="Minimize"
-              className="rounded p-0.5 text-zinc-400 hover:bg-white/10 hover:text-[--ae-gold]"
+              className="rounded p-0.5 text-zinc-400 hover:bg-white/10 hover:text-(--ae-gold)"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => minimizeWindow(win.id)}
             >
@@ -212,7 +214,7 @@ export function WindowFrame({
             <button
               type="button"
               aria-label="Maximize"
-              className="rounded p-0.5 text-zinc-400 hover:bg-white/10 hover:text-[--ae-cyan]"
+              className="rounded p-0.5 text-zinc-400 hover:bg-white/10 hover:text-(--ae-cyan)"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => !tiled && toggleMaximize(win.id)}
             >
@@ -221,7 +223,7 @@ export function WindowFrame({
             <button
               type="button"
               aria-label="Close"
-              className="rounded p-0.5 text-zinc-400 hover:bg-[--ae-rose]/25 hover:text-[--ae-rose]"
+              className="rounded p-0.5 text-zinc-400 hover:bg-(--ae-rose)/25 hover:text-(--ae-rose)"
               onPointerDown={(e) => e.stopPropagation()}
               onClick={() => closeWindow(win.id)}
             >
@@ -251,7 +253,7 @@ export function WindowFrame({
         typeof document !== "undefined" &&
         createPortal(
           <div
-            className="pointer-events-none fixed z-[9998] rounded-xl border-2 border-[--ae-cyan]/50 bg-[--ae-cyan]/8"
+            className="pointer-events-none fixed z-[9998] rounded-xl border-2 border-(--ae-cyan)/50 bg-(--ae-cyan)/8"
             style={{
               left: snapPreview.x,
               top: snapPreview.y,
@@ -298,7 +300,7 @@ export function SplitHandleBar({
       className={cn(
         "absolute z-[8000] rounded-full transition-colors",
         handle.orientation === "vertical" ? "cursor-col-resize" : "cursor-row-resize",
-        active ? "bg-[--ae-cyan]/70" : "bg-white/10 hover:bg-[--ae-cyan]/40"
+        active ? "bg-(--ae-cyan)/70" : "bg-white/10 hover:bg-(--ae-cyan)/40"
       )}
       style={{
         left: handle.rect.x,

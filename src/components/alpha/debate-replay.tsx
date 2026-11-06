@@ -100,16 +100,16 @@ function mergeDebates(live: DebateResult[], archive: DebateResult[]): ReplayDeba
 // ---------------------------------------------------------------------------
 
 const AGENT_META: Record<(typeof AGENT_ORDER)[number], { name: string; accent: string; chip: string }> = {
-  architect: { name: "Architect", accent: "text-[--ae-amethyst]", chip: "border-[--ae-amethyst]/30 bg-[--ae-amethyst]/10" },
-  developer: { name: "Developer", accent: "text-[--ae-cyan]", chip: "border-[--ae-cyan]/30 bg-[--ae-cyan]/10" },
-  critic: { name: "Critic", accent: "text-[--ae-rose]", chip: "border-[--ae-rose]/30 bg-[--ae-rose]/10" },
-  optimizer: { name: "Optimizer", accent: "text-[--ae-gold]", chip: "border-[--ae-gold]/30 bg-[--ae-gold]/10" },
+  architect: { name: "Architect", accent: "text-(--ae-amethyst)", chip: "border-(--ae-amethyst)/30 bg-(--ae-amethyst)/10" },
+  developer: { name: "Developer", accent: "text-(--ae-cyan)", chip: "border-(--ae-cyan)/30 bg-(--ae-cyan)/10" },
+  critic: { name: "Critic", accent: "text-(--ae-rose)", chip: "border-(--ae-rose)/30 bg-(--ae-rose)/10" },
+  optimizer: { name: "Optimizer", accent: "text-(--ae-gold)", chip: "border-(--ae-gold)/30 bg-(--ae-gold)/10" },
 };
 
 const VERDICT_STYLE: Record<AgentOpinion["verdict"], string> = {
-  PROCEED: "border-[--ae-emerald]/40 bg-[--ae-emerald]/10 text-[--ae-emerald]",
-  REVISE: "border-[--ae-gold]/40 bg-[--ae-gold]/10 text-[--ae-gold]",
-  REJECT: "border-[--ae-rose]/40 bg-[--ae-rose]/10 text-[--ae-rose]",
+  PROCEED: "border-(--ae-emerald)/40 bg-(--ae-emerald)/10 text-(--ae-emerald)",
+  REVISE: "border-(--ae-gold)/40 bg-(--ae-gold)/10 text-(--ae-gold)",
+  REJECT: "border-(--ae-rose)/40 bg-(--ae-rose)/10 text-(--ae-rose)",
 };
 
 function opinionFor(debate: ReplayDebate, role: (typeof AGENT_ORDER)[number]): AgentOpinion | null {
@@ -226,7 +226,7 @@ export function DebateReplay(): React.ReactElement {
           onClick={() => setOpen(false)}
         >
           <motion.div
-            className="glass-strong font-mono-ae flex h-[82vh] w-[min(1040px,95vw)] overflow-hidden rounded-2xl border-[--ae-amethyst]/20 shadow-2xl"
+            className="glass-strong font-mono-ae flex h-[82vh] w-[min(1040px,95vw)] overflow-hidden rounded-2xl border-(--ae-amethyst)/20 shadow-2xl"
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 14 }}
@@ -236,7 +236,7 @@ export function DebateReplay(): React.ReactElement {
             {/* sidebar */}
             <aside className="flex w-[280px] shrink-0 flex-col border-r border-white/8">
               <header className="flex items-center gap-2 border-b border-white/8 px-4 py-3">
-                <Swords className="h-4 w-4 text-[--ae-amethyst]" />
+                <Swords className="h-4 w-4 text-(--ae-amethyst)" />
                 <p className="text-xs font-semibold text-zinc-100">Debate Log</p>
                 <span className="ml-auto rounded bg-white/8 px-1.5 py-0.5 text-[9px] text-zinc-400">
                   {debates.length}
@@ -257,7 +257,7 @@ export function DebateReplay(): React.ReactElement {
                           className={cn(
                             "w-full rounded-xl border px-3 py-2 text-left transition-colors",
                             debate && d.key === debate.key
-                              ? "border-[--ae-amethyst]/35 bg-[--ae-amethyst]/10"
+                              ? "border-(--ae-amethyst)/35 bg-(--ae-amethyst)/10"
                               : "border-transparent hover:bg-white/5"
                           )}
                         >
@@ -297,7 +297,7 @@ export function DebateReplay(): React.ReactElement {
                     type="button"
                     onClick={startPlay}
                     disabled={!debate || allRevealed}
-                    className="flex items-center gap-1.5 rounded-lg border border-[--ae-emerald]/35 bg-[--ae-emerald]/10 px-2.5 py-1.5 text-[10px] text-[--ae-emerald] transition-colors hover:bg-[--ae-emerald]/20 disabled:opacity-35"
+                    className="flex items-center gap-1.5 rounded-lg border border-(--ae-emerald)/35 bg-(--ae-emerald)/10 px-2.5 py-1.5 text-[10px] text-(--ae-emerald) transition-colors hover:bg-(--ae-emerald)/20 disabled:opacity-35"
                   >
                     <Play className="h-3 w-3" />
                     play
@@ -306,7 +306,7 @@ export function DebateReplay(): React.ReactElement {
                     type="button"
                     onClick={stepOnce}
                     disabled={!debate || allRevealed}
-                    className="flex items-center gap-1.5 rounded-lg border border-[--ae-cyan]/35 bg-[--ae-cyan]/10 px-2.5 py-1.5 text-[10px] text-[--ae-cyan] transition-colors hover:bg-[--ae-cyan]/20 disabled:opacity-35"
+                    className="flex items-center gap-1.5 rounded-lg border border-(--ae-cyan)/35 bg-(--ae-cyan)/10 px-2.5 py-1.5 text-[10px] text-(--ae-cyan) transition-colors hover:bg-(--ae-cyan)/20 disabled:opacity-35"
                   >
                     <SkipForward className="h-3 w-3" />
                     step
@@ -315,7 +315,7 @@ export function DebateReplay(): React.ReactElement {
                     type="button"
                     onClick={revealEverything}
                     disabled={!debate || allRevealed}
-                    className="flex items-center gap-1.5 rounded-lg border border-[--ae-gold]/35 bg-[--ae-gold]/10 px-2.5 py-1.5 text-[10px] text-[--ae-gold] transition-colors hover:bg-[--ae-gold]/20 disabled:opacity-35"
+                    className="flex items-center gap-1.5 rounded-lg border border-(--ae-gold)/35 bg-(--ae-gold)/10 px-2.5 py-1.5 text-[10px] text-(--ae-gold) transition-colors hover:bg-(--ae-gold)/20 disabled:opacity-35"
                   >
                     <Eye className="h-3 w-3" />
                     reveal all
@@ -402,7 +402,7 @@ export function DebateReplay(): React.ReactElement {
                         className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] p-4"
                       >
                         <header className="flex items-center gap-2">
-                          <Gavel className="h-3.5 w-3.5 text-[--ae-gold]" />
+                          <Gavel className="h-3.5 w-3.5 text-(--ae-gold)" />
                           <p className="eyebrow">council consensus</p>
                         </header>
                         <div className="mt-2.5 flex flex-wrap items-center gap-2">
@@ -414,13 +414,13 @@ export function DebateReplay(): React.ReactElement {
                           >
                             {debate.consensus}
                           </span>
-                          <span className="rounded-lg border border-[--ae-emerald]/30 bg-[--ae-emerald]/10 px-2 py-1 text-[10px] text-[--ae-emerald]">
+                          <span className="rounded-lg border border-(--ae-emerald)/30 bg-(--ae-emerald)/10 px-2 py-1 text-[10px] text-(--ae-emerald)">
                             proceed {debate.tally.proceed}
                           </span>
-                          <span className="rounded-lg border border-[--ae-gold]/30 bg-[--ae-gold]/10 px-2 py-1 text-[10px] text-[--ae-gold]">
+                          <span className="rounded-lg border border-(--ae-gold)/30 bg-(--ae-gold)/10 px-2 py-1 text-[10px] text-(--ae-gold)">
                             revise {debate.tally.revise}
                           </span>
-                          <span className="rounded-lg border border-[--ae-rose]/30 bg-[--ae-rose]/10 px-2 py-1 text-[10px] text-[--ae-rose]">
+                          <span className="rounded-lg border border-(--ae-rose)/30 bg-(--ae-rose)/10 px-2 py-1 text-[10px] text-(--ae-rose)">
                             reject {debate.tally.reject}
                           </span>
                           <span className="ml-auto text-[9px] text-zinc-500">

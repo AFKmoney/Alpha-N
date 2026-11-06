@@ -11,12 +11,12 @@ import { useEvolution } from "@/lib/alpha/evolution-store";
 import type { LogLevel } from "@/lib/alpha/evolution-data";
 
 const LEVEL_COLOR: Record<LogLevel, string> = {
-  observe: "text-[--ae-cyan]",
-  critique: "text-[--ae-rose]",
-  hypothesis: "text-[--ae-gold]",
-  deploy: "text-[--ae-emerald]",
-  evolve: "text-[--ae-amethyst]",
-  heal: "text-[--ae-emerald]",
+  observe: "text-(--ae-cyan)",
+  critique: "text-(--ae-rose)",
+  hypothesis: "text-(--ae-gold)",
+  deploy: "text-(--ae-emerald)",
+  evolve: "text-(--ae-amethyst)",
+  heal: "text-(--ae-emerald)",
 };
 
 export function EvolutionLogApp(): React.ReactElement {
@@ -59,10 +59,10 @@ export function EvolutionLogApp(): React.ReactElement {
               animate={{ opacity: 1, x: 0 }}
               transition={{ delay: Math.min(i * 0.03, 0.4) }}
               onClick={() => openHistoryDiff(entry.id)}
-              className="group w-full rounded-lg border border-white/8 bg-white/3 p-2.5 text-left transition-colors hover:border-[--ae-amethyst]/40 hover:bg-[--ae-amethyst]/8"
+              className="group w-full rounded-lg border border-white/8 bg-white/3 p-2.5 text-left transition-colors hover:border-(--ae-amethyst)/40 hover:bg-(--ae-amethyst)/8"
             >
               <div className="flex items-baseline justify-between gap-2">
-                <span className="font-mono-ae text-[11px] font-semibold text-zinc-200 group-hover:text-[--ae-amethyst]">
+                <span className="font-mono-ae text-[11px] font-semibold text-zinc-200 group-hover:text-(--ae-amethyst)">
                   {entry.title}
                 </span>
                 <span className="font-mono-ae text-[9px] text-zinc-500">v{entry.version}</span>
@@ -76,11 +76,11 @@ export function EvolutionLogApp(): React.ReactElement {
                       "font-mono-ae rounded px-1 text-[9px]",
                       delta.better === "lower"
                         ? delta.after < delta.before
-                          ? "bg-[--ae-emerald]/15 text-[--ae-emerald]"
-                          : "bg-[--ae-rose]/15 text-[--ae-rose]"
+                          ? "bg-(--ae-emerald)/15 text-(--ae-emerald)"
+                          : "bg-(--ae-rose)/15 text-(--ae-rose)"
                         : delta.after > delta.before
-                          ? "bg-[--ae-emerald]/15 text-[--ae-emerald]"
-                          : "bg-[--ae-rose]/15 text-[--ae-rose]"
+                          ? "bg-(--ae-emerald)/15 text-(--ae-emerald)"
+                          : "bg-(--ae-rose)/15 text-(--ae-rose)"
                     )}
                   >
                     {delta.metric} {delta.before}→{delta.after}

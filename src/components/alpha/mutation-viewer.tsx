@@ -12,11 +12,11 @@ import { cn } from "@/lib/utils";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 
 function kindDot(kind: string): string {
-  if (kind === "violation") return "bg-[--ae-rose]";
-  if (kind.includes("code") || kind.includes("file") || kind.includes("commit")) return "bg-[--ae-emerald]";
-  if (kind.includes("app") || kind.includes("window") || kind.includes("wallpaper") || kind.includes("theme")) return "bg-[--ae-gold]";
-  if (kind.includes("terminal") || kind.includes("search") || kind.includes("exec") || kind.includes("compile")) return "bg-[--ae-cyan]";
-  return "bg-[--ae-amethyst]";
+  if (kind === "violation") return "bg-(--ae-rose)";
+  if (kind.includes("code") || kind.includes("file") || kind.includes("commit")) return "bg-(--ae-emerald)";
+  if (kind.includes("app") || kind.includes("window") || kind.includes("wallpaper") || kind.includes("theme")) return "bg-(--ae-gold)";
+  if (kind.includes("terminal") || kind.includes("search") || kind.includes("exec") || kind.includes("compile")) return "bg-(--ae-cyan)";
+  return "bg-(--ae-amethyst)";
 }
 
 export function MutationViewer(): React.ReactElement {
@@ -40,9 +40,9 @@ export function MutationViewer(): React.ReactElement {
               <p className="eyebrow">live mutations</p>
             </div>
             {aiBusy && (
-              <div className="flex items-center gap-2 border-b border-white/8 bg-[--ae-amethyst]/8 px-3 py-1.5">
-                <Loader2 className="h-3 w-3 animate-spin text-[--ae-amethyst]" />
-                <span className="font-mono-ae truncate text-[10px] text-[--ae-amethyst]">
+              <div className="flex items-center gap-2 border-b border-white/8 bg-(--ae-amethyst)/8 px-3 py-1.5">
+                <Loader2 className="h-3 w-3 animate-spin text-(--ae-amethyst)" />
+                <span className="font-mono-ae truncate text-[10px] text-(--ae-amethyst)">
                   {aiReasoning ?? "N-Core is thinking…"}
                 </span>
               </div>
@@ -74,7 +74,7 @@ export function MutationViewer(): React.ReactElement {
         type="button"
         whileHover={{ scale: 1.1 }}
         onClick={() => setOpen((o) => !o)}
-        className="glass flex h-16 w-6 items-center justify-center rounded-l-xl text-zinc-500 hover:text-[--ae-cyan]"
+        className="glass flex h-16 w-6 items-center justify-center rounded-l-xl text-zinc-400 hover:text-(--ae-cyan)"
         aria-label="Toggle mutation viewer"
       >
         <ChevronLeft className={cn("h-3.5 w-3.5 transition-transform", open && "rotate-180")} />

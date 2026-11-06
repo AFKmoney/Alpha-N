@@ -355,7 +355,7 @@ export function MusicApp({ windowId: _windowId }: { windowId?: string }) {
   const track = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0];
 
   return (
-    <div className="flex h-full flex-col gap-2 bg-[--ae-obsidian-deep] p-2.5">
+    <div className="flex h-full flex-col gap-2 bg-(--ae-obsidian-deep) p-2.5">
       {/* header */}
       <div className="flex items-center justify-between">
         <span className="eyebrow">Generative Music</span>
@@ -374,7 +374,7 @@ export function MusicApp({ windowId: _windowId }: { windowId?: string }) {
         )}
         {status === "paused" && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="eyebrow rounded-full border border-[--ae-gold]/30 bg-[--ae-gold]/10 px-2 py-0.5 text-[--ae-gold]">paused</span>
+            <span className="eyebrow rounded-full border border-(--ae-gold)/30 bg-(--ae-gold)/10 px-2 py-0.5 text-(--ae-gold)">paused</span>
           </div>
         )}
       </div>
@@ -393,18 +393,18 @@ export function MusicApp({ windowId: _windowId }: { windowId?: string }) {
               className={cn(
                 "flex flex-col items-start gap-1 rounded-xl border px-3 py-2.5 text-left transition-colors",
                 selected
-                  ? "border-[--ae-amethyst]/40 bg-[--ae-amethyst]/10"
+                  ? "border-(--ae-amethyst)/40 bg-(--ae-amethyst)/10"
                   : "border-white/10 bg-white/[0.03] hover:bg-white/[0.07]"
               )}
             >
               <span className="flex w-full items-center justify-between">
-                <Icon className={cn("h-4 w-4", selected ? "text-[--ae-amethyst]" : "text-zinc-400")} />
+                <Icon className={cn("h-4 w-4", selected ? "text-(--ae-amethyst)" : "text-zinc-400")} />
                 {active && (
                   <span className="flex items-end gap-0.5">
                     {[0, 1, 2].map((b) => (
                       <motion.span
                         key={b}
-                        className="w-0.5 rounded-full bg-[--ae-cyan]"
+                        className="w-0.5 rounded-full bg-(--ae-cyan)"
                         animate={{ height: [3, 9 + b * 2, 4, 11 - b * 2, 3] }}
                         transition={{ duration: 1.1 + b * 0.25, repeat: Infinity, ease: "easeInOut" }}
                       />
@@ -412,7 +412,7 @@ export function MusicApp({ windowId: _windowId }: { windowId?: string }) {
                   </span>
                 )}
               </span>
-              <span className={cn("text-xs font-medium", selected ? "text-[--ae-amethyst]" : "text-zinc-200")}>{t.name}</span>
+              <span className={cn("text-xs font-medium", selected ? "text-(--ae-amethyst)" : "text-zinc-200")}>{t.name}</span>
               <span className="text-[9px] leading-tight text-zinc-500">{t.desc}</span>
             </motion.button>
           );
@@ -427,8 +427,8 @@ export function MusicApp({ windowId: _windowId }: { windowId?: string }) {
           className={cn(
             "flex items-center gap-1.5 rounded-full border px-4 py-1.5 text-xs transition-colors",
             status === "playing"
-              ? "border-[--ae-gold]/40 bg-[--ae-gold]/15 text-[--ae-gold]"
-              : "border-[--ae-cyan]/40 bg-[--ae-cyan]/15 text-[--ae-cyan] text-glow-cyan"
+              ? "border-(--ae-gold)/40 bg-(--ae-gold)/15 text-(--ae-gold)"
+              : "border-(--ae-cyan)/40 bg-(--ae-cyan)/15 text-(--ae-cyan) text-glow-cyan"
           )}
         >
           {status === "playing" ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
@@ -439,7 +439,7 @@ export function MusicApp({ windowId: _windowId }: { windowId?: string }) {
           onClick={handleStop}
           disabled={status === "stopped"}
           aria-label="Stop"
-          className="rounded-full border border-white/10 p-2 text-zinc-400 transition-colors hover:text-[--ae-rose] disabled:opacity-40"
+          className="rounded-full border border-white/10 p-2 text-zinc-400 transition-colors hover:text-(--ae-rose) disabled:opacity-40"
         >
           <Square className="h-3.5 w-3.5" />
         </motion.button>
@@ -449,7 +449,7 @@ export function MusicApp({ windowId: _windowId }: { windowId?: string }) {
           </span>
         </div>
         <motion.button whileTap={{ scale: 0.9 }} onClick={toggleMute} aria-label={muted ? "Unmute" : "Mute"}>
-          {muted ? <VolumeX className="h-4 w-4 text-[--ae-rose]" /> : <Volume2 className="h-4 w-4 text-[--ae-cyan]" />}
+          {muted ? <VolumeX className="h-4 w-4 text-(--ae-rose)" /> : <Volume2 className="h-4 w-4 text-(--ae-cyan)" />}
         </motion.button>
         <Slider
           value={[Math.round(volume * 100)]}

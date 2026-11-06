@@ -17,8 +17,8 @@ interface FileEntry {
 
 function tintLine(line: string): string {
   if (/^\s*(\/\/|\/\*|\*|#)/.test(line)) return "text-zinc-500";
-  if (/\b(import|export|function|return|const|let|async|await|class)\b/.test(line)) return "text-[--ae-cyan]";
-  if (/\b(if|else|for|while|switch|case|break|try|catch)\b/.test(line)) return "text-[--ae-amethyst]";
+  if (/\b(import|export|function|return|const|let|async|await|class)\b/.test(line)) return "text-(--ae-cyan)";
+  if (/\b(if|else|for|while|switch|case|break|try|catch)\b/.test(line)) return "text-(--ae-amethyst)";
   return "text-zinc-300";
 }
 
@@ -92,14 +92,14 @@ export function RealCodeEditor(): React.ReactElement {
             onClick={() => (entry.isDir ? void toggleDir(path) : setSelected(path))}
             className={cn(
               "font-mono-ae flex w-full items-center gap-1.5 rounded px-2 py-1 text-left text-[11px] hover:bg-white/6",
-              selected === path ? "bg-[--ae-cyan]/12 text-[--ae-cyan]" : "text-zinc-400"
+              selected === path ? "bg-(--ae-cyan)/12 text-(--ae-cyan)" : "text-zinc-400"
             )}
             style={{ paddingLeft: `${8 + depth * 14}px` }}
           >
             {entry.isDir ? (
               <>
                 {openDirs[path] ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
-                <Folder className="h-3 w-3 shrink-0 text-[--ae-gold]/80" />
+                <Folder className="h-3 w-3 shrink-0 text-(--ae-gold)/80" />
               </>
             ) : (
               <FileIcon className="ml-3.5 h-3 w-3 shrink-0 opacity-60" />
@@ -124,7 +124,7 @@ export function RealCodeEditor(): React.ReactElement {
           <span className="font-mono-ae truncate text-[11px] text-zinc-300">{selected}</span>
           <div className="flex items-center gap-2 text-[10px] text-zinc-500" data-ai-skip>
             {loading && <RefreshCw className="h-3 w-3 animate-spin" />}
-            <span className="text-[--ae-emerald]">live · 3s</span>
+            <span className="text-(--ae-emerald)">live · 3s</span>
           </div>
         </div>
         <div className="scroll-ae font-mono-ae flex-1 overflow-auto p-3 text-[11px] leading-5">

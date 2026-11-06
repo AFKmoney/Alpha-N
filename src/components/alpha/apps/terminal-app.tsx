@@ -82,22 +82,64 @@ export function TerminalApp(): React.ReactElement {
       }
     };
 
-    const socket = io("/?XTransformPort=3003", { path: "/", transports: ["websocket"] });
-    socketRef.current = socket;
+    // Two ways to reach the PTY service: the gateway scheme (same-origin with
+    // ?XTransformPort=3003 — used behind the Caddy/z.ai gateway) and a direct
+    // connection to the service port. After repeated failures on one endpoint
+    // the client rotates to the other, so the terminal works in both hosted
+    // and bare-metal deployments.
+    const endpoints = [
+      { url: "/?XTransformPort=3003", label: "gateway" },
+      { url: `http://${window.location.hostname}:3003`, label: "direct" },
+    ];
+    let endpointIdx = 0;
+    let failures = 0;
+    let offlineNoticeShown = false;
 
-    socket.on("connect", () => {
-      socket.emit("terminal:input", { data: "" });
-    });
-    socket.on("terminal:ready", () => setStatus("ready"));
-    socket.on("terminal:output", (payload: { data?: string }) => {
-      if (payload?.data) term.write(payload.data);
-    });
-    socket.on("terminal:exited", () => term.writeln("\r\n\x1b[38;5;245m[shell exited — respawning]\x1b[0m"));
-    socket.on("terminal:error", (payload: { message?: string }) => {
-      setStatus("error");
-      term.writeln(`\r\n\x1b[38;5;203m[terminal error] ${payload?.message ?? "unknown"}\x1b[0m`);
-    });
-    socket.on("disconnect", () => setStatus("connecting"));
+    const attachSocket = (sock: Socket) => {
+      sock.on("connect", () => {
+        failures = 0;
+        sock.emit("terminal:input", { data: "" });
+        if (offlineNoticeShown) {
+          offlineNoticeShown = false;
+          term.writeln("\r\n\x1b[38;5;77m[pty service back online]\x1b[0m");
+        }
+      });
+      sock.on("terminal:ready", () => setStatus("ready"));
+      sock.on("terminal:output", (payload: { data?: string }) => {
+        if (payload?.data) term.write(payload.data);
+      });
+      sock.on("terminal:exited", () => term.writeln("\r\n\x1b[38;5;245m[shell exited — respawning]\x1b[0m"));
+      sock.on("terminal:error", (payload: { message?: string }) => {
+        setStatus("error");
+        term.writeln(`\r\n\x1b[38;5;203m[terminal error] ${payload?.message ?? "unknown"}\x1b[0m`);
+      });
+      sock.on("disconnect", () => setStatus("connecting"));
+      sock.on("connect_error", () => {
+        setStatus("error");
+        if (!offlineNoticeShown) {
+          offlineNoticeShown = true;
+          term.writeln("\r\n\x1b[38;5;203m[pty service offline — start it with: cd mini-services/terminal && bun run dev\x1b[0m");
+          term.writeln("\x1b[38;5;245m[retrying in the background — this terminal becomes live on reconnect]\x1b[0m");
+        }
+        // two strikes on this endpoint → rotate to the next one
+        failures += 1;
+        if (failures >= 2) {
+          failures = 0;
+          endpointIdx = (endpointIdx + 1) % endpoints.length;
+          const label = endpoints[endpointIdx].label;
+          term.writeln(`\x1b[38;5;245m[switching to ${label} endpoint…]\x1b[0m`);
+          sock.removeAllListeners();
+          sock.disconnect();
+          const next = io(endpoints[endpointIdx].url, { path: "/", transports: ["websocket"] });
+          socketRef.current = next;
+          attachSocket(next);
+        }
+      });
+    };
+
+    const socket = io(endpoints[0].url, { path: "/", transports: ["websocket"] });
+    socketRef.current = socket;
+    attachSocket(socket);
 
     term.onData((data) => {
       // maintain the live line so history navigation can replace it
@@ -112,7 +154,7 @@ export function TerminalApp(): React.ReactElement {
       } else if (data >= " " && data <= "~") {
         currentLine.current += data;
       }
-      socket.emit("terminal:input", { data });
+      socketRef.current?.emit("terminal:input", { data });
     });
 
     term.attachCustomKeyEventHandler((event) => {
@@ -122,7 +164,7 @@ export function TerminalApp(): React.ReactElement {
         if (hist.length === 0) return false;
         historyIndex.current = historyIndex.current === -1 ? hist.length - 1 : Math.max(0, historyIndex.current - 1);
         const cmd = hist[historyIndex.current] ?? "";
-        socket.emit("terminal:input", { data: `\x15${cmd}` });
+        socketRef.current?.emit("terminal:input", { data: `\x15${cmd}` });
         currentLine.current = cmd;
         return false;
       }
@@ -131,7 +173,7 @@ export function TerminalApp(): React.ReactElement {
         if (historyIndex.current === -1) return false;
         historyIndex.current += 1;
         const cmd = historyIndex.current >= hist.length ? "" : hist[historyIndex.current];
-        socket.emit("terminal:input", { data: `\x15${cmd}` });
+        socketRef.current?.emit("terminal:input", { data: `\x15${cmd}` });
         currentLine.current = cmd;
         if (historyIndex.current >= hist.length) historyIndex.current = -1;
         return false;
@@ -142,7 +184,7 @@ export function TerminalApp(): React.ReactElement {
     const ro = new ResizeObserver(() => {
       try {
         fit.fit();
-        socket.emit("terminal:resize", { cols: term.cols, rows: term.rows });
+        socketRef.current?.emit("terminal:resize", { cols: term.cols, rows: term.rows });
       } catch {
         /* transient */
       }
@@ -151,8 +193,8 @@ export function TerminalApp(): React.ReactElement {
 
     return () => {
       ro.disconnect();
-      socket.removeAllListeners();
-      socket.disconnect();
+      socketRef.current?.removeAllListeners();
+      socketRef.current?.disconnect();
       term.dispose();
     };
   }, []);
@@ -173,11 +215,11 @@ export function TerminalApp(): React.ReactElement {
     <div className="relative h-full w-full bg-black/45">
       <div className="font-mono-ae pointer-events-none absolute right-2 top-1 z-10 text-[9px] uppercase tracking-widest">
         {status === "ready" ? (
-          <span className="text-[--ae-emerald]">pty :3003</span>
+          <span className="text-(--ae-emerald)">pty :3003</span>
         ) : status === "connecting" ? (
-          <span className="text-[--ae-gold]">connecting…</span>
+          <span className="text-(--ae-gold)">connecting…</span>
         ) : (
-          <span className="text-[--ae-rose]">pty offline</span>
+          <span className="text-(--ae-rose)">pty offline</span>
         )}
       </div>
       <div ref={hostRef} className="xterm-ae h-full w-full" />

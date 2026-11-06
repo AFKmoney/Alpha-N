@@ -132,12 +132,12 @@ function CityCard({ city, date }: { city: City; date: Date }) {
         <div className="flex items-center justify-between gap-1">
           <span className="truncate text-xs font-medium text-zinc-200">{city.name}</span>
           {isDay ? (
-            <Sun className="h-3.5 w-3.5 shrink-0 text-[--ae-gold]" />
+            <Sun className="h-3.5 w-3.5 shrink-0 text-(--ae-gold)" />
           ) : (
-            <Moon className="h-3.5 w-3.5 shrink-0 text-[--ae-amethyst]" />
+            <Moon className="h-3.5 w-3.5 shrink-0 text-(--ae-amethyst)" />
           )}
         </div>
-        <div className="font-mono-ae text-lg font-semibold leading-tight text-[--ae-cyan] text-glow-cyan">{digital}</div>
+        <div className="font-mono-ae text-lg font-semibold leading-tight text-(--ae-cyan) text-glow-cyan">{digital}</div>
         <div className="flex items-center justify-between font-mono-ae text-[9px] text-zinc-500">
           <span>{DATE_FMT[city.tz].format(date)}</span>
           <span>{offset}</span>
@@ -225,7 +225,7 @@ export function ClockApp({ windowId: _windowId }: { windowId?: string }) {
   const localIsDay = date ? date.getHours() >= 6 && date.getHours() < 18 : false;
 
   return (
-    <div className="scroll-ae flex h-full flex-col gap-2 overflow-y-auto bg-[--ae-obsidian-deep] p-2.5">
+    <div className="scroll-ae flex h-full flex-col gap-2 overflow-y-auto bg-(--ae-obsidian-deep) p-2.5">
       <div className="flex items-center justify-between">
         <span className="eyebrow">World Clock</span>
         <span className="flex items-center gap-1.5 font-mono-ae text-[10px] text-zinc-500">
@@ -277,14 +277,14 @@ export function ClockApp({ windowId: _windowId }: { windowId?: string }) {
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {localIsDay ? (
-            <Sun className="h-4 w-4 text-[--ae-gold]" />
+            <Sun className="h-4 w-4 text-(--ae-gold)" />
           ) : (
-            <Moon className="h-4 w-4 text-[--ae-amethyst]" />
+            <Moon className="h-4 w-4 text-(--ae-amethyst)" />
           )}
           <div className="w-24">
             <div className="h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
               <motion.div
-                className="h-full rounded-full bg-[--ae-cyan]"
+                className="h-full rounded-full bg-(--ae-cyan)"
                 initial={false}
                 animate={{ width: `${dayFrac * 100}%` }}
                 transition={{ type: "spring", stiffness: 60, damping: 20 }}
@@ -309,7 +309,7 @@ export function ClockApp({ windowId: _windowId }: { windowId?: string }) {
               className={cn(
                 "rounded-full border px-2.5 py-0.5 text-[10px] transition-colors",
                 on
-                  ? "border-[--ae-amethyst]/40 bg-[--ae-amethyst]/10 text-[--ae-amethyst]"
+                  ? "border-(--ae-amethyst)/40 bg-(--ae-amethyst)/10 text-(--ae-amethyst)"
                   : "border-white/10 text-zinc-500 hover:text-zinc-300"
               )}
             >

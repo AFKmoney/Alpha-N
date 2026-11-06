@@ -86,7 +86,7 @@ function fromViolations(entries: { path: string; reason: string; time: number }[
     detail: `${v.path} — ${v.reason}`,
     time: v.time,
     icon: <ShieldAlert className="h-3.5 w-3.5" />,
-    tone: "text-[--ae-rose]",
+    tone: "text-(--ae-rose)",
   }));
 }
 
@@ -98,7 +98,7 @@ function fromMutations(entries: AppliedMutation[]): NotificationItem[] {
     detail: m.description,
     time: m.time,
     icon: <Sparkles className="h-3.5 w-3.5" />,
-    tone: "text-[--ae-cyan]",
+    tone: "text-(--ae-cyan)",
   }));
 }
 
@@ -110,7 +110,7 @@ function fromRollbacks(entries: { id: string; snapshotLabel: string; reason: str
     detail: r.reason,
     time: r.time,
     icon: <History className="h-3.5 w-3.5" />,
-    tone: "text-[--ae-gold]",
+    tone: "text-(--ae-gold)",
   }));
 }
 
@@ -124,7 +124,7 @@ function fromCompiles(entries: CompileResult[]): NotificationItem[] {
       : ((c.tscOutput ?? c.eslintOutput ?? "Errors found.").split("\n")[0] || "Errors found."),
     time: c.time,
     icon: c.ok ? <CheckCircle2 className="h-3.5 w-3.5" /> : <XCircle className="h-3.5 w-3.5" />,
-    tone: c.ok ? "text-[--ae-emerald]" : "text-[--ae-rose]",
+    tone: c.ok ? "text-(--ae-emerald)" : "text-(--ae-rose)",
   }));
 }
 
@@ -139,14 +139,14 @@ function fromEvents(entries: { id: string; type: string; content: string; time: 
       detail: e.content,
       time: e.time,
       icon: <Radio className="h-3.5 w-3.5" />,
-      tone: "text-[--ae-amethyst]",
+      tone: "text-(--ae-amethyst)",
     }));
 }
 
 const GOAL_TONE: Record<string, string> = {
-  long: "border-[--ae-cyan]/30 bg-[--ae-cyan]/5 text-[--ae-cyan]",
-  medium: "border-[--ae-gold]/30 bg-[--ae-gold]/5 text-[--ae-gold]",
-  short: "border-[--ae-emerald]/30 bg-[--ae-emerald]/5 text-[--ae-emerald]",
+  long: "border-(--ae-cyan)/30 bg-(--ae-cyan)/5 text-(--ae-cyan)",
+  medium: "border-(--ae-gold)/30 bg-(--ae-gold)/5 text-(--ae-gold)",
+  short: "border-(--ae-emerald)/30 bg-(--ae-emerald)/5 text-(--ae-emerald)",
 };
 
 // ---------------------------------------------------------------------------
@@ -230,9 +230,9 @@ export function NotificationCenter(): React.ReactElement {
           >
             <header className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
               <span className="relative">
-                <Bell className={cn("h-4 w-4", unread > 0 ? "text-[--ae-gold]" : "text-zinc-400")} />
+                <Bell className={cn("h-4 w-4", unread > 0 ? "text-(--ae-gold)" : "text-zinc-400")} />
                 {unread > 0 && (
-                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-[--ae-rose] px-1 text-[9px] font-bold text-white">
+                  <span className="absolute -right-1.5 -top-1.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-(--ae-rose) px-1 text-[9px] font-bold text-white">
                     {unread > 99 ? "99+" : unread}
                   </span>
                 )}
@@ -281,7 +281,7 @@ export function NotificationCenter(): React.ReactElement {
                         className={cn(
                           "flex items-start gap-2.5 rounded-xl border px-3 py-2 transition-colors",
                           n.time > lastSeenAt
-                            ? "border-[--ae-cyan]/25 bg-[--ae-cyan]/[0.06]"
+                            ? "border-(--ae-cyan)/25 bg-(--ae-cyan)/[0.06]"
                             : "border-white/8 bg-white/[0.02]"
                         )}
                       >
@@ -314,7 +314,7 @@ export function NotificationCenter(): React.ReactElement {
                           <span
                             className={cn(
                               "h-1.5 w-1.5 shrink-0 rounded-full",
-                              e.handled ? "bg-zinc-600" : "bg-[--ae-amethyst] glow-amethyst"
+                              e.handled ? "bg-zinc-600" : "bg-(--ae-amethyst) glow-amethyst"
                             )}
                           />
                           <span className="min-w-0 flex-1 truncate text-[10px] text-zinc-300" title={e.content}>
@@ -350,7 +350,7 @@ export function NotificationCenter(): React.ReactElement {
                             </div>
                             <div className="mt-1.5 h-1 overflow-hidden rounded-full bg-white/8">
                               <div
-                                className="h-full rounded-full bg-[--ae-cyan] transition-[width] duration-500"
+                                className="h-full rounded-full bg-(--ae-cyan) transition-[width] duration-500"
                                 style={{ width: `${pct}%` }}
                               />
                             </div>

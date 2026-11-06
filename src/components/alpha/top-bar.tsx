@@ -42,7 +42,7 @@ export function TopBar(): React.ReactElement {
       >
         {/* brand */}
         <div className="flex items-baseline gap-1.5">
-          <span className="text-sm text-[--ae-amethyst] text-glow-amethyst">α</span>
+          <span className="text-sm text-(--ae-amethyst) text-glow-amethyst">α</span>
           <span className="text-[12px] font-semibold tracking-widest text-zinc-200">ALPHA-OS</span>
         </div>
 
@@ -54,8 +54,8 @@ export function TopBar(): React.ReactElement {
               className={cn(
                 "rounded-full border px-1.5 py-0.5 text-[9px] capitalize",
                 agent.status === "idle"
-                  ? "border-white/8 text-zinc-500"
-                  : "border-[--ae-cyan]/30 bg-[--ae-cyan]/8 text-[--ae-cyan]"
+                  ? "border-white/10 text-zinc-400"
+                  : "border-(--ae-cyan)/30 bg-(--ae-cyan)/8 text-(--ae-cyan)"
               )}
             >
               {agent.role} {Math.round(agent.load * 100)}
@@ -63,7 +63,7 @@ export function TopBar(): React.ReactElement {
           ))}
         </div>
 
-        <span className="hidden text-[10px] text-zinc-600 lg:inline">
+        <span className="hidden text-[10px] text-zinc-500 lg:inline">
           gen {generation} · v{version} · coherence {(metrics.coherence * 100).toFixed(0)}%
         </span>
 
@@ -76,7 +76,7 @@ export function TopBar(): React.ReactElement {
             className={cn(
               "flex h-7 items-center gap-1 rounded-md px-2 text-[10px]",
               layoutMode === "tile"
-                ? "bg-[--ae-cyan]/15 text-[--ae-cyan] glow-cyan"
+                ? "bg-(--ae-cyan)/15 text-(--ae-cyan) glow-cyan"
                 : "text-zinc-400 hover:bg-white/8"
             )}
           >
@@ -93,13 +93,15 @@ export function TopBar(): React.ReactElement {
                   title={`Desktop ${desktop}`}
                   onClick={() => setActiveDesktop(desktop)}
                   className={cn(
-                    "font-mono-ae relative h-6 w-6 rounded text-[10px]",
-                    desktop === activeDesktop ? "bg-[--ae-cyan]/20 text-[--ae-cyan]" : "text-zinc-500 hover:text-zinc-300"
+                    "font-mono-ae relative h-6 w-6 rounded text-[10px] font-semibold",
+                    desktop === activeDesktop
+                      ? "bg-(--ae-cyan)/30 text-(--ae-cyan) glow-cyan ring-1 ring-(--ae-cyan)/40"
+                      : "text-zinc-400 hover:bg-white/8 hover:text-zinc-200"
                   )}
                 >
                   {desktop}
                   {count > 0 && (
-                    <span className="absolute right-0.5 top-0.5 h-1 w-1 rounded-full bg-[--ae-gold]" />
+                    <span className="absolute right-0.5 top-0.5 h-1 w-1 rounded-full bg-(--ae-gold)" />
                   )}
                 </button>
               );
@@ -115,7 +117,7 @@ export function TopBar(): React.ReactElement {
             className={cn(
               "flex h-7 items-center gap-1 rounded-md px-2 text-[10px]",
               autonomyMode === "active"
-                ? "bg-[--ae-emerald]/15 text-[--ae-emerald]"
+                ? "bg-(--ae-emerald)/15 text-(--ae-emerald)"
                 : "text-zinc-400 hover:bg-white/8"
             )}
           >
@@ -126,7 +128,7 @@ export function TopBar(): React.ReactElement {
             type="button"
             title="Force an AI cycle now"
             onClick={triggerCycle}
-            className="flex h-7 items-center gap-1 rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-[--ae-amethyst]"
+            className="flex h-7 items-center gap-1 rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-(--ae-amethyst)"
           >
             <Play className="h-3 w-3" /> evolve
           </button>
@@ -134,7 +136,7 @@ export function TopBar(): React.ReactElement {
             type="button"
             title="Synapse map"
             onClick={toggleSynapse}
-            className="hidden h-7 items-center rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-[--ae-cyan] sm:flex"
+            className="hidden h-7 items-center rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-(--ae-cyan) sm:flex"
           >
             <Sparkles className="h-3 w-3" />
           </button>
@@ -142,7 +144,7 @@ export function TopBar(): React.ReactElement {
             type="button"
             title="Flow mode"
             onClick={toggleFlow}
-            className="hidden h-7 items-center rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-[--ae-gold] sm:flex"
+            className="hidden h-7 items-center rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-(--ae-gold) sm:flex"
           >
             <Zap className="h-3 w-3" />
           </button>
@@ -150,7 +152,7 @@ export function TopBar(): React.ReactElement {
             type="button"
             title="Chat"
             onClick={toggleChat}
-            className="flex h-7 items-center gap-1 rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-[--ae-amethyst]"
+            className="flex h-7 items-center gap-1 rounded-md px-2 text-[10px] text-zinc-400 hover:bg-white/8 hover:text-(--ae-amethyst)"
           >
             <MessageSquare className="h-3 w-3" />
           </button>
@@ -158,11 +160,11 @@ export function TopBar(): React.ReactElement {
             type="button"
             title="Notifications (F8)"
             onClick={() => window.dispatchEvent(new CustomEvent("alpha-notification-center-open"))}
-            className={cn("flex h-7 w-7 items-center justify-center rounded-md", notifOpen ? "text-[--ae-gold]" : "text-zinc-400 hover:bg-white/8")}
+            className={cn("flex h-7 w-7 items-center justify-center rounded-md", notifOpen ? "text-(--ae-gold)" : "text-zinc-400 hover:bg-white/8")}
           >
             <Bell className="h-3.5 w-3.5" />
           </button>
-          <span className="hidden items-center gap-1 text-[10px] text-zinc-600 lg:flex">
+          <span className="hidden items-center gap-1 text-[10px] text-zinc-500 lg:flex">
             <Cpu className="h-3 w-3" /> {metrics.cpu.toFixed(0)}%
           </span>
         </div>

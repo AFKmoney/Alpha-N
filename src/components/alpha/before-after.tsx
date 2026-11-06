@@ -34,11 +34,11 @@ export function BeforeAfter(): React.ReactElement {
             animate={{ x: 0, opacity: 1 }}
             exit={{ x: 80, opacity: 0 }}
             onClick={toggleBeforeAfter}
-            className="glass-strong font-mono-ae fixed right-3 top-14 z-[9000] flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] text-zinc-300 hover:border-[--ae-cyan]/40"
+            className="glass-strong font-mono-ae fixed right-3 top-14 z-[9000] flex items-center gap-2 rounded-xl px-3 py-2 text-[11px] text-zinc-300 hover:border-(--ae-cyan)/40"
           >
-            <Eye className="h-3.5 w-3.5 text-[--ae-cyan]" />
+            <Eye className="h-3.5 w-3.5 text-(--ae-cyan)" />
             <span>
-              visual verified — <span className="text-[--ae-cyan]">{beforeAfter.label}</span>
+              visual verified — <span className="text-(--ae-cyan)">{beforeAfter.label}</span>
             </span>
           </motion.button>
         )}
@@ -76,7 +76,7 @@ export function BeforeAfter(): React.ReactElement {
                         onClick={() => setPhase(p)}
                         className={cn(
                           "font-mono-ae px-2.5 py-1 text-[10px] capitalize",
-                          phase === p ? "bg-[--ae-cyan]/15 text-[--ae-cyan]" : "text-zinc-500 hover:text-zinc-300"
+                          phase === p ? "bg-(--ae-cyan)/15 text-(--ae-cyan)" : "text-zinc-500 hover:text-zinc-300"
                         )}
                       >
                         {p}

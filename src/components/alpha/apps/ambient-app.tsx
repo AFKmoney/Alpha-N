@@ -545,7 +545,7 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
   const ss = shown % 60;
 
   return (
-    <div className="scroll-ae grid h-full grid-cols-1 grid-rows-[1fr_auto] gap-2 overflow-y-auto bg-[--ae-obsidian-deep] p-2.5 lg:grid-cols-2 lg:grid-rows-1 lg:overflow-hidden">
+    <div className="scroll-ae grid h-full grid-cols-1 grid-rows-[1fr_auto] gap-2 overflow-y-auto bg-(--ae-obsidian-deep) p-2.5 lg:grid-cols-2 lg:grid-rows-1 lg:overflow-hidden">
       {/* soundscapes */}
       <section className="glass flex min-h-0 flex-col rounded-xl p-3">
         <span className="eyebrow mb-2">Soundscapes · procedural</span>
@@ -560,15 +560,15 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
                 className={cn(
                   "flex flex-col items-start gap-0.5 rounded-lg border px-2.5 py-2 text-left transition-colors",
                   on
-                    ? "border-[--ae-cyan]/40 bg-[--ae-cyan]/10 glow-cyan"
+                    ? "border-(--ae-cyan)/40 bg-(--ae-cyan)/10 glow-cyan"
                     : "border-white/10 bg-white/[0.03] hover:bg-white/[0.07]"
                 )}
               >
                 <span className="flex w-full items-center justify-between">
-                  <Icon className={cn("h-4 w-4", on ? "text-[--ae-cyan]" : "text-zinc-400")} />
+                  <Icon className={cn("h-4 w-4", on ? "text-(--ae-cyan)" : "text-zinc-400")} />
                   {on && <span className="neural-dot" />}
                 </span>
-                <span className={cn("text-xs font-medium", on ? "text-[--ae-cyan]" : "text-zinc-200")}>{label}</span>
+                <span className={cn("text-xs font-medium", on ? "text-(--ae-cyan)" : "text-zinc-200")}>{label}</span>
                 <span className="text-[9px] leading-tight text-zinc-500">{desc}</span>
               </motion.button>
             );
@@ -577,9 +577,9 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
         <div className="mt-2.5 flex items-center gap-2 border-t border-white/10 pt-2.5">
           <motion.button whileTap={{ scale: 0.9 }} onClick={toggleMute} aria-label={muted ? "Unmute" : "Mute"}>
             {muted ? (
-              <VolumeX className="h-4 w-4 text-[--ae-rose]" />
+              <VolumeX className="h-4 w-4 text-(--ae-rose)" />
             ) : (
-              <Volume2 className="h-4 w-4 text-[--ae-cyan]" />
+              <Volume2 className="h-4 w-4 text-(--ae-cyan)" />
             )}
           </motion.button>
           <Slider
@@ -640,7 +640,7 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
           <motion.button
             whileTap={{ scale: 0.92 }}
             onClick={startPause}
-            className="flex items-center gap-1.5 rounded-full border border-[--ae-cyan]/40 bg-[--ae-cyan]/15 px-4 py-1.5 text-xs text-[--ae-cyan] transition-colors hover:bg-[--ae-cyan]/25"
+            className="flex items-center gap-1.5 rounded-full border border-(--ae-cyan)/40 bg-(--ae-cyan)/15 px-4 py-1.5 text-xs text-(--ae-cyan) transition-colors hover:bg-(--ae-cyan)/25"
           >
             {pomo.running ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
             {pomo.running ? "Pause" : "Start"}
@@ -649,7 +649,7 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
             whileTap={{ scale: 0.92 }}
             onClick={() => advanceFrom(pomoRef.current, false)}
             aria-label="Skip phase"
-            className="rounded-full border border-white/10 p-2 text-zinc-400 transition-colors hover:text-[--ae-amethyst]"
+            className="rounded-full border border-white/10 p-2 text-zinc-400 transition-colors hover:text-(--ae-amethyst)"
           >
             <SkipForward className="h-3.5 w-3.5" />
           </motion.button>
@@ -657,7 +657,7 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
             whileTap={{ scale: 0.92 }}
             onClick={resetPomo}
             aria-label="Reset"
-            className="rounded-full border border-white/10 p-2 text-zinc-400 transition-colors hover:text-[--ae-rose]"
+            className="rounded-full border border-white/10 p-2 text-zinc-400 transition-colors hover:text-(--ae-rose)"
           >
             <RotateCcw className="h-3.5 w-3.5" />
           </motion.button>
@@ -673,7 +673,7 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
                 max={120}
                 value={minutes[k]}
                 onChange={(e) => changeMinutes(k, Number(e.target.value))}
-                className="w-12 rounded-md border border-white/10 bg-white/[0.04] px-1 py-0.5 text-center font-mono-ae text-xs text-zinc-200 focus:border-[--ae-cyan]/40 focus:outline-none"
+                className="w-12 rounded-md border border-white/10 bg-white/[0.04] px-1 py-0.5 text-center font-mono-ae text-xs text-zinc-200 focus:border-(--ae-cyan)/40 focus:outline-none"
               />
             </label>
           ))}
@@ -681,7 +681,7 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
 
         <div className="mt-2 flex items-center gap-1.5 text-[10px] text-zinc-500">
           {notifState === "granted" ? (
-            <span className="flex items-center gap-1 text-[--ae-emerald]">
+            <span className="flex items-center gap-1 text-(--ae-emerald)">
               <BellRing className="h-3 w-3" /> notifications on
             </span>
           ) : notifState === "unsupported" ? (
@@ -695,7 +695,7 @@ export function AmbientApp({ windowId: _windowId }: { windowId?: string }) {
           ) : (
             <button
               onClick={requestNotifications}
-              className="flex items-center gap-1 text-[--ae-gold] transition-colors hover:text-glow-gold"
+              className="flex items-center gap-1 text-(--ae-gold) transition-colors hover:text-glow-gold"
             >
               <BellRing className="h-3 w-3" /> enable completion notifications
             </button>

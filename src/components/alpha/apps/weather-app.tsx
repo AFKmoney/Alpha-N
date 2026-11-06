@@ -119,11 +119,11 @@ function compass16(deg: number): string {
 }
 
 const ACCENT_TEXT: Record<Accent, string> = {
-  cyan: "text-[--ae-cyan]",
-  amethyst: "text-[--ae-amethyst]",
-  gold: "text-[--ae-gold]",
-  emerald: "text-[--ae-emerald]",
-  rose: "text-[--ae-rose]",
+  cyan: "text-(--ae-cyan)",
+  amethyst: "text-(--ae-amethyst)",
+  gold: "text-(--ae-gold)",
+  emerald: "text-(--ae-emerald)",
+  rose: "text-(--ae-rose)",
 };
 
 // ================================= PERSISTENCE ===============================
@@ -302,7 +302,7 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
   const windUnit = unit === "f" ? "mph" : "km/h";
 
   return (
-    <div className="scroll-ae flex h-full flex-col gap-2 overflow-y-auto bg-[--ae-obsidian-deep] p-2.5">
+    <div className="scroll-ae flex h-full flex-col gap-2 overflow-y-auto bg-(--ae-obsidian-deep) p-2.5">
       {/* header */}
       <div className="flex items-center justify-between gap-2">
         <div className="flex items-center gap-2">
@@ -311,7 +311,7 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
               whileTap={{ scale: 0.9 }}
               onClick={() => setPlace(null)}
               aria-label="Back to search"
-              className="rounded-full border border-white/10 p-1 text-zinc-400 transition-colors hover:text-[--ae-cyan]"
+              className="rounded-full border border-white/10 p-1 text-zinc-400 transition-colors hover:text-(--ae-cyan)"
             >
               <ArrowLeft className="h-3.5 w-3.5" />
             </motion.button>
@@ -319,14 +319,14 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
           <span className="eyebrow">Weather · Open-Meteo</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <span className={cn("font-mono-ae text-[11px]", unit === "c" ? "text-[--ae-cyan]" : "text-zinc-500")}>°C</span>
+          <span className={cn("font-mono-ae text-[11px]", unit === "c" ? "text-(--ae-cyan)" : "text-zinc-500")}>°C</span>
           <Switch
             checked={unit === "f"}
             onCheckedChange={(v) => setUnit(v ? "f" : "c")}
             aria-label="Toggle temperature unit"
-            className="data-[state=checked]:bg-[--ae-gold]/60 data-[state=unchecked]:bg-[--ae-cyan]/40"
+            className="data-[state=checked]:bg-(--ae-gold)/60 data-[state=unchecked]:bg-(--ae-cyan)/40"
           />
-          <span className={cn("font-mono-ae text-[11px]", unit === "f" ? "text-[--ae-gold]" : "text-zinc-500")}>°F</span>
+          <span className={cn("font-mono-ae text-[11px]", unit === "f" ? "text-(--ae-gold)" : "text-zinc-500")}>°F</span>
         </div>
       </div>
 
@@ -341,7 +341,7 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
               placeholder="Search a city…"
               className="h-9 border-white/10 bg-white/[0.04] pl-8 text-sm"
             />
-            {geoBusy && <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-[--ae-cyan]" />}
+            {geoBusy && <Loader2 className="absolute right-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 animate-spin text-(--ae-cyan)" />}
           </div>
 
           {geoResults !== null && geoResults.length === 0 && query.trim().length >= 2 && (
@@ -363,9 +363,9 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
                 key={`${g.id}-${g.latitude}`}
                 whileTap={{ scale: 0.98 }}
                 onClick={() => pickPlace(g)}
-                className="flex w-full items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left transition-colors hover:border-[--ae-cyan]/30 hover:bg-[--ae-cyan]/[0.06]"
+                className="flex w-full items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.03] px-3 py-2 text-left transition-colors hover:border-(--ae-cyan)/30 hover:bg-(--ae-cyan)/[0.06]"
               >
-                <MapPin className="h-3.5 w-3.5 shrink-0 text-[--ae-cyan]" />
+                <MapPin className="h-3.5 w-3.5 shrink-0 text-(--ae-cyan)" />
                 <span className="min-w-0 flex-1">
                   <span className="block truncate text-sm text-zinc-200">{g.name}</span>
                   <span className="block truncate text-[10px] text-zinc-500">
@@ -384,16 +384,16 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
         <AnimatePresence mode="wait" initial={false}>
           {busy && (
             <motion.div key="busy" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-1 items-center justify-center py-16">
-              <Loader2 className="h-7 w-7 animate-spin text-[--ae-cyan]" />
+              <Loader2 className="h-7 w-7 animate-spin text-(--ae-cyan)" />
             </motion.div>
           )}
           {!busy && error && (
             <motion.div key="error" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} className="flex flex-1 flex-col items-center justify-center gap-2 py-12 text-center">
-              <AlertCircle className="h-8 w-8 text-[--ae-rose]" />
+              <AlertCircle className="h-8 w-8 text-(--ae-rose)" />
               <p className="text-xs text-zinc-400">Could not load the forecast — {error}.</p>
               <button
                 onClick={() => setRetryNonce((n) => n + 1)}
-                className="rounded-full border border-[--ae-cyan]/30 bg-[--ae-cyan]/10 px-3 py-1 text-[11px] text-[--ae-cyan] transition-colors hover:bg-[--ae-cyan]/20"
+                className="rounded-full border border-(--ae-cyan)/30 bg-(--ae-cyan)/10 px-3 py-1 text-[11px] text-(--ae-cyan) transition-colors hover:bg-(--ae-cyan)/20"
               >
                 Retry
               </button>
@@ -413,7 +413,7 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
                 <div className="flex items-start justify-between">
                   <div>
                     <div className="flex items-center gap-1.5 text-sm font-medium text-zinc-100">
-                      <MapPin className="h-3.5 w-3.5 text-[--ae-cyan]" /> {place.name}
+                      <MapPin className="h-3.5 w-3.5 text-(--ae-cyan)" /> {place.name}
                       {place.country ? <span className="text-xs text-zinc-500">{place.country}</span> : null}
                     </div>
                     <div className="mt-1 font-mono-ae text-5xl font-semibold text-zinc-50 text-glow-cyan">
@@ -445,7 +445,7 @@ export function WeatherApp({ windowId: _windowId }: { windowId?: string }) {
                   <div className="flex items-center justify-end gap-1.5">
                     <span className="relative flex items-center">
                       <Navigation2
-                        className="h-3.5 w-3.5 text-[--ae-cyan]"
+                        className="h-3.5 w-3.5 text-(--ae-cyan)"
                         style={{ transform: `rotate(${(cur.wind_direction_10m ?? 0) + 180}deg)` }}
                       />
                     </span>

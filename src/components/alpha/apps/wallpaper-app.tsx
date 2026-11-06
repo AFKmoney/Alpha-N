@@ -57,7 +57,7 @@ export function WallpaperApp(): React.ReactElement {
             onClick={() => void apply(preset.id, preset.name)}
             className={cn(
               "group relative h-20 overflow-hidden rounded-xl border transition-all",
-              activeId === preset.id ? "border-[--ae-cyan] glow-cyan" : "border-white/10 hover:border-white/25"
+              activeId === preset.id ? "border-(--ae-cyan) glow-cyan" : "border-white/10 hover:border-white/25"
             )}
             style={{
               background: `radial-gradient(circle at 25% 40%, ${resolveColor(preset.colors[2] ?? preset.colors[0])}55, transparent 60%), radial-gradient(circle at 75% 65%, ${resolveColor(preset.colors[3] ?? preset.colors[1] ?? preset.colors[0])}44, transparent 55%), ${resolveColor(preset.colors[0])}`,
@@ -65,7 +65,7 @@ export function WallpaperApp(): React.ReactElement {
           >
             <span className="font-mono-ae absolute inset-x-0 bottom-0 flex items-center justify-between bg-black/45 px-2 py-1 text-[9.5px] text-zinc-300 backdrop-blur-sm">
               {preset.name}
-              {activeId === preset.id && <Check className="h-3 w-3 text-[--ae-cyan]" />}
+              {activeId === preset.id && <Check className="h-3 w-3 text-(--ae-cyan)" />}
             </span>
           </motion.button>
         ))}

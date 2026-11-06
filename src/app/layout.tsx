@@ -18,8 +18,10 @@ export const metadata: Metadata = {
     "Alpha-OS: a self-evolving operating system in your browser. The AI sees its own desktop, rewrites its own code, remembers in Akasha, and runs a real Linux terminal.",
   keywords: ["Alpha-OS", "Alpha-N", "autonomous agent", "self-improving", "AI operating system"],
   authors: [{ name: "AFKmoney" }],
+  manifest: "/manifest.webmanifest",
   icons: {
-    icon: "https://z-cdn.chatglm.cn/z-ai/static/logo.svg",
+    icon: [{ url: "/logo.svg", type: "image/svg+xml" }],
+    apple: [{ url: "/logo.svg" }],
   },
 };
 

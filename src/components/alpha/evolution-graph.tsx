@@ -289,7 +289,7 @@ export function EvolutionGraph(): React.ReactElement {
           transition={{ duration: 0.16 }}
         >
           <motion.div
-            className="glass-strong font-mono-ae flex h-[88vh] w-[min(1200px,94vw)] flex-col overflow-hidden rounded-2xl border-[--ae-cyan]/20 shadow-2xl"
+            className="glass-strong font-mono-ae flex h-[88vh] w-[min(1200px,94vw)] flex-col overflow-hidden rounded-2xl border-(--ae-cyan)/20 shadow-2xl"
             initial={{ opacity: 0, scale: 0.94, y: 24 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.96, y: 16 }}
@@ -297,7 +297,7 @@ export function EvolutionGraph(): React.ReactElement {
           >
             {/* header */}
             <header className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-              <GitBranch className="h-4 w-4 text-[--ae-cyan]" />
+              <GitBranch className="h-4 w-4 text-(--ae-cyan)" />
               <div className="flex-1">
                 <p className="text-sm font-semibold text-zinc-100">Evolution Graph</p>
                 <p className="eyebrow mt-0.5">{nodes.length} mutations · scroll to zoom · drag to pan</p>
@@ -458,8 +458,8 @@ export function EvolutionGraph(): React.ReactElement {
                         className={cn(
                           "ml-auto shrink-0 rounded px-1.5 py-0.5 text-[9px] font-bold",
                           hoveredNode.reward.delta >= 0
-                            ? "bg-[--ae-emerald]/15 text-[--ae-emerald]"
-                            : "bg-[--ae-rose]/15 text-[--ae-rose]"
+                            ? "bg-(--ae-emerald)/15 text-(--ae-emerald)"
+                            : "bg-(--ae-rose)/15 text-(--ae-rose)"
                         )}
                       >
                         {rewardDeltaLabel(hoveredNode.reward)} {hoveredNode.reward.helpful ? "↑" : "↓"}

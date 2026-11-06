@@ -77,14 +77,14 @@ export function useToast(): { toast: ToastItem | null; dismiss: () => void } {
 
 const TOAST_STYLE: Record<ToastType, { icon: React.ReactNode; ring: string; bar: string }> = {
   success: {
-    icon: <CheckCircle2 className="h-4 w-4 text-[--ae-emerald]" />,
-    ring: "border-[--ae-emerald]/35",
-    bar: "bg-[--ae-emerald]",
+    icon: <CheckCircle2 className="h-4 w-4 text-(--ae-emerald)" />,
+    ring: "border-(--ae-emerald)/35",
+    bar: "bg-(--ae-emerald)",
   },
   error: {
-    icon: <AlertCircle className="h-4 w-4 text-[--ae-rose]" />,
-    ring: "border-[--ae-rose]/35",
-    bar: "bg-[--ae-rose]",
+    icon: <AlertCircle className="h-4 w-4 text-(--ae-rose)" />,
+    ring: "border-(--ae-rose)/35",
+    bar: "bg-(--ae-rose)",
   },
   info: {
     icon: <Info className="h-4 w-4 text-zinc-300" />,
@@ -92,9 +92,9 @@ const TOAST_STYLE: Record<ToastType, { icon: React.ReactNode; ring: string; bar:
     bar: "bg-zinc-400",
   },
   warning: {
-    icon: <AlertTriangle className="h-4 w-4 text-[--ae-gold]" />,
-    ring: "border-[--ae-gold]/35",
-    bar: "bg-[--ae-gold]",
+    icon: <AlertTriangle className="h-4 w-4 text-(--ae-gold)" />,
+    ring: "border-(--ae-gold)/35",
+    bar: "bg-(--ae-gold)",
   },
 };
 

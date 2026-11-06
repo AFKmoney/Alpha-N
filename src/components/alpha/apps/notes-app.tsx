@@ -121,7 +121,7 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
     if (m.index > last) out.push(text.slice(last, m.index));
     if (m[1] !== undefined) {
       out.push(
-        <code key={`${keyBase}c${idx}`} className="rounded bg-[--ae-cyan]/10 px-1 py-0.5 font-mono-ae text-[0.85em] text-[--ae-cyan]">
+        <code key={`${keyBase}c${idx}`} className="rounded bg-(--ae-cyan)/10 px-1 py-0.5 font-mono-ae text-[0.85em] text-(--ae-cyan)">
           {m[1]}
         </code>
       );
@@ -144,7 +144,7 @@ function renderInline(text: string, keyBase: string): ReactNode[] {
           href={m[5]}
           target="_blank"
           rel="noreferrer"
-          className="text-[--ae-cyan] underline decoration-[--ae-cyan]/40 underline-offset-2 hover:text-glow-cyan"
+          className="text-(--ae-cyan) underline decoration-(--ae-cyan)/40 underline-offset-2 hover:text-glow-cyan"
         >
           {m[4]}
         </a>
@@ -188,7 +188,7 @@ function MarkdownView({ md }: { md: string }) {
             return (
               <pre
                 key={k}
-                className="scroll-ae overflow-x-auto rounded-lg border border-[--ae-amethyst]/20 bg-black/40 p-2.5 font-mono-ae text-[11px] leading-relaxed text-[--ae-amethyst]"
+                className="scroll-ae overflow-x-auto rounded-lg border border-(--ae-amethyst)/20 bg-black/40 p-2.5 font-mono-ae text-[11px] leading-relaxed text-(--ae-amethyst)"
               >
                 {b.lang ? <span className="mb-1 block text-[9px] uppercase tracking-widest text-zinc-500">{b.lang}</span> : null}
                 <code>{b.text}</code>
@@ -196,7 +196,7 @@ function MarkdownView({ md }: { md: string }) {
             );
           case "quote":
             return (
-              <blockquote key={k} className="border-l-2 border-[--ae-gold]/50 bg-[--ae-gold]/5 px-3 py-1.5 text-zinc-300">
+              <blockquote key={k} className="border-l-2 border-(--ae-gold)/50 bg-(--ae-gold)/5 px-3 py-1.5 text-zinc-300">
                 {b.lines.map((l, j) => (
                   <p key={j}>{renderInline(l, `${k}q${j}`)}</p>
                 ))}
@@ -204,7 +204,7 @@ function MarkdownView({ md }: { md: string }) {
             );
           case "ul":
             return (
-              <ul key={k} className="ml-4 list-disc space-y-1 marker:text-[--ae-cyan]">
+              <ul key={k} className="ml-4 list-disc space-y-1 marker:text-(--ae-cyan)">
                 {b.items.map((it, j) => (
                   <li key={j}>{renderInline(it, `${k}u${j}`)}</li>
                 ))}
@@ -212,7 +212,7 @@ function MarkdownView({ md }: { md: string }) {
             );
           case "ol":
             return (
-              <ol key={k} className="ml-4 list-decimal space-y-1 marker:text-[--ae-cyan]">
+              <ol key={k} className="ml-4 list-decimal space-y-1 marker:text-(--ae-cyan)">
                 {b.items.map((it, j) => (
                   <li key={j}>{renderInline(it, `${k}o${j}`)}</li>
                 ))}
@@ -384,7 +384,7 @@ export function NotesApp({ windowId: _windowId }: { windowId?: string }) {
   };
 
   return (
-    <div className="flex h-full bg-[--ae-obsidian-deep]">
+    <div className="flex h-full bg-(--ae-obsidian-deep)">
       {/* sidebar */}
       <aside className="glass flex w-56 shrink-0 flex-col rounded-none border-y-0 border-l-0">
         <div className="space-y-2 border-b border-white/10 p-2.5">
@@ -393,7 +393,7 @@ export function NotesApp({ windowId: _windowId }: { windowId?: string }) {
             <motion.button
               whileTap={{ scale: 0.9 }}
               onClick={createNote}
-              className="flex items-center gap-1 rounded-full border border-[--ae-cyan]/30 bg-[--ae-cyan]/10 px-2 py-0.5 text-[10px] text-[--ae-cyan] transition-colors hover:bg-[--ae-cyan]/20"
+              className="flex items-center gap-1 rounded-full border border-(--ae-cyan)/30 bg-(--ae-cyan)/10 px-2 py-0.5 text-[10px] text-(--ae-cyan) transition-colors hover:bg-(--ae-cyan)/20"
             >
               <Plus className="h-3 w-3" /> new
             </motion.button>
@@ -424,7 +424,7 @@ export function NotesApp({ windowId: _windowId }: { windowId?: string }) {
               className={cn(
                 "block w-full rounded-lg border px-2 py-1.5 text-left transition-colors",
                 n.id === activeId
-                  ? "border-[--ae-cyan]/30 bg-[--ae-cyan]/10"
+                  ? "border-(--ae-cyan)/30 bg-(--ae-cyan)/10"
                   : "border-transparent hover:bg-white/5"
               )}
             >
@@ -462,7 +462,7 @@ export function NotesApp({ windowId: _windowId }: { windowId?: string }) {
                     initial={{ opacity: 0, y: 2 }}
                     animate={{ opacity: 1, y: 0 }}
                     exit={{ opacity: 0 }}
-                    className="flex items-center gap-1 text-[10px] text-[--ae-emerald]"
+                    className="flex items-center gap-1 text-[10px] text-(--ae-emerald)"
                   >
                     <Check className="h-3 w-3" /> saved
                   </motion.span>
@@ -482,7 +482,7 @@ export function NotesApp({ windowId: _windowId }: { windowId?: string }) {
                     aria-label={`${m} view`}
                     className={cn(
                       "rounded-full p-1 transition-colors",
-                      mode === m ? "bg-[--ae-amethyst]/20 text-[--ae-amethyst]" : "text-zinc-500 hover:text-zinc-300"
+                      mode === m ? "bg-(--ae-amethyst)/20 text-(--ae-amethyst)" : "text-zinc-500 hover:text-zinc-300"
                     )}
                   >
                     <Icon className="h-3.5 w-3.5" />
@@ -493,7 +493,7 @@ export function NotesApp({ windowId: _windowId }: { windowId?: string }) {
                 whileTap={{ scale: 0.9 }}
                 onClick={exportNote}
                 aria-label="Export as .md"
-                className="rounded-full p-1 text-zinc-500 transition-colors hover:text-[--ae-gold]"
+                className="rounded-full p-1 text-zinc-500 transition-colors hover:text-(--ae-gold)"
               >
                 <Download className="h-3.5 w-3.5" />
               </motion.button>
@@ -504,8 +504,8 @@ export function NotesApp({ windowId: _windowId }: { windowId?: string }) {
                 className={cn(
                   "flex items-center gap-1 rounded-full border px-2 py-0.5 text-[10px] transition-colors",
                   confirmDelete
-                    ? "border-[--ae-rose]/50 bg-[--ae-rose]/15 text-[--ae-rose]"
-                    : "border-transparent text-zinc-500 hover:border-[--ae-rose]/30 hover:text-[--ae-rose]"
+                    ? "border-(--ae-rose)/50 bg-(--ae-rose)/15 text-(--ae-rose)"
+                    : "border-transparent text-zinc-500 hover:border-(--ae-rose)/30 hover:text-(--ae-rose)"
                 )}
               >
                 <Trash2 className="h-3 w-3" />

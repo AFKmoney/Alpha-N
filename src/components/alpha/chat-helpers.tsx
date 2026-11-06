@@ -148,7 +148,7 @@ export function highlightMatch(text: string, query: string): React.ReactNode {
   while (idx !== -1) {
     if (idx > cursor) parts.push(text.slice(cursor, idx));
     parts.push(
-      <mark key={`hl-${key++}`} className="rounded-sm bg-[--ae-gold] bg-opacity-30 px-0.5 text-inherit">
+      <mark key={`hl-${key++}`} className="rounded-sm bg-(--ae-gold) bg-opacity-30 px-0.5 text-inherit">
         {text.slice(idx, idx + q.length)}
       </mark>
     );

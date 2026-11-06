@@ -1,0 +1,17 @@
+{
+  "name": "Alpha-OS — Recursive Self-Improving OS",
+  "short_name": "Alpha-OS",
+  "description": "A self-evolving operating system in your browser: the AI sees its own desktop, rewrites its own code, remembers in Akasha, and runs a real Linux terminal.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#07060c",
+  "theme_color": "#07060c",
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    }
+  ]
+}

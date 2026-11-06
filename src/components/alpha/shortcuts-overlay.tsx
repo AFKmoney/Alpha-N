@@ -50,7 +50,7 @@ export const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
   {
     id: "window",
     title: "Window",
-    accent: "text-[--ae-cyan]",
+    accent: "text-(--ae-cyan)",
     entries: [
       { keys: ["Alt", "Tab"], description: "Cycle focus through open windows" },
       { keys: ["Alt", "F4"], description: "Close the focused window" },
@@ -65,7 +65,7 @@ export const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
   {
     id: "desktop",
     title: "Desktop",
-    accent: "text-[--ae-amethyst]",
+    accent: "text-(--ae-amethyst)",
     entries: [
       { keys: ["Ctrl", "1…4"], description: "Switch to desktop 1–4" },
       { keys: ["Win", "Ctrl", "←"], description: "Move window to previous desktop" },
@@ -75,7 +75,7 @@ export const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
   {
     id: "ai",
     title: "AI",
-    accent: "text-[--ae-emerald]",
+    accent: "text-(--ae-emerald)",
     entries: [
       { keys: ["Cmd", "Shift", "E"], description: "Trigger an AI evolution cycle" },
       { keys: ["Cmd", "Shift", "C"], description: "Toggle the AI chat panel" },
@@ -86,7 +86,7 @@ export const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
   {
     id: "system",
     title: "System",
-    accent: "text-[--ae-gold]",
+    accent: "text-(--ae-gold)",
     entries: [
       { keys: ["Cmd", "K"], description: "Open the command palette" },
       { keys: ["Cmd", "Shift", "F"], description: "Open universal system search" },
@@ -157,7 +157,7 @@ export function ShortcutsOverlay(): React.ReactElement {
           onClick={() => setOpen(false)}
         >
           <motion.div
-            className="glass-strong font-mono-ae flex max-h-[82vh] w-[min(760px,94vw)] flex-col overflow-hidden rounded-2xl border-[--ae-amethyst]/20 shadow-2xl"
+            className="glass-strong font-mono-ae flex max-h-[82vh] w-[min(760px,94vw)] flex-col overflow-hidden rounded-2xl border-(--ae-amethyst)/20 shadow-2xl"
             initial={{ opacity: 0, y: 22, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: 14, scale: 0.97 }}
@@ -166,7 +166,7 @@ export function ShortcutsOverlay(): React.ReactElement {
           >
             {/* header */}
             <div className="flex items-center gap-3 border-b border-white/8 px-5 py-3.5">
-              <Keyboard className="h-4 w-4 text-[--ae-amethyst]" />
+              <Keyboard className="h-4 w-4 text-(--ae-amethyst)" />
               <div className="flex-1">
                 <p className="text-sm font-semibold text-zinc-100">Keyboard Shortcuts</p>
                 <p className="eyebrow mt-0.5">press esc or click outside to close</p>

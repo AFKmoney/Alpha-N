@@ -137,11 +137,11 @@ export function Dock(): React.ReactElement {
                 title={`${app.label} — ${app.title}`}
                 onClick={() => useOS.getState().openApp(app.kind)}
                 onContextMenu={(e) => triggerContextMenu(e, buildDockAppActions(app))}
-                className="font-mono-ae group relative flex h-9 w-9 items-center justify-center rounded-lg text-[11px] text-zinc-400 transition-all hover:-translate-y-0.5 hover:bg-white/10 hover:text-[--ae-cyan]"
+                className="font-mono-ae group relative flex h-9 w-9 items-center justify-center rounded-lg text-[11px] text-zinc-400 transition-all hover:-translate-y-0.5 hover:bg-white/10 hover:text-(--ae-cyan)"
               >
                 {app.icon}
                 {openKinds.has(app.kind) && (
-                  <span className="absolute bottom-0.5 h-0.5 w-0.5 rounded-full bg-[--ae-cyan] shadow-[0_0_4px_var(--ae-cyan)]" />
+                  <span className="absolute bottom-0.5 h-0.5 w-0.5 rounded-full bg-(--ae-cyan) shadow-[0_0_4px_var(--ae-cyan)]" />
                 )}
               </button>
             ))}
@@ -158,7 +158,7 @@ export function Dock(): React.ReactElement {
                     className="font-mono-ae relative flex h-9 w-9 items-center justify-center rounded-lg text-[11px] text-zinc-500 hover:bg-white/10 hover:text-zinc-200"
                   >
                     {win.icon}
-                    <span className="absolute bottom-0.5 h-0.5 w-0.5 rounded-full bg-[--ae-gold]" />
+                    <span className="absolute bottom-0.5 h-0.5 w-0.5 rounded-full bg-(--ae-gold)" />
                   </button>
                 ))}
               </>
@@ -169,7 +169,7 @@ export function Dock(): React.ReactElement {
               type="button"
               title="Chat with N-Core"
               onClick={toggleChat}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-[--ae-amethyst]"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-(--ae-amethyst)"
             >
               <MessageSquare className="h-4 w-4" />
             </button>
@@ -177,7 +177,7 @@ export function Dock(): React.ReactElement {
               type="button"
               title="Synapse map"
               onClick={toggleSynapse}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-[--ae-cyan]"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-(--ae-cyan)"
             >
               <Network className="h-4 w-4" />
             </button>
@@ -185,7 +185,7 @@ export function Dock(): React.ReactElement {
               type="button"
               title="Toggle theme"
               onClick={toggleTheme}
-              className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-[--ae-gold]"
+              className="flex h-9 w-9 items-center justify-center rounded-lg text-zinc-400 hover:bg-white/10 hover:text-(--ae-gold)"
             >
               {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
             </button>

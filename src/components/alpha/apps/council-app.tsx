@@ -9,10 +9,10 @@ import { cn } from "@/lib/utils";
 import { useEvolution } from "@/lib/alpha/evolution-store";
 
 const HUES: Record<string, { text: string; ring: string; bg: string }> = {
-  architect: { text: "text-[--ae-amethyst]", ring: "stroke-[--ae-amethyst]", bg: "bg-[--ae-amethyst]/10" },
-  developer: { text: "text-[--ae-cyan]", ring: "stroke-[--ae-cyan]", bg: "bg-[--ae-cyan]/10" },
-  critic: { text: "text-[--ae-rose]", ring: "stroke-[--ae-rose]", bg: "bg-[--ae-rose]/10" },
-  optimizer: { text: "text-[--ae-gold]", ring: "stroke-[--ae-gold]", bg: "bg-[--ae-gold]/10" },
+  architect: { text: "text-(--ae-amethyst)", ring: "stroke-(--ae-amethyst)", bg: "bg-(--ae-amethyst)/10" },
+  developer: { text: "text-(--ae-cyan)", ring: "stroke-(--ae-cyan)", bg: "bg-(--ae-cyan)/10" },
+  critic: { text: "text-(--ae-rose)", ring: "stroke-(--ae-rose)", bg: "bg-(--ae-rose)/10" },
+  optimizer: { text: "text-(--ae-gold)", ring: "stroke-(--ae-gold)", bg: "bg-(--ae-gold)/10" },
 };
 
 export function CouncilApp(): React.ReactElement {

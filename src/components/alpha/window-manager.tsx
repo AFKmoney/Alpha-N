@@ -17,6 +17,7 @@ import dynamic from "next/dynamic";
 const TerminalApp = dynamic(() => import("./apps/terminal-app").then((m) => m.TerminalApp), { ssr: false });
 const GeneratedAppRenderer = dynamic(() => import("./apps/generated-app-renderer").then((m) => m.GeneratedAppRenderer), { ssr: false });
 import { RealCodeEditor } from "./apps/real-code-editor";
+import { AppStoreApp } from "./apps/app-store-app";
 import { LoomApp } from "./apps/loom-app";
 import { CouncilApp } from "./apps/council-app";
 import { EvolutionLogApp } from "./apps/evolution-log-app";
@@ -63,7 +64,7 @@ function renderApp(kind: AppKind, windowId: string): React.ReactNode {
     case "wallpaper":
       return <WallpaperApp />;
     case "appstore":
-      return <GeneratedAppRenderer windowId={windowId} />;
+      return <AppStoreApp />;
     case "control":
       return <OptionsApp />;
     case "calculator":

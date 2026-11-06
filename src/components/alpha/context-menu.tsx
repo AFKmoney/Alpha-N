@@ -148,12 +148,12 @@ function MenuItem({ action, close }: { action: ContextMenuAction; close: () => v
         action.onClick?.();
       }}
       className={`flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-left transition-colors ${
-        action.danger ? "text-[--ae-rose] hover:bg-[--ae-rose]/15" : "hover:bg-white/8"
-      } ${action.disabled ? "cursor-not-allowed opacity-40" : ""} ${action.active ? "text-[--ae-cyan]" : ""}`}
+        action.danger ? "text-(--ae-rose) hover:bg-(--ae-rose)/15" : "hover:bg-white/8"
+      } ${action.disabled ? "cursor-not-allowed opacity-40" : ""} ${action.active ? "text-(--ae-cyan)" : ""}`}
     >
       {action.icon}
       <span className="flex-1">{action.label}</span>
-      {action.active && <span className="text-[10px] text-[--ae-cyan]">✓</span>}
+      {action.active && <span className="text-[10px] text-(--ae-cyan)">✓</span>}
     </button>
   );
 }

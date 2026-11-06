@@ -62,34 +62,34 @@ type Accent = "cyan" | "amethyst" | "gold" | "emerald" | "rose";
 
 const ACCENTS: Record<Accent, { text: string; border: string; chip: string; bar: string }> = {
   cyan: {
-    text: "text-[--ae-cyan]",
-    border: "border-[--ae-cyan]/25",
-    chip: "bg-[--ae-cyan]/10",
-    bar: "bg-[--ae-cyan]",
+    text: "text-(--ae-cyan)",
+    border: "border-(--ae-cyan)/25",
+    chip: "bg-(--ae-cyan)/10",
+    bar: "bg-(--ae-cyan)",
   },
   amethyst: {
-    text: "text-[--ae-amethyst]",
-    border: "border-[--ae-amethyst]/25",
-    chip: "bg-[--ae-amethyst]/10",
-    bar: "bg-[--ae-amethyst]",
+    text: "text-(--ae-amethyst)",
+    border: "border-(--ae-amethyst)/25",
+    chip: "bg-(--ae-amethyst)/10",
+    bar: "bg-(--ae-amethyst)",
   },
   gold: {
-    text: "text-[--ae-gold]",
-    border: "border-[--ae-gold]/25",
-    chip: "bg-[--ae-gold]/10",
-    bar: "bg-[--ae-gold]",
+    text: "text-(--ae-gold)",
+    border: "border-(--ae-gold)/25",
+    chip: "bg-(--ae-gold)/10",
+    bar: "bg-(--ae-gold)",
   },
   emerald: {
-    text: "text-[--ae-emerald]",
-    border: "border-[--ae-emerald]/25",
-    chip: "bg-[--ae-emerald]/10",
-    bar: "bg-[--ae-emerald]",
+    text: "text-(--ae-emerald)",
+    border: "border-(--ae-emerald)/25",
+    chip: "bg-(--ae-emerald)/10",
+    bar: "bg-(--ae-emerald)",
   },
   rose: {
-    text: "text-[--ae-rose]",
-    border: "border-[--ae-rose]/25",
-    chip: "bg-[--ae-rose]/10",
-    bar: "bg-[--ae-rose]",
+    text: "text-(--ae-rose)",
+    border: "border-(--ae-rose)/25",
+    chip: "bg-(--ae-rose)/10",
+    bar: "bg-(--ae-rose)",
   },
 };
 
@@ -266,7 +266,7 @@ export function StatsApp({ windowId: _windowId }: { windowId?: string }) {
   const heapPct = heap && heap.limit > 0 ? (heap.used / heap.limit) * 100 : null;
 
   return (
-    <div className="scroll-ae h-full overflow-y-auto bg-[--ae-obsidian-deep] p-2.5">
+    <div className="scroll-ae h-full overflow-y-auto bg-(--ae-obsidian-deep) p-2.5">
       <div className="mb-2 flex items-center justify-between">
         <span className="eyebrow">System Statistics</span>
         <span className="flex items-center gap-1.5 font-mono-ae text-[10px] text-zinc-500">

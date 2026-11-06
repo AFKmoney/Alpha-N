@@ -91,7 +91,7 @@ function appCommand(app: DockApp): PaletteCommand {
     category: "Apps",
     icon: <span className="w-4 text-center text-[11px] leading-4">{app.icon}</span>,
     keywords: `${app.kind} ${app.title} launch app`,
-    accent: "text-[--ae-cyan]",
+    accent: "text-(--ae-cyan)",
     run: () => useOS.getState().openApp(app.kind),
   };
 }
@@ -108,7 +108,7 @@ function buildCommands(): PaletteCommand[] {
       category: "AI",
       icon: <Bot className="h-4 w-4" />,
       keywords: "evolve think run nucleus autonomous force",
-      accent: "text-[--ae-amethyst]",
+      accent: "text-(--ae-amethyst)",
       run: () => ai.triggerCycle(),
     },
     {
@@ -117,7 +117,7 @@ function buildCommands(): PaletteCommand[] {
       category: "AI",
       icon: <MessageSquare className="h-4 w-4" />,
       keywords: "talk ask assistant conversation nucleus",
-      accent: "text-[--ae-cyan]",
+      accent: "text-(--ae-cyan)",
       run: () => ai.toggleChat(),
     },
     {
@@ -126,7 +126,7 @@ function buildCommands(): PaletteCommand[] {
       category: "Windows",
       icon: <Trash2 className="h-4 w-4" />,
       keywords: "kill quit purge cleanup desktop",
-      accent: "text-[--ae-rose]",
+      accent: "text-(--ae-rose)",
       run: () => {
         useOS.getState().windows.forEach((w) => useOS.getState().closeWindow(w.id));
       },
@@ -137,7 +137,7 @@ function buildCommands(): PaletteCommand[] {
       category: "Windows",
       icon: <Minimize2 className="h-4 w-4" />,
       keywords: "hide show desktop clear",
-      accent: "text-[--ae-gold]",
+      accent: "text-(--ae-gold)",
       run: () => os.minimizeAll(),
     }
   );
@@ -149,7 +149,7 @@ function buildCommands(): PaletteCommand[] {
       category: "Windows",
       icon: <span className="w-4 text-center text-[11px] leading-4">{d}</span>,
       keywords: `workspace space move go ${d}`,
-      accent: "text-[--ae-cyan]",
+      accent: "text-(--ae-cyan)",
       run: () => useOS.getState().setActiveDesktop(d),
     });
   }
@@ -161,7 +161,7 @@ function buildCommands(): PaletteCommand[] {
       category: "System",
       icon: <Moon className="h-4 w-4" />,
       keywords: "appearance light dark mode switch sun",
-      accent: "text-[--ae-gold]",
+      accent: "text-(--ae-gold)",
       run: () => useOS.getState().toggleTheme(),
     },
     {
@@ -170,7 +170,7 @@ function buildCommands(): PaletteCommand[] {
       category: "System",
       icon: <Monitor className="h-4 w-4" />,
       keywords: "cpu ram metrics stats health",
-      accent: "text-[--ae-emerald]",
+      accent: "text-(--ae-emerald)",
       run: () => useOS.getState().openApp("monitor" as AppKind),
     },
     {
@@ -179,7 +179,7 @@ function buildCommands(): PaletteCommand[] {
       category: "System",
       icon: <RotateCcw className="h-4 w-4" />,
       keywords: "reboot factory wipe clean restart danger",
-      accent: "text-[--ae-rose]",
+      accent: "text-(--ae-rose)",
       run: () => {
         void fetch("/api/alpha/reset", { method: "POST" })
           .catch(() => undefined)
@@ -294,7 +294,7 @@ export function CommandPalette(): React.ReactElement {
           onKeyDown={onKeyDown}
         >
           <motion.div
-            className="glass-strong font-mono-ae w-[min(620px,92vw)] overflow-hidden rounded-2xl border-[--ae-cyan]/20 shadow-2xl"
+            className="glass-strong font-mono-ae w-[min(620px,92vw)] overflow-hidden rounded-2xl border-(--ae-cyan)/20 shadow-2xl"
             initial={{ opacity: 0, y: -18, scale: 0.96 }}
             animate={{ opacity: 1, y: 0, scale: 1 }}
             exit={{ opacity: 0, y: -12, scale: 0.97 }}
@@ -303,7 +303,7 @@ export function CommandPalette(): React.ReactElement {
           >
             {/* input row */}
             <div className="flex items-center gap-3 border-b border-white/8 px-4 py-3">
-              <Search className="h-4 w-4 shrink-0 text-[--ae-cyan]" />
+              <Search className="h-4 w-4 shrink-0 text-(--ae-cyan)" />
               <input
                 ref={inputRef}
                 value={query}
@@ -345,7 +345,7 @@ export function CommandPalette(): React.ReactElement {
                     onClick={() => execute(cmd)}
                     className={cn(
                       "flex w-full items-center gap-3 rounded-xl px-3 py-2 text-left transition-colors",
-                      idx === clamped ? "bg-[--ae-cyan]/10" : "hover:bg-white/5"
+                      idx === clamped ? "bg-(--ae-cyan)/10" : "hover:bg-white/5"
                     )}
                   >
                     <span className={cn("shrink-0", cmd.accent)}>{cmd.icon}</span>
@@ -356,7 +356,7 @@ export function CommandPalette(): React.ReactElement {
                       {CATEGORY_ICON[cmd.category]}
                       {cmd.category}
                     </span>
-                    {idx === clamped && <CornerDownLeft className="h-3 w-3 shrink-0 text-[--ae-cyan]" />}
+                    {idx === clamped && <CornerDownLeft className="h-3 w-3 shrink-0 text-(--ae-cyan)" />}
                   </button>
                 ))
               )}
