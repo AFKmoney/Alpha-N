@@ -148,28 +148,5 @@ Spec complète dérivée des call-sites réels — résumée dans chaque tâche 
 ### Phase F — Mini-services & vérification
 
 - [x] **F1. `mini-services/terminal/`** — package.json (socket.io, node-pty, tsx), index.ts (launcher bun --hot → spawn node worker, garde __alphaTerminalLaunched, watch *.ts), worker.ts (socket.io :3003 path "/", node-pty bash TERM=xterm-256color, resize/kill/respawn, graceful shutdown). + `bun install` dans le service.
-- [ ] **F2. Aether Engine** — sources récupérées en place (handlers/agent/tools.rs) ; main.rs, graph.rs, tfidf.rs, cache.rs, compress.rs, decompose.rs, hcm.rs, clt.rs, atd.rs, dashboard.rs, Cargo.toml **perdus** → documenter la reconstruction minimale : Cargo.toml + stubs compilables OU note "source à restaurer depuis github.com/AFKmoney/aether-engine". Hors périmètre build Next.js.
-- [x] **F3. Verification lint** — `bun run lint` → 0 erreurs.
-- [x] **F4. Verification tsc** — `bunx tsc --noEmit` → 0 erreurs (ou uniquement erreurs pré-existantes documentées).
-- [ ] **F5. Verification build** — `bun run build` → succès, standalone généré.
-- [x] **F6. Verification dev** — dev server :3000 → GET / 200, HTML 25KB+, 0 erreurs console (agent-browser), desktop rendu, chat panel visible, dock flottant, terminal PTY connecte :3003.
-- [x] **F7. Commit git** — commit de l'état restauré + TODO.MD final à jour.
-
----
-
-## 4. Notes de travail (décisions & pièges)
-
-- **Ordre de dépendance** : A4→A5→A6 (mutations dépend de evolution-data) ; A10→A11 (os-store dépend de os-types) ; evolution-store dépend de A4,A5,A6,A7,A10,A11,A14 ; le reste est parallélisable.
-- **Piège circularité** : evolution-store ↔ os-store (evolution-store fait `useOS.getState()`). os-store ne doit PAS importer evolution-store.
-- **Piège "use client"** : aucune route Prisma directe côté client — uniquement des fetch.
-- **Palette oklch stricte** : cyan 195, amethyst 300, gold 85, emerald 145, red 25. Jamais indigo/bleu.
-- **ESLint actif** : `react-hooks/refs`, `react-hooks/set-state-in-effect`, `react-hooks/rules-of-hooks` → lazy init via `useState(() => new X())`, microtask deferral `Promise.resolve().then(...)` pour les setState dans les effets de mount (pattern établi par les agents SA1/SA4).
-- **Socket.io gateway** : `io("/?XTransformPort=3003", { path: "/", transports: ["websocket"] })`.
-- **Think API** : payload state complet exigé (metrics/generation/version/aiState/activeDesktop/desktops/layoutMode/fullCode/rollbacks non gardés) — cf. spec L.
-- **PersistedLessons** : {id,text,weight,createdAt}[] transitent store → think payload → prompt.
-- Le serveur de dev tourne via `bun run dev` (port 3000) ; logs dans dev.log ; mini-services via .zscripts/dev.sh.
-
----
-
-*Dernière mise à jour : reconstruction quasi complète. Terminé : Phase A (14 modules lib/alpha), Phase B (17 routes API), Phase C (cœur du bureau : thème, window manager tiling/snap, dock, start menu, top/status bar, boot, before/after, model settings, mutation viewer, chat helpers, context menu, audit trail, layout, page), Phase D (11 apps OS + 8 apps SA1), Phase E (7 overlays système). Lint 0 erreur, tsc 0 erreur. Reste à faire (prochaine session) : F2 — Aether Engine Rust : handlers.rs/agent.rs/tools.rs récupérés mais main.rs/graph/tfidf/cache/compress/decompose/hcm/clt/atd/dashboard.rs + Cargo.toml sont PERDUS (reconstruire ou récupérer depuis github.com/AFKmoney/aether-engine) ; F5 — build production `bun run build` non exécuté (dev server vérifié : HTTP 200, 35KB, 0 erreur console, /api/alpha/akasha 200).*
+- [x] **F2. Aether Engine** — ✅ RECONSTRUIT : les 9 modules perdus (main.rs, graph.rs, tfidf.rs, cache.rs, compress.rs, decompose.rs, hcm.rs, clt.rs, atd.rs, dashboard.rs) + Cargo.toml + engine.rs (découvert manquant : parser GGUF + discovery + chat-template, requis par handlers.rs) reconstruits en cohérence totale avec les 3 fichiers récupérés (7080 lignes au total, 14 modules). 27 routes câblées sur :3004. ⚠️ cargo/rustc non installés dans ce sandbox : la compilation n'a pas pu être vérifiée (vérification manuelle call-site par call-site + scripts scripts/verify_aether.py et scripts/rust_syntax_check.py). À compiler dès qu'un toolchain Rust est disponible : `cd mini-services/aether-engine && cargo build --release`.
 

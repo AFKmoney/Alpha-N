@@ -10,7 +10,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { promises as fs } from "fs";
 import os from "os";
 import path from "path";
-import { spawn } from "child_process";
+import { exec } from "child_process";
 
 export const runtime = "nodejs";
 
@@ -45,8 +45,9 @@ export async function POST(req: NextRequest) {
     } else if (language === "typescript") {
       file = path.join(sandboxDir, `${stamp}.ts`);
       await fs.writeFile(file, code, "utf8");
-      cmd = "node";
-      args = ["--import", "tsx", file];
+      // bun runs TS natively — no loader flag (which trips bundler analysis)
+      cmd = "bun";
+      args = [file];
     } else {
       file = path.join(sandboxDir, `${stamp}.js`);
       await fs.writeFile(file, code, "utf8");
@@ -64,20 +65,26 @@ export async function POST(req: NextRequest) {
       env.ALPHA_SANDBOX_NO_NETWORK = "1";
     }
 
+    // The file path is generated server-side (stamp), never user input —
+    // quoting it inside the shell command is injection-safe. exec() is used
+    // instead of spawn() because the bundler statically analyzes spawn argv.
+    const quoted = `'${file.replace(/'/g, "'\\''")}'`;
+    const command = language === "bash" ? `bash ${quoted}` : `${cmd} ${quoted}`;
+
     const result = await new Promise<{ stdout: string; stderr: string; exitCode: number }>((resolve) => {
-      const child = spawn(cmd, args, { cwd: sandboxDir, env, timeout: TIMEOUT_MS });
-      let stdout = "";
-      let stderr = "";
-      child.stdout.on("data", (d) => {
-        stdout += d.toString();
-        if (stdout.length > 50_000) stdout = stdout.slice(0, 50_000) + "\n[truncated]";
-      });
-      child.stderr.on("data", (d) => {
-        stderr += d.toString();
-        if (stderr.length > 20_000) stderr = stderr.slice(0, 20_000) + "\n[truncated]";
-      });
-      child.on("error", (e) => resolve({ stdout, stderr: `${stderr}${e.message}`, exitCode: 127 }));
-      child.on("close", (exitCode) => resolve({ stdout, stderr, exitCode: exitCode ?? 0 }));
+      exec(
+        command,
+        { cwd: sandboxDir, env, timeout: TIMEOUT_MS, maxBuffer: 2 * 1024 * 1024, killSignal: "SIGKILL" },
+        (err, stdoutBuf, stderrBuf) => {
+          const stdout = stdoutBuf.toString().slice(0, 50_000);
+          const stderr = (stderrBuf.toString() + (err && err.killed ? "\n[timeout: killed after 8s]" : "")).slice(0, 20_000);
+          resolve({
+            stdout,
+            stderr: err && !stderrBuf.toString() && !err.killed ? `${stderr}${err.message}` : stderr,
+            exitCode: err ? (err.code as number ?? 1) : 0,
+          });
+        }
+      );
     });
 
     await fs.rm(file, { force: true }).catch(() => {});
