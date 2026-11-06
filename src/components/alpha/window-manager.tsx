@@ -11,8 +11,11 @@ import { useOS, computeDesktopLayout } from "@/lib/alpha/os-store";
 import { defaultSplits, type AppKind } from "@/lib/alpha/os-types";
 import { WindowFrame, SplitHandleBar } from "./window-frame";
 import { BrowserApp, FilesApp, MonitorApp, SecurityApp, CustomApp, OptionsApp, VaultApp } from "./apps/os-apps";
-import { GeneratedAppRenderer } from "./apps/generated-app-renderer";
-import { TerminalApp } from "./apps/terminal-app";
+import dynamic from "next/dynamic";
+
+// xterm and @babel/standalone touch `self`/`window` at import time — load them client-only
+const TerminalApp = dynamic(() => import("./apps/terminal-app").then((m) => m.TerminalApp), { ssr: false });
+const GeneratedAppRenderer = dynamic(() => import("./apps/generated-app-renderer").then((m) => m.GeneratedAppRenderer), { ssr: false });
 import { RealCodeEditor } from "./apps/real-code-editor";
 import { LoomApp } from "./apps/loom-app";
 import { CouncilApp } from "./apps/council-app";

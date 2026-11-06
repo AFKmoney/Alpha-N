@@ -5,7 +5,6 @@
  * call, web search, real file IO, council debate, sandboxed execution,
  * real compilation and the autonomy audit.
  */
-import { toPng } from "html-to-image";
 import type { AutonomyLevel } from "./autonomy-policy";
 import type {
   Mutation,
@@ -79,6 +78,7 @@ export async function captureScreenshot(
 ): Promise<string | null> {
   if (!el || typeof window === "undefined") return null;
   try {
+    const { toPng } = await import("html-to-image");
     const dataUrl = await toPng(el, {
       cacheBust: true,
       pixelRatio: 1,
