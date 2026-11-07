@@ -32,6 +32,23 @@ yarn-error.log*
 
 # env files (can opt-in for committing if needed)
 .env*
+!.env.example
+
+# sandbox artifacts (machine-local, never commit)
+/tool-results/
+/recovered/
+/upload/
+/logs/
+/TODO.MD
+/download/TODO.*
+/.zscripts/database-runtime-build.sh
+/.zscripts/python-runtime-build.sh
+/scripts/extract_recovered.py
+/scripts/rust_syntax_check.py
+/scripts/verify_aether.py
+/tests/database-runtime-build.sh
+/tests/python-runtime-build.sh
+/tests/python-runtime-container.sh
 
 # vercel
 .vercel
