@@ -165,28 +165,35 @@ export function formatBytes(size: number): string {
   return `${size} B`;
 }
 
+const SUGGESTION_POOL: { keywords: string[]; text: string }[] = [
+  { keywords: ["code", "function", "snippet", "implement"], text: "Run this code" },
+  { keywords: ["code", "function", "snippet"], text: "Show me a different approach" },
+  { keywords: ["error", "fail", "bug", "broken"], text: "How do I fix this?" },
+  { keywords: ["error", "fail", "bug"], text: "What caused this error?" },
+  { keywords: ["plan", "step", "phase", "roadmap"], text: "What's the next step?" },
+  { keywords: ["plan", "step", "phase"], text: "Break this down further" },
+  { keywords: ["memory", "remember", "lesson"], text: "Add this to memory" },
+  { keywords: ["memory", "remember", "lesson"], text: "Why is this important?" },
+  { keywords: ["search", "research", "web"], text: "Search for more info" },
+  { keywords: ["file", "path", "directory"], text: "Read this file" },
+  { keywords: ["file", "path", "directory"], text: "Explain the structure" },
+  { keywords: ["metric", "performance", "optimize", "speed"], text: "How do we measure improvement?" },
+];
+const FALLBACK_SUGGESTIONS = [
+  "Explain this in simpler terms",
+  "Show me an example",
+  "What are the alternatives?",
+];
+
 /** 1-3 contextual follow-up suggestions for an AI message. */
-export function generateSuggestions(content: string): string[] {
-  const lower = content.toLowerCase();
-  const pool: [RegExp, string[]][] = [
-    [/error|fail|broken|crash/, ["diagnose the failure", "roll that change back", "show me the logs"]],
-    [/optimi[sz]|faster|latency|performance/, ["what did you optimize?", "keep optimizing", "measure the gain"]],
-    [/terminal|command|bash|shell/, ["open a terminal", "run the tests", "show recent output"]],
-    [/file|code|rewrite|refactor/, ["show me the diff", "explain the change", "commit this evolution"]],
-    [/memory|akasha|remember|forget/, ["what do you remember?", "add that to akasha", "list your intentions"]],
-    [/plan|goal|next/, ["what is your current plan?", "advance the plan", "set a new goal"]],
-    [/window|desktop|app/, ["open the monitor", "tile my windows", "show the desktop"]],
-  ];
-  const suggestions: string[] = [];
-  for (const [re, set] of pool) {
-    if (re.test(lower)) {
-      for (const s of set) {
-        if (!suggestions.includes(s)) suggestions.push(s);
-        if (suggestions.length >= 3) return suggestions;
-      }
-    }
-  }
-  return suggestions.length > 0 ? suggestions : ["what can you do?", "evolve now", "what is your plan?"];
+export function generateSuggestions(text: string): string[] {
+  const lower = text.toLowerCase();
+  const matched = SUGGESTION_POOL.filter((s) =>
+    s.keywords.some((k) => lower.includes(k))
+  ).map((s) => s.text);
+  // De-duplicate, cap at 3, fall back if nothing matched.
+  const unique = Array.from(new Set(matched)).slice(0, 3);
+  return unique.length > 0 ? unique : FALLBACK_SUGGESTIONS.slice(0, 2);
 }
 
 // ---------------------------------------------------------------------------

@@ -23,6 +23,8 @@ export type AppKind =
   | "wallpaper"
   | "appstore"
   | "control"
+  | "filegraph"
+  | "repository"
   | "calculator"
   | "notes"
   | "clipboard"
@@ -104,6 +106,18 @@ export interface DockApp {
   title: string;
 }
 
+/** A draggable pinned app icon on the desktop (double-click opens the app). */
+export interface DesktopShortcut {
+  id: string;
+  kind: AppKind;
+  label: string;
+  icon: string;
+  x: number;
+  y: number;
+  /** Optional data payload (e.g. for custom/generated apps). */
+  data?: Record<string, unknown>;
+}
+
 /** Dock + start menu registry (icon = 1-3 char monospace glyph). */
 export const DOCK_APPS: DockApp[] = [
   { kind: "terminal", label: "Terminal", icon: ">_", title: "Terminal" },
@@ -119,6 +133,9 @@ export const DOCK_APPS: DockApp[] = [
   { kind: "vault", label: "Vault", icon: "⚿", title: "Secret Vault" },
   { kind: "wallpaper", label: "Wallpaper", icon: "❋", title: "Wallpaper" },
   { kind: "appstore", label: "App Store", icon: "⊞", title: "AI App Store" },
+  { kind: "control", label: "Control", icon: "◈", title: "Control Center" },
+  { kind: "filegraph", label: "OS Graph", icon: "⬡", title: "OS File Graph" },
+  { kind: "repository", label: "Apps", icon: "▣", title: "App Repository" },
   { kind: "calculator", label: "Calc", icon: "∑", title: "Calculator" },
   { kind: "notes", label: "Notes", icon: "✎", title: "Notes" },
   { kind: "clipboard", label: "Clip", icon: "⎘", title: "Clipboard" },

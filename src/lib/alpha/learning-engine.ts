@@ -1,12 +1,26 @@
-/**
- * learning-engine.ts — cross-cycle learning.
- *
- * Every cycle produces episodes (tool actions + outcomes + rewards). The
- * learning engine compresses them into a Lesson: per-kind statistics, a
- * plain-language summary and advice the next think cycle can actually use.
- * Strong, repeated signals are promoted to persisted lessons (Akasha) which
- * ride along in every future system prompt.
- */
+// ============================================================
+// Alpha-N — Learning Engine
+//
+// This is the piece that CLOSES the learning loop. Before it existed,
+// the organism recorded objective rewards but never *acted* on them —
+// the AI could repeat a failing strategy forever because nothing in its
+// next-cycle prompt said "that keeps failing, try something else".
+//
+// The engine consumes the recent episode log (the objective, per-action
+// reward trail) and produces a compact, ACTIONABLE lesson block:
+//
+//   • What's working  — strategies with a high average reward → keep.
+//   • What's failing  — strategies with repeated negative reward →
+//     STOP doing them the same way; the block names the failing kind
+//     and the consecutive failure streak.
+//   • The recommendation — one imperative sentence the AI is told to
+//     obey THIS cycle ("you've failed write_file 3× in a row via path
+//     errors — read the file before writing, or abandon the edit").
+//
+// The output is injected at the TOP of the think prompt, where the AI
+// reads it before deciding anything. Persistent lessons (cross-session
+// takeaways) live in the store and are merged in too.
+// ============================================================
 
 export interface EpisodeForLearning {
   kind: string;
@@ -15,127 +29,203 @@ export interface EpisodeForLearning {
   reward: number;
 }
 
-/** Opaque to callers — only passed between build/render/derive. */
-export interface Lesson {
-  sampleSize: number;
-  summary: string;
-  advice: string[];
-  perKind: { kind: string; ok: number; blocked: number; error: number; avgReward: number }[];
-  computedAt: number;
+export interface StrategyStat {
+  kind: string;
+  count: number;
+  avgReward: number;
+  /** Current streak of non-ok results (error/blocked). Resets on ok. */
+  failStreak: number;
+  lastResult: "ok" | "blocked" | "error";
 }
 
+export interface LessonBlock {
+  /** What's working — top strategies by average reward. */
+  working: StrategyStat[];
+  /** What's failing — strategies with a failure streak >= 2. */
+  failing: StrategyStat[];
+  /** A single imperative recommendation for this cycle. */
+  recommendation: string;
+  /** True when there's enough history to say anything meaningful. */
+  hasSignal: boolean;
+}
+
+/** A persistent takeaway that survives across cycles/sessions. */
 export interface PersistedLesson {
   id: string;
   text: string;
+  /** How strongly the engine should surface it. */
   weight: number;
   createdAt: number;
 }
 
-export function buildLesson(episodes: EpisodeForLearning[]): Lesson {
-  const byKind = new Map<string, { ok: number; blocked: number; error: number; reward: number }>();
-  for (const e of episodes) {
-    const bucket = byKind.get(e.kind) ?? { ok: 0, blocked: 0, error: 0, reward: 0 };
-    bucket[e.result] += 1;
-    bucket.reward += e.reward;
-    byKind.set(e.kind, bucket);
+/**
+ * Compute per-strategy stats from the episode log, including the
+ * consecutive-failure streak for each action kind. Episodes are expected
+ * newest-first (as the store holds them).
+ */
+export function computeStrategyStats(
+  episodes: EpisodeForLearning[],
+  window = 40
+): StrategyStat[] {
+  const recent = episodes.slice(0, window);
+  // Reverse to walk oldest → newest so streaks are computed in order.
+  const ordered = [...recent].reverse();
+  const map = new Map<string, StrategyStat>();
+
+  for (const e of ordered) {
+    const cur = map.get(e.kind) ?? {
+      kind: e.kind,
+      count: 0,
+      avgReward: 0,
+      failStreak: 0,
+      lastResult: e.result,
+    };
+    const totalReward = cur.avgReward * cur.count + e.reward;
+    cur.count += 1;
+    cur.avgReward = totalReward / cur.count;
+    if (e.result === "ok") {
+      cur.failStreak = 0;
+    } else {
+      cur.failStreak += 1;
+    }
+    cur.lastResult = e.result;
+    map.set(e.kind, cur);
   }
 
-  const perKind = [...byKind.entries()].map(([kind, b]) => ({
-    kind,
-    ok: b.ok,
-    blocked: b.blocked,
-    error: b.error,
-    avgReward: b.ok + b.blocked + b.error > 0 ? b.reward / (b.ok + b.blocked + b.error) : 0,
-  }));
-  perKind.sort((a, b) => b.ok + b.blocked + b.error - (a.ok + a.blocked + a.error));
-
-  const okTotal = episodes.filter((e) => e.result === "ok").length;
-  const blockedTotal = episodes.filter((e) => e.result === "blocked").length;
-  const errorTotal = episodes.filter((e) => e.result === "error").length;
-  const successRate = episodes.length > 0 ? okTotal / episodes.length : 0;
-
-  const summary =
-    episodes.length === 0
-      ? "No episodes yet — act, observe, and I will learn."
-      : `${episodes.length} episodes: ${okTotal} ok, ${blockedTotal} blocked, ${errorTotal} error — success rate ${(successRate * 100).toFixed(0)}%.`;
-
-  const advice: string[] = [];
-  for (const k of perKind) {
-    const total = k.ok + k.blocked + k.error;
-    if (total >= 2 && k.blocked > 0 && k.blocked / total > 0.4) {
-      advice.push(`'${k.kind}' is frequently blocked — check the autonomy policy before using it.`);
-    }
-    if (total >= 2 && k.error > 0 && k.error / total > 0.4) {
-      advice.push(`'${k.kind}' errors often — validate inputs and read files before writing.`);
-    }
-    if (total >= 3 && k.avgReward >= 1) {
-      advice.push(`'${k.kind}' reliably helps (avg reward ${k.avgReward.toFixed(2)}) — prefer it.`);
-    }
-  }
-  if (successRate < 0.5 && episodes.length >= 4) {
-    advice.push("Success rate below 50% — slow down: read first, act second, verify after.");
-  }
-
-  return {
-    sampleSize: episodes.length,
-    summary,
-    advice,
-    perKind,
-    computedAt: Date.now(),
-  };
-}
-
-/** Render the lesson + persisted lessons as a system-prompt section. */
-export function renderLessonPrompt(lesson: Lesson, persistedLessons: PersistedLesson[]): string {
-  const parts: string[] = ["# LEARNED BEHAVIOUR (from your own episode history)"];
-
-  if (persistedLessons.length > 0) {
-    parts.push("Persisted lessons (permanent — honor these):");
-    for (const l of persistedLessons.slice(0, 12)) {
-      parts.push(`- [weight ${l.weight.toFixed(2)}] ${l.text}`);
-    }
-  }
-
-  if (lesson.sampleSize > 0) {
-    parts.push(`Current lesson: ${lesson.summary}`);
-    if (lesson.advice.length > 0) {
-      parts.push("Advice to yourself:");
-      for (const a of lesson.advice) parts.push(`- ${a}`);
-    }
-  } else {
-    parts.push("No episodes yet. Every action you take becomes a lesson — make them count.");
-  }
-
-  return parts.join("\n");
+  return Array.from(map.values()).sort((a, b) => b.avgReward - a.avgReward);
 }
 
 /**
- * Promote a lesson to persistent memory when the signal is strong enough:
- * at least 6 episodes with clear advice, otherwise return null.
+ * Turn the stats into a lesson block: what to keep doing, what to stop,
+ * and one imperative recommendation for the upcoming cycle.
+ */
+export function buildLesson(episodes: EpisodeForLearning[]): LessonBlock {
+  const stats = computeStrategyStats(episodes);
+  if (stats.length === 0 || episodes.length < 3) {
+    return {
+      working: [],
+      failing: [],
+      recommendation:
+        "Not enough history yet. Act, and the engine will start telling you what works.",
+      hasSignal: false,
+    };
+  }
+
+  const working = stats.filter((s) => s.avgReward > 0.1).slice(0, 3);
+  const failing = stats
+    .filter((s) => s.failStreak >= 2)
+    .sort((a, b) => b.failStreak - a.failStreak);
+
+  // Build the recommendation. The strongest signal is a long failure
+  // streak — name it and demand a different approach.
+  let recommendation: string;
+  const worst = failing[0];
+  if (worst && worst.failStreak >= 2) {
+    const approaches = failureHint(worst.kind);
+    recommendation = `⚠ STOP repeating "${worst.kind}" the same way — it has failed ${worst.failStreak}× in a row. ${approaches} If it fails again, abandon that line of work for now.`;
+  } else if (working.length > 0) {
+    recommendation = `✓ "${working[0].kind}" is your highest-reward strategy (avg reward ${working[0].avgReward.toFixed(2)}). Lean into it this cycle, but vary the target so you don't loop.`;
+  } else {
+    recommendation =
+      "No strong signal yet. Try a small, reversible action and observe the reward.";
+  }
+
+  return { working, failing, recommendation, hasSignal: true };
+}
+
+/** Map a failing action kind to a concrete alternative approach. */
+function failureHint(kind: string): string {
+  switch (kind) {
+    case "write_file":
+    case "replace_code":
+    case "insert_code":
+      return "Read the target file first and confirm the path is correct before editing.";
+    case "execute_code":
+      return "Test a smaller snippet in isolation before committing to the full version.";
+    case "run_terminal":
+      return "Check the command syntax and whether the tool is installed before running.";
+    case "delete_file":
+      return "Verify the path exists and isn't protected before deleting.";
+    case "create_app_from_code":
+      return "Validate the code compiles before asking to install it as an app.";
+    default:
+      return "Try a fundamentally different approach to the same goal.";
+  }
+}
+
+/**
+ * Render the lesson block as a compact, high-salience prompt section.
+ * This goes at the TOP of the state so the AI reads its own feedback
+ * before deciding what to do.
+ */
+export function renderLessonPrompt(
+  lesson: LessonBlock,
+  persisted: PersistedLesson[]
+): string {
+  const lines: string[] = [];
+
+  lines.push("### FEEDBACK FROM YOUR LAST CYCLES — READ THIS FIRST");
+  lines.push(lesson.recommendation);
+  lines.push("");
+
+  if (lesson.hasSignal) {
+    if (lesson.working.length > 0) {
+      lines.push("Strategies that are WORKING (keep doing, vary target):");
+      for (const s of lesson.working) {
+        lines.push(`  ✓ ${s.kind} — avg reward ${s.avgReward.toFixed(2)} over ${s.count} tries`);
+      }
+      lines.push("");
+    }
+    if (lesson.failing.length > 0) {
+      lines.push("Strategies that are FAILING (change approach or stop):");
+      for (const s of lesson.failing) {
+        lines.push(`  ✗ ${s.kind} — failed ${s.failStreak}× in a row (last: ${s.lastResult})`);
+      }
+      lines.push("");
+    }
+  }
+
+  if (persisted.length > 0) {
+    lines.push("Persistent lessons you internalised (do not forget):");
+    for (const l of persisted.slice(0, 6)) {
+      lines.push(`  • ${l.text}`);
+    }
+  }
+
+  return lines.join("\n");
+}
+
+/**
+ * Given a fresh episode outcome, derive a persistent lesson to remember
+ * when the pattern is extreme (e.g. a strategy failed many times, or the
+ * user explicitly downvoted). Returns null when nothing is worth saving.
  */
 export function derivePersistedLesson(
-  lesson: Lesson,
+  lesson: LessonBlock,
   episodes: EpisodeForLearning[]
 ): PersistedLesson | null {
-  if (lesson.sampleSize < 6 || lesson.advice.length === 0) return null;
-
-  const best = lesson.perKind.find((k) => k.ok + k.blocked + k.error >= 3 && k.avgReward >= 1);
-  const worst = lesson.perKind.find((k) => k.ok + k.blocked + k.error >= 3 && k.avgReward <= -0.5);
-
-  let text: string | null = null;
-  if (best && worst && best.kind !== worst.kind) {
-    text = `In the last ${episodes.length} episodes, '${best.kind}' reliably helped while '${worst.kind}' consistently hurt. Prefer ${best.kind}; rethink how you use ${worst.kind}.`;
-  } else if (best) {
-    text = `'${best.kind}' has been consistently effective across recent episodes. Keep reaching for it first.`;
-  } else if (worst) {
-    text = `'${worst.kind}' keeps failing or getting blocked. Prepare properly (read, check policy) before using it.`;
+  if (!lesson.hasSignal) return null;
+  const worst = lesson.failing[0];
+  // Only persist when a strategy has failed 4+ times — that's a clear
+  // "this approach is wrong" signal worth remembering across sessions.
+  if (worst && worst.failStreak >= 4) {
+    return {
+      id: `lesson-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      text: `"${worst.kind}" repeatedly failed (${worst.failStreak}×). ${failureHint(worst.kind)}`,
+      weight: worst.failStreak,
+      createdAt: Date.now(),
+    };
   }
-  if (!text) return null;
-
-  return {
-    id: `lesson-${Date.now()}`,
-    text,
-    weight: Math.min(1, lesson.sampleSize / 20),
-    createdAt: Date.now(),
-  };
+  // Look for a sudden recovery — if the most recent episode turned a
+  // long failure around, capture the win so it's reinforced.
+  const latest = episodes[0];
+  if (latest && latest.result === "ok" && latest.reward >= 0.4) {
+    return {
+      id: `lesson-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
+      text: `"${latest.kind}" succeeded: ${latest.description.slice(0, 80)}`,
+      weight: 1,
+      createdAt: Date.now(),
+    };
+  }
+  return null;
 }

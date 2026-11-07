@@ -26,7 +26,7 @@ import {
   type DockApp,
 } from "./os-types";
 import type { Agent, CodeLine } from "./evolution-data";
-import { DOCK_APPS } from "./os-types";
+import { DOCK_APPS, type DesktopShortcut } from "./os-types";
 
 export interface OsMetrics {
   cpu: number;
@@ -88,6 +88,8 @@ function defaultRect(kind: AppKind, z: number): Rect {
     wallpaper: { w: 620, h: 480 },
     appstore: { w: 760, h: 540 },
     control: { w: 560, h: 460 },
+    filegraph: { w: 800, h: 560 },
+    repository: { w: 720, h: 520 },
     calculator: { w: 480, h: 600 },
     notes: { w: 780, h: 540 },
     clipboard: { w: 520, h: 520 },
@@ -121,7 +123,7 @@ interface OSState {
   theme: "dark" | "light";
   snapPreview: Rect | null;
   pinnedTaskbar: AppKind[];
-  pinnedDesktop: PinnedDesktopApp[];
+  desktopShortcuts: DesktopShortcut[];
   protectedFiles: typeof SECURITY_FOUNDATION;
   violationAttempts: ViolationAttempt[];
   snapshots: OSSnapshot[];
@@ -152,7 +154,9 @@ interface OSState {
   setTheme: (theme: "dark" | "light") => void;
   pinToTaskbar: (kind: AppKind) => void;
   unpinFromTaskbar: (kind: AppKind) => void;
-  pinToDesktop: (kind: AppKind, opts?: { label?: string; icon?: string; data?: Record<string, unknown> }) => void;
+  pinToDesktop: (kind: AppKind, opts?: { label?: string; icon?: string; x?: number; y?: number; data?: Record<string, unknown> }) => void;
+  unpinFromDesktop: (id: string) => void;
+  moveDesktopShortcut: (id: string, x: number, y: number) => void;
 
   recordViolation: (path: string, reason: string) => void;
   takeSnapshot: (
@@ -175,7 +179,15 @@ export const useOS = create<OSState>((set, get) => ({
   theme: "dark",
   snapPreview: null,
   pinnedTaskbar: ["terminal", "files", "browser"],
-  pinnedDesktop: [],
+  desktopShortcuts: [
+    { id: "ds-default-control", kind: "control", label: "Control", icon: "◈", x: 24, y: 24 },
+    { id: "ds-default-monitor", kind: "monitor", label: "Monitor", icon: "▤", x: 24, y: 112 },
+    { id: "ds-default-council", kind: "agents", label: "Council", icon: "◈", x: 24, y: 200 },
+    { id: "ds-default-vault", kind: "vault", label: "Vault", icon: "⚿", x: 24, y: 288 },
+    { id: "ds-default-calc", kind: "calculator", label: "Calc", icon: "∑", x: 24, y: 376 },
+    { id: "ds-default-notes", kind: "notes", label: "Notes", icon: "✎", x: 24, y: 464 },
+    { id: "ds-default-clock", kind: "clock", label: "Clock", icon: "○", x: 24, y: 552 },
+  ],
   protectedFiles: SECURITY_FOUNDATION,
   violationAttempts: [],
   snapshots: [],
@@ -391,18 +403,35 @@ export const useOS = create<OSState>((set, get) => ({
   unpinFromTaskbar: (kind) =>
     set((s) => ({ pinnedTaskbar: s.pinnedTaskbar.filter((k) => k !== kind) })),
 
-  pinToDesktop: (kind, opts) =>
+  pinToDesktop: (kind, opts) => {
+    const id = `ds-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+    // Auto-position: stack shortcuts vertically on the left side if no position given.
+    const count = get().desktopShortcuts.length;
+    const shortcut: DesktopShortcut = {
+      id,
+      kind,
+      label: opts?.label ?? titleFor(kind),
+      icon: opts?.icon ?? iconFor(kind),
+      x: opts?.x ?? 24,
+      y: opts?.y ?? 24 + count * 88,
+      data: opts?.data,
+    };
+    set((s) => ({ desktopShortcuts: [...s.desktopShortcuts, shortcut] }));
+  },
+
+  unpinFromDesktop: (id) => {
     set((s) => ({
-      pinnedDesktop: [
-        ...s.pinnedDesktop.filter((p) => p.kind !== kind),
-        {
-          kind,
-          label: opts?.label ?? titleFor(kind),
-          icon: opts?.icon ?? iconFor(kind),
-          data: opts?.data,
-        },
-      ],
-    })),
+      desktopShortcuts: s.desktopShortcuts.filter((sc) => sc.id !== id),
+    }));
+  },
+
+  moveDesktopShortcut: (id, x, y) => {
+    set((s) => ({
+      desktopShortcuts: s.desktopShortcuts.map((sc) =>
+        sc.id === id ? { ...sc, x, y } : sc
+      ),
+    }));
+  },
 
   recordViolation: (path, reason) =>
     set((s) => ({

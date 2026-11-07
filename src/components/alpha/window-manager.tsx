@@ -18,6 +18,9 @@ const TerminalApp = dynamic(() => import("./apps/terminal-app").then((m) => m.Te
 const GeneratedAppRenderer = dynamic(() => import("./apps/generated-app-renderer").then((m) => m.GeneratedAppRenderer), { ssr: false });
 import { RealCodeEditor } from "./apps/real-code-editor";
 import { AppStoreApp } from "./apps/app-store-app";
+import { ControlCenterApp } from "./apps/control-center-app";
+import { FileGraphApp } from "./apps/file-graph-app";
+import { AppRepositoryApp } from "./apps/app-repository";
 import { LoomApp } from "./apps/loom-app";
 import { CouncilApp } from "./apps/council-app";
 import { EvolutionLogApp } from "./apps/evolution-log-app";
@@ -66,7 +69,11 @@ function renderApp(kind: AppKind, windowId: string): React.ReactNode {
     case "appstore":
       return <AppStoreApp />;
     case "control":
-      return <OptionsApp />;
+      return <ControlCenterApp />;
+    case "filegraph":
+      return <FileGraphApp />;
+    case "repository":
+      return <AppRepositoryApp />;
     case "calculator":
       return <CalculatorApp />;
     case "notes":

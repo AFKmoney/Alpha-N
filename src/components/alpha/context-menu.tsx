@@ -23,6 +23,7 @@ import {
   Pin,
   PinOff,
   RefreshCw,
+  Square,
   Trash2,
   X,
 } from "lucide-react";
@@ -276,6 +277,52 @@ export function buildWindowActions(win: OSWindow): ContextMenuAction[] {
     },
     { separator: true },
     { label: "Close window", icon: <X className="h-3.5 w-3.5" />, danger: true, onClick: () => os.closeWindow(win.id) },
+  ];
+}
+
+/** Fire a toast — the ToastSystem component listens for these events. */
+function toast(type: "success" | "error" | "info" | "warning", title: string, message?: string): void {
+  window.dispatchEvent(new CustomEvent("alpha-toast", { detail: { type, title, message } }));
+}
+
+/** Context menu for a draggable desktop shortcut icon (right-click). */
+export function buildDesktopShortcutActions(
+  shortcutId: string,
+  kind: AppKind,
+  label: string,
+  os: ReturnType<typeof useOS.getState>
+): ContextMenuAction[] {
+  const isPinned = os.pinnedTaskbar.includes(kind);
+
+  return [
+    {
+      label: `Open ${label}`,
+      icon: <Square className="h-3.5 w-3.5" />,
+      onClick: () => os.openApp(kind),
+    },
+    { label: "", icon: null, onClick: () => {}, separator: true },
+    {
+      label: isPinned ? "Unpin from Taskbar" : "Pin to Taskbar",
+      icon: <Pin className="h-3.5 w-3.5" />,
+      onClick: () => {
+        if (isPinned) {
+          os.unpinFromTaskbar(kind);
+          toast("info", "Unpinned from taskbar", label);
+        } else {
+          os.pinToTaskbar(kind);
+          toast("success", "Pinned to taskbar", label);
+        }
+      },
+    },
+    {
+      label: "Remove from Desktop",
+      icon: <X className="h-3.5 w-3.5" />,
+      onClick: () => {
+        os.unpinFromDesktop(shortcutId);
+        toast("info", "Removed from desktop", label);
+      },
+      danger: true,
+    },
   ];
 }
 

@@ -12,6 +12,7 @@ import type {
   LogLevel,
   Scenario,
 } from "./evolution-data";
+import { AGENT_META } from "./evolution-data";
 import type { ChatMessage } from "./mutations";
 
 /** Fixed epoch so SSR and client renders agree on every seeded timestamp. */
@@ -38,10 +39,10 @@ export const STATUS_BY_LEVEL: Record<LogLevel, AgentStatus> = {
 
 export function idleAgents(): Agent[] {
   return [
-    { role: "architect", status: "idle", thought: null, load: 0.08 },
-    { role: "developer", status: "idle", thought: null, load: 0.05 },
-    { role: "critic", status: "idle", thought: null, load: 0.03 },
-    { role: "optimizer", status: "idle", thought: null, load: 0.06 },
+    { role: "architect", status: "idle", thought: null, load: 0.08, hue: AGENT_META.architect.hue },
+    { role: "developer", status: "idle", thought: null, load: 0.05, hue: AGENT_META.developer.hue },
+    { role: "critic", status: "idle", thought: null, load: 0.03, hue: AGENT_META.critic.hue },
+    { role: "optimizer", status: "idle", thought: null, load: 0.06, hue: AGENT_META.optimizer.hue },
   ];
 }
 
@@ -58,6 +59,10 @@ export function bumpVersion(version: string): string {
   if (parts[2] >= 10) {
     parts[2] = 0;
     parts[1] = (parts[1] ?? 0) + 1;
+  }
+  if (parts[1] >= 10) {
+    parts[1] = 0;
+    parts[0] = (parts[0] ?? 0) + 1;
   }
   return parts.join(".");
 }

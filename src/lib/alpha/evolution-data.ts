@@ -22,19 +22,76 @@ export type AiState = "observing" | "generating" | "self-improving";
 
 export type LogLevel = "observe" | "critique" | "hypothesis" | "deploy" | "evolve" | "heal";
 
+export type AgentHue = "cyan" | "amethyst" | "gold" | "rose";
+
 export interface Agent {
   role: AgentRole;
+  /** display name & glyph — optional; UI falls back to AGENT_META[role] */
+  name?: string;
+  glyph?: string;
   status: AgentStatus;
   thought: string | null;
   load: number;
-  /** council accent used by the UI — derived from role when unset */
-  hue?: "cyan" | "amethyst" | "gold" | "rose";
+  /** council accent used by the UI — AGENT_META[role].hue when not overridden */
+  hue: AgentHue;
 }
+
+/** Static per-role metadata shared by the legacy panels (glyph, name, mandate). */
+export const AGENT_META: Record<
+  AgentRole,
+  { name: string; glyph: string; hue: AgentHue; mandate: string }
+> = {
+  architect: {
+    name: "The Architect",
+    glyph: "◈",
+    hue: "amethyst",
+    mandate: "Plans structural mutations of the core.",
+  },
+  developer: {
+    name: "The Developer",
+    glyph: "⌬",
+    hue: "cyan",
+    mandate: "Writes the code of new faculties.",
+  },
+  critic: {
+    name: "The Auditor",
+    glyph: "◉",
+    hue: "rose",
+    mandate: "Hunts logic flaws in the Developer's output.",
+  },
+  optimizer: {
+    name: "The Optimizer",
+    glyph: "❖",
+    hue: "gold",
+    mandate: "Reduces RAM & CPU entropy of the organism.",
+  },
+  nucleus: {
+    name: "The Nucleus",
+    glyph: "◍",
+    hue: "cyan",
+    mandate: "Integrates council output into coherent action.",
+  },
+};
+
+export type CodeTokenKind =
+  | "kw"
+  | "fn"
+  | "type"
+  | "var"
+  | "str"
+  | "num"
+  | "op"
+  | "comment"
+  | "punct"
+  | "ghost";
 
 export interface CodeToken {
   text: string;
   /** tailwind color class for the token — "living" glow is applied by the Loom */
   cls?: string;
+  /** legacy editor fields: syntax class + clickable link target */
+  kind?: CodeTokenKind;
+  linkId?: string;
 }
 
 export interface CodeLine {
@@ -333,4 +390,60 @@ export const SCENARIOS: Scenario[] = [
       { level: "heal", agent: "nucleus", message: "errorRate 0.12→0.04. Reflex wired." },
     ],
   },
+];
+
+// ------------------------------------------------------------
+// Synapse map — the project as a constellation (SynapseMap app)
+// ------------------------------------------------------------
+
+export type EvoCategory =
+  | "performance"
+  | "feature"
+  | "self-healing"
+  | "cognition"
+  | "stability";
+
+export interface SynapseNode {
+  id: string;
+  label: string;
+  kind: "core" | "agent" | "module" | "memory" | "ui";
+  x: number; // 0..100
+  y: number; // 0..100
+  z: number; // depth 0..1
+  size: number;
+}
+
+export interface SynapseEdge {
+  from: string;
+  to: string;
+  weight: number;
+}
+
+export const SYNAPSE_NODES: SynapseNode[] = [
+  { id: "nucleus", label: "Nucleus", kind: "core", x: 50, y: 48, z: 0.9, size: 22 },
+  { id: "arch", label: "Architect", kind: "agent", x: 26, y: 26, z: 0.6, size: 13 },
+  { id: "dev", label: "Developer", kind: "agent", x: 74, y: 26, z: 0.6, size: 13 },
+  { id: "critic", label: "Auditor", kind: "agent", x: 74, y: 72, z: 0.6, size: 13 },
+  { id: "opt", label: "Optimizer", kind: "agent", x: 26, y: 72, z: 0.6, size: 13 },
+  { id: "forge", label: "Mutation Forge", kind: "module", x: 86, y: 50, z: 0.5, size: 11 },
+  { id: "loom", label: "Loom (editor)", kind: "ui", x: 14, y: 50, z: 0.5, size: 11 },
+  { id: "akashic", label: "Akashic Memory", kind: "memory", x: 50, y: 88, z: 0.4, size: 12 },
+  { id: "perception", label: "Neural Sensor", kind: "module", x: 50, y: 12, z: 0.5, size: 11 },
+];
+
+export const SYNAPSE_EDGES: SynapseEdge[] = [
+  { from: "nucleus", to: "arch", weight: 0.9 },
+  { from: "nucleus", to: "dev", weight: 0.9 },
+  { from: "nucleus", to: "critic", weight: 0.8 },
+  { from: "nucleus", to: "opt", weight: 0.8 },
+  { from: "nucleus", to: "forge", weight: 1 },
+  { from: "nucleus", to: "loom", weight: 0.7 },
+  { from: "nucleus", to: "akashic", weight: 0.95 },
+  { from: "nucleus", to: "perception", weight: 0.85 },
+  { from: "forge", to: "akashic", weight: 0.6 },
+  { from: "perception", to: "loom", weight: 0.5 },
+  { from: "arch", to: "dev", weight: 0.4 },
+  { from: "dev", to: "critic", weight: 0.55 },
+  { from: "critic", to: "opt", weight: 0.4 },
+  { from: "opt", to: "arch", weight: 0.4 },
 ];

@@ -9,7 +9,7 @@
  * debate, compile, rollback…) and Akasha persistence (add_memory,
  * create_plan, add_goal…).
  */
-import type { CodeLine, AgentRole, AgentStatus, AiState, LogLevel } from "./evolution-data";
+import type { CodeLine, CodeToken, AgentRole, AgentStatus, AiState, LogLevel } from "./evolution-data";
 import type { AutonomyLevel } from "./autonomy-policy";
 
 // ---------------------------------------------------------------------------
@@ -294,6 +294,9 @@ export function textLinesToCodeLines(lines: string[], startNo: number): CodeLine
 /** Balance check for braces / parens / brackets — blocks broken mutations. */
 export function validateCodeLines(lines: string[]): { ok: boolean; reason?: string } {
   const pairs: Record<string, string> = { ")": "(", "]": "[", "}": "{" };
+  // Human words for each bracket family — surfaced in reasons so logs and
+  // tests can say "unclosed brace" instead of a bare symbol.
+  const words: Record<string, string> = { "(": "paren", "[": "bracket", "{": "brace" };
   const stack: string[] = [];
   let inStr: string | null = null;
   for (const line of lines) {
@@ -310,7 +313,7 @@ export function validateCodeLines(lines: string[]): { ok: boolean; reason?: stri
       } else if (ch === ")" || ch === "]" || ch === "}") {
         const open = stack.pop();
         if (open !== pairs[ch]) {
-          return { ok: false, reason: `unbalanced '${ch}' near column ${i + 1}` };
+          return { ok: false, reason: `unmatched close ${words[ch] ?? "bracket"} '${ch}' near column ${i + 1}` };
         }
       } else if (ch === "/" && line[i + 1] === "/") {
         break; // line comment — ignore the rest
@@ -318,7 +321,8 @@ export function validateCodeLines(lines: string[]): { ok: boolean; reason?: stri
     }
   }
   if (stack.length > 0) {
-    return { ok: false, reason: `${stack.length} unclosed '${stack[stack.length - 1]}'` };
+    const unclosed = stack[stack.length - 1];
+    return { ok: false, reason: `${stack.length} unclosed ${words[unclosed] ?? "bracket"} '${unclosed}'` };
   }
   return { ok: true };
 }
@@ -429,4 +433,118 @@ export function describeMutation(m: Mutation): string {
     default:
       return `mutation ${(m as { type?: string }).type ?? "unknown"}`;
   }
+}
+
+// ---------------------------------------------------------------------------
+// tokenizeLine — kind-based tokenizer (kw/fn/type/var/str/num/op/comment/punct).
+// Distinct from the cls-based `tokenize` above: this one classifies tokens
+// for analysis and for the legacy code editor, and is covered by unit tests.
+// ---------------------------------------------------------------------------
+
+const TOKENIZE_KEYWORDS = new Set([
+  "import",
+  "export",
+  "from",
+  "class",
+  "const",
+  "let",
+  "var",
+  "function",
+  "async",
+  "await",
+  "if",
+  "else",
+  "return",
+  "for",
+  "while",
+  "new",
+  "this",
+  "type",
+  "interface",
+  "extends",
+  "implements",
+  "public",
+  "private",
+  "protected",
+  "readonly",
+  "static",
+  "void",
+  "null",
+  "undefined",
+  "true",
+  "false",
+  "as",
+  "in",
+  "of",
+  "try",
+  "catch",
+  "finally",
+  "throw",
+  "switch",
+  "case",
+  "default",
+  "break",
+  "continue",
+  "enum",
+]);
+
+export function tokenizeLine(text: string): CodeToken[] {
+  if (!text) return [];
+  const tokens: CodeToken[] = [];
+  // regex captures: comments, strings, numbers, identifiers, operators, whitespace
+  const re =
+    /(\/\/[^\n]*)|('(?:[^'\\]|\\.)*'|"(?:[^"\\]|\\.)*"|`(?:[^`\\]|\\.)*`)|(\d+\.?\d*)|([A-Za-z_$][A-Za-z0-9_$]*)|(\s+)|([{}()\[\].,;:<>+\-*/%=&|!?]+)/g;
+  let m: RegExpExecArray | null;
+  let lastWasFn = false;
+  while ((m = re.exec(text)) !== null) {
+    const [full, comment, str, num, ident, ws, punct] = m;
+    if (ws !== undefined) {
+      tokens.push({ text: ws, kind: "punct" });
+      lastWasFn = false;
+      continue;
+    }
+    if (comment !== undefined) {
+      tokens.push({ text: comment, kind: "comment" });
+      lastWasFn = false;
+      continue;
+    }
+    if (str !== undefined) {
+      tokens.push({ text: str, kind: "str" });
+      lastWasFn = false;
+      continue;
+    }
+    if (num !== undefined) {
+      tokens.push({ text: num, kind: "num" });
+      lastWasFn = false;
+      continue;
+    }
+    if (ident !== undefined) {
+      if (TOKENIZE_KEYWORDS.has(ident)) {
+        tokens.push({ text: ident, kind: "kw" });
+        lastWasFn = false;
+      } else if (/^[A-Z]/.test(ident)) {
+        tokens.push({ text: ident, kind: "type" });
+        lastWasFn = false;
+      } else {
+        // look ahead for "(" => function call
+        const rest = text.slice(re.lastIndex);
+        const isFn = /^\s*\(/.test(rest);
+        if (isFn || lastWasFn) {
+          tokens.push({ text: ident, kind: "fn" });
+        } else {
+          tokens.push({ text: ident, kind: "var" });
+        }
+        lastWasFn = false;
+      }
+      continue;
+    }
+    if (punct !== undefined) {
+      tokens.push({ text: punct, kind: "op" });
+      lastWasFn = false;
+      continue;
+    }
+    // fallback
+    tokens.push({ text: full, kind: "var" });
+  }
+  return tokens;
 }

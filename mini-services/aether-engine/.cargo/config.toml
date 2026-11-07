@@ -1,0 +1,11 @@
+# Build configuration for the Aether Engine's native inference (llama.cpp).
+# Points the windows-gnu toolchain at MinGW's gcc and links advapi32 (the
+# Windows registry API that ggml-cpu uses). See docs/AETHER_NATIVE_BUILD.md.
+[target.x86_64-pc-windows-gnu]
+linker = "C:/msys64/mingw64/bin/x86_64-w64-mingw32-gcc.exe"
+ar = "C:/msys64/mingw64/bin/ar.exe"
+rustflags = ["-C", "link-args=-ladvapi32"]
+
+[env]
+CC_x86_64_pc_windows_gnu = "C:/msys64/mingw64/bin/gcc.exe"
+CXX_x86_64_pc_windows_gnu = "C:/msys64/mingw64/bin/g++.exe"

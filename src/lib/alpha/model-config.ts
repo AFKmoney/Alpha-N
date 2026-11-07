@@ -159,3 +159,51 @@ export async function testModelConnection(cfg?: Partial<ModelConfig>): Promise<C
     return { ok: false, message: err instanceof Error ? err.message : "connection failed" };
   }
 }
+
+// ---------------------------------------------------------------------------
+// Provider probing — used by /api/alpha/probe-providers: health-check both
+// providers, list local aether models, and auto-fallback to whichever works.
+// ---------------------------------------------------------------------------
+
+export async function probeProviders(): Promise<{
+  provider: ModelProvider;
+  cloudOk: boolean;
+  aetherOk: boolean;
+  aetherModels: string[];
+}> {
+  const cloudOk = await probeCloud();
+  const { ok: aetherOk, models: aetherModels } = await probeAether();
+
+  // Prefer the configured provider when it works; otherwise pick whichever
+  // is reachable, defaulting to the configured one when nothing answers.
+  const config = getModelConfig();
+  let provider: ModelProvider = config.provider;
+  if (provider === "cloud" && !cloudOk && aetherOk) provider = "aether";
+  else if (provider === "aether" && !aetherOk && cloudOk) provider = "cloud";
+  return { provider, cloudOk, aetherOk, aetherModels };
+}
+
+async function probeCloud(): Promise<boolean> {
+  try {
+    const ZAI = (await import("z-ai-web-dev-sdk")).default;
+    await ZAI.create();
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+async function probeAether(): Promise<{ ok: boolean; models: string[] }> {
+  try {
+    const base = getModelConfig().aetherEndpoint.replace(/\/$/, "");
+    const res = await fetch(`${base}/models`, { cache: "no-store", signal: AbortSignal.timeout(4000) });
+    if (!res.ok) return { ok: false, models: [] };
+    const data = await res.json();
+    const ids: string[] = Array.isArray(data?.data)
+      ? data.data.map((m: { id?: string }) => m.id).filter((x: unknown): x is string => typeof x === "string")
+      : [];
+    return { ok: true, models: ids };
+  } catch {
+    return { ok: false, models: [] };
+  }
+}
